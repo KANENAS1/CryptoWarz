@@ -26,7 +26,7 @@ from .coins import COINS, Coin, coin
 from .market import Market, MarketState, generate
 from .stations import STATIONS, Station, station
 
-DAYS = 30
+DAYS = 30            # tier 1; a tier can shorten the run
 START_CASH = 2_000.0
 START_DEBT = 5_500.0
 START_CAPACITY = 25_000.0
@@ -102,18 +102,56 @@ class Game:
     station: Station = field(default_factory=lambda: station("14 St-Union Sq"))
     log: List[str] = field(default_factory=list)
     finished: bool = False
+    #: difficulty level, 1-5; see progress.TIERS
+    tier: int = 1
+    #: one carried-over advantage, unlocked by an achievement
+    perk: Optional[str] = None
+    #: what happened this run, for achievements and the end-of-run story
+    stats: dict = field(default_factory=dict)
     rng: random.Random = field(init=False)
     state: MarketState = field(init=False)
     market: Market = field(init=False)
 
     def __post_init__(self) -> None:
+        from .progress import PERK_BY_KEY, TIER_BY_LEVEL
+
+        tier = TIER_BY_LEVEL.get(self.tier, TIER_BY_LEVEL[1])
+        self.player.debt = tier.debt
+        self.player.capacity = tier.capacity
+        self.days = tier.days
+        self.heat_mult = tier.heat_mult
+
+        if self.perk and self.perk in PERK_BY_KEY:
+            if self.perk == "seed_round":
+                self.player.cash += 2_000.0
+            elif self.perk == "cold_storage":
+                self.player.capacity += 15_000.0
+
+        self.stats = {"stations": {self.station.name}, "raids": 0, "peak_worth": 0.0,
+                      "best_multiple": 0.0, "worth_by_day": []}
         self.rng = random.Random(self.seed)
         self.state = MarketState(self.rng)
         self.market = generate(self.station, self.rng, self.state)
+        self._mark_stats()
         self.say(f"Day 1. You're at {self.station.name} with "
                  f"${self.player.cash:,.0f} and a ${self.player.debt:,.0f} problem.")
         if self.market.headline:
             self.say(self.market.headline)
+
+    # --------------------------------------------------------------- tracking
+
+    def _mark_stats(self) -> None:
+        worth = self.player.net_worth(self.market)
+        self.stats["peak_worth"] = max(self.stats.get("peak_worth", 0.0), worth)
+        self.stats.setdefault("worth_by_day", []).append(round(worth, 2))
+
+    @property
+    def fare(self) -> float:
+        return 0.0 if self.perk == "metrocard" else SUBWAY_FARE
+
+    @property
+    def shark_rate(self) -> float:
+        return 0.085 if self.perk == "fixer" else SHARK_RATE
 
     # ------------------------------------------------------------------ log
 
@@ -134,7 +172,7 @@ class Game:
         price = self.market.price(symbol)
         if price <= 0:
             return 0.0
-        spendable = max(0.0, self.player.cash - SUBWAY_FARE - FARE_BUFFER)
+        spendable = max(0.0, self.player.cash - self.fare - FARE_BUFFER)
         return max(0.0, min(spendable / price, self.player.free_capacity / price))
 
     def buy(self, symbol: str, qty: float) -> str:
@@ -173,6 +211,9 @@ class Game:
             h.qty, h.cost = 0.0, 0.0
         self.player.drop_empty()
         self.player.cash += proceeds
+        if released > 0:
+            self.stats["best_multiple"] = max(self.stats.get("best_multiple", 0.0),
+                                              proceeds / released)
         verb = "made" if profit >= 0 else "lost"
         return (f"Sold {qty:,.6f} {symbol} at ${price:,.6f} for ${proceeds:,.2f} "
                 f"({verb} ${abs(profit):,.2f})")
@@ -285,13 +326,14 @@ class Game:
         target = station(name)
         if target.name == self.station.name:
             raise ValueError("you're already here")
-        if self.player.cash + 1e-9 < SUBWAY_FARE:
-            raise ValueError(f"you can't even make the ${SUBWAY_FARE:.2f} fare")
+        if self.player.cash + 1e-9 < self.fare:
+            raise ValueError(f"you can't even make the ${self.fare:.2f} fare")
 
-        self.player.cash -= SUBWAY_FARE
+        self.player.cash -= self.fare
         self.station = target
+        self.stats["stations"].add(target.name)
         self.day += 1
-        self.player.debt *= (1.0 + SHARK_RATE)
+        self.player.debt *= (1.0 + self.shark_rate)
         self.player.vault *= (1.0 + VAULT_RATE)
         self.state.drift(self.rng)          # the market moves whether you do or not
         self.market = generate(self.station, self.rng, self.state)
@@ -301,9 +343,10 @@ class Game:
             messages.append(self.market.headline)
         messages.extend(roll_event(self))
 
+        self._mark_stats()
         for m in messages:
             self.say(m)
-        if self.day > DAYS:
+        if self.day > self.days:
             self.finished = True
             messages.append("Thirty days gone. That's the run.")
         return messages
@@ -312,6 +355,13 @@ class Game:
 
     def final_score(self) -> float:
         return self.player.net_worth(self.market)
+
+    def finalise(self) -> None:
+        """Close the books on a finished run before it is scored."""
+        from .coins import BY_SYMBOL
+        held = [sym for sym, h in self.player.wallet.items() if h.qty > 0]
+        self.stats["meme_only_finish"] = bool(held) and all(BY_SYMBOL[s].meme for s in held)
+        self._mark_stats()
 
     def verdict(self) -> str:
         score = self.final_score()

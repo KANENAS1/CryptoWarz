@@ -144,6 +144,65 @@ table supports must hold on both sides.
 Those tests skip cleanly when node isn't installed, because the Python package
 itself stays dependency-free.
 
+## What a lost run leaves behind
+
+Losing used to give you nothing but a number, so the thirtieth loss looked
+exactly like the first. Three things changed that, and all three pay you for
+playing rather than punish you for stopping.
+
+**Goals** name things worth trying, which is how the game teaches its own
+depth — most players never think to sit out a raid until *Untouchable* tells
+them it's possible. Ten of them, and finishing *any* run earns at least one.
+
+**Perks** turn a goal into something you carry into the next run. This is the
+load-bearing one: a run that ends badly still moves a bar you can see.
+
+| Perk | Effect | Unlocked by |
+|---|---|---|
+| Unlimited MetroCard | Rides are free, signal delays never cost a day | finish a run |
+| Seed Round | Start with $2,000 more | finish above water |
+| The Fixer | The Shark charges 8.5% a day | clear the Shark |
+| Cold Storage | +$15,000 wallet | be worth $100k |
+| Burner Phone | Trouble finds you a third less often | survive raid-free |
+| Insider | The map shows who pays most for what | visit all ten stations |
+
+**Tiers** raise the ceiling once you've beaten it, because mastery with nowhere
+left to go is where people stop. Each is unlocked by clearing the one below.
+
+| Tier | | Debt | Wallet | Days | Solo win rate |
+|---|---|---|---|---|---|
+| 1 | Off Peak | $5,500 | $25,000 | 30 | 53% |
+| 2 | Rush Hour | $6,800 | $21,000 | 30 | 30% |
+| 3 | Track Work | $7,800 | $17,000 | 30 | 20% |
+| 4 | Last Train | $7,800 | $15,000 | 26 | 20% |
+| 5 | Blackout | $9,000 | $13,000 | 26 | 8% |
+
+**Today's Run** is seeded by the date — the same thirty days for everyone,
+once a day. It is deliberately *not* a streak: miss a day and nothing is taken
+away, there's simply a new one waiting.
+
+### These numbers were simulated, not guessed
+
+Starting debt turned out to be a far sharper lever than it looks — it compounds
+daily while trading profit scales linearly with capacity. An early tier table
+raised debt to $19,000 and made the top tier **mathematically unwinnable**: 0–3%
+even with a perk and good play. The ladder leans on capacity and heat instead,
+and the top tier now sits at 8% solo, 22% with a perk.
+
+The same pass caught three broken perks: `insider` did literally nothing,
+`metrocard` saved $84 across a whole run, and `fixer` at 7% halved the debt over
+29 days — 74% win rate, easy mode rather than a perk.
+
+Across 40 simulated players the curve lands about right: a median of **2 goals
+after one run, 4 after two**, then a long tail — none of the 40 finished all ten
+inside thirty runs.
+
+### What is deliberately absent
+
+No streak counter that punishes a missed day, no timer that gates play, no
+manufactured urgency. This is a game you own — it should be worth returning to,
+not costly to leave.
+
 ## Saving, and why you can't scum it
 
 Quit whenever. The terminal game writes to `~/.cryptowarz/save.json` after
@@ -171,6 +230,9 @@ python3 -m cryptowarz              # resumes if there's a run in progress
 python3 -m cryptowarz --new        # start fresh, discard the save
 python3 -m cryptowarz --scores     # the board
 python3 -m cryptowarz --no-save    # touch nothing on disk
+python3 -m cryptowarz --goals      # achievements, perks and tiers
+python3 -m cryptowarz --daily      # today's run
+python3 -m cryptowarz --tier 3 --perk fixer
 ```
 
 Both front ends write the **same save shape** and the same version, and
@@ -180,7 +242,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 68 tests, no install needed
+python3 -m unittest discover -s tests     # 95 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

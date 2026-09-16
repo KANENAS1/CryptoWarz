@@ -11,6 +11,7 @@ import random
 import sys
 from typing import List, Optional
 
+from . import progress as progress_module
 from . import save as save_module
 from . import ui
 from .coins import BY_SYMBOL
@@ -83,6 +84,8 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("look", "l", ""):
         return []
+    if cmd in ("goals", "trophies", "achievements"):
+        return [ui.goals_board(progress_module.read_profile())]
     if cmd in ("scores", "score", "hof"):
         return [ui.scoreboard(save_module.read_scores())]
     if cmd in ("help", "h", "?"):
@@ -90,6 +93,22 @@ def handle(game: Game, raw: str) -> List[str]:
     if cmd in ("quit", "exit", "q"):
         raise GameOver("You walk out of the station and don't look back.")
     return [f"'{cmd}'? try 'help'"]
+
+
+def new_game(args) -> Game:
+    profile = progress_module.read_profile()
+    tier = min(max(1, args.tier), profile.max_tier)
+    if args.tier > profile.max_tier:
+        print(ui.c(f"  Tier {args.tier} is locked - clear tier {profile.max_tier} first. "
+                   f"Starting tier {tier}.", ui.YELL))
+    perk = args.perk
+    if perk and perk not in {p.key for p in profile.unlocked_perks}:
+        print(ui.c(f"  You haven't unlocked '{perk}' yet. Running without it.", ui.YELL))
+        perk = None
+    seed = progress_module.daily_seed() if args.daily else args.seed
+    game = Game(seed=seed, tier=tier, perk=perk)
+    game.is_daily = bool(args.daily)
+    return game
 
 
 def resume_or_new(seed: Optional[int], force_new: bool) -> Game:
@@ -120,13 +139,21 @@ def resume_or_new(seed: Optional[int], force_new: bool) -> Game:
     return Game(seed=seed)
 
 
-def play(seed: Optional[int] = None, force_new: bool = False, autosave: bool = True) -> int:
+def play(args) -> int:
     ui.enable_color()
     print(ui.banner())
-    best = save_module.best_score()
-    if best:
-        print(ui.c(f"  Best run so far: {ui.money(best.net_worth)}", ui.GREY))
-    game = resume_or_new(seed, force_new)
+    profile = progress_module.read_profile()
+    if profile.runs:
+        print(ui.c(f"  {profile.runs} runs · best {ui.money(profile.best_net)} · "
+                   f"{len(profile.achievements)}/{len(progress_module.ACHIEVEMENTS)} goals · "
+                   f"tier {profile.max_tier} unlocked", ui.GREY))
+    force_new = args.new or args.no_save or args.tier > 1 or args.perk or args.daily
+    if force_new or not save_module.has_save():
+        save_module.clear_save()
+        game = new_game(args)
+    else:
+        game = resume_or_new(args.seed, False)
+    autosave = not args.no_save
     print(ui.c("  Buy low at one stop, sell high at another. You have thirty days\n"
                "  and a debt that grows 10% a day. Type 'help' for commands.", ui.GREY))
     draw(game)
@@ -176,6 +203,20 @@ def play(seed: Optional[int] = None, force_new: bool = False, autosave: bool = T
 
     if game.finished:
         try:
+            game.finalise()
+            profile = progress_module.read_profile()
+            earned = progress_module.award(profile, game)
+            if getattr(game, "is_daily", False):
+                profile.daily_seed, profile.daily_net = game.seed, score
+            progress_module.write_profile(profile)
+            if earned:
+                print()
+                for a in earned:
+                    print("  " + ui.c(f"◆ {a.name}", ui.YELL, True) + ui.c(f" — {a.blurb}", ui.GREY))
+                unlocked = [p for p in progress_module.PERKS
+                            if p.unlocked_by in {a.key for a in earned}]
+                for p in unlocked:
+                    print("  " + ui.c(f"  unlocked: {p.name} — {p.blurb}", ui.CYAN))
             scores = save_module.record_score(game)
             save_module.clear_save()
             rank = next((i for i, s in enumerate(scores) if abs(s.net_worth - score) < 1e-9), None)
@@ -196,6 +237,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(prog="cryptowarz",
                                 description="Buy low, sell high, ride the subway, dodge the SEC.")
     p.add_argument("--seed", type=int, default=None, help="replay the same thirty days")
+    p.add_argument("--tier", type=int, default=1, help="difficulty 1-5; higher ones unlock as you clear them")
+    p.add_argument("--perk", default=None, help="carry an unlocked perk (see 'goals')")
+    p.add_argument("--daily", action="store_true", help="today's run - same market for everyone, once a day")
+    p.add_argument("--goals", action="store_true", help="show achievements and unlocks, then exit")
     p.add_argument("--new", action="store_true", help="start fresh, discarding any saved run")
     p.add_argument("--no-save", action="store_true", help="do not read or write save files")
     p.add_argument("--scores", action="store_true", help="show the scoreboard and exit")
@@ -207,7 +252,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         ui.enable_color()
         print(ui.scoreboard(save_module.read_scores()))
         return 0
-    return play(args.seed, force_new=args.new or args.no_save, autosave=not args.no_save)
+    if args.goals:
+        ui.enable_color()
+        print(ui.goals_board(progress_module.read_profile()))
+        return 0
+    return play(args)
 
 
 if __name__ == "__main__":

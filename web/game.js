@@ -165,22 +165,46 @@ const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
 // a player who cannot afford the fare the reserve was protecting
 const FARE_BUFFER = 0.01;
 
-function Game(seed) {
+function Game(seed, tier, perk) {
   // kept so a save records which run this was - the RNG state is what restores
   // the dice, but the seed is what lets you tell someone else to try it
   this.seed = (seed === undefined || seed === null) ? (Math.random() * 1e9) | 0 : seed;
+  this.tier = tier || 1;
+  this.perk = perk || null;
+  const t = TIER_BY_LEVEL[this.tier] || TIER_BY_LEVEL[1];
+  this.days = t.days;
+  this.heatMult = t.heat;
   this.rng = new RNG(this.seed);
   this.day = 1;
   this.finished = false;
   this.station = STATIONS[9];              // 14 St-Union Sq
-  this.player = { cash: START_CASH, debt: START_DEBT, vault: 0,
-                  capacity: START_CAPACITY, vpn: 0, wallet: {} };
+  this.player = { cash: START_CASH, debt: t.debt, vault: 0,
+                  capacity: t.capacity, vpn: 0, wallet: {} };
+  if (this.perk === "seed_round") this.player.cash += 2000;
+  if (this.perk === "cold_storage") this.player.capacity += 15000;
+  this.stats = { stations: [this.station.name], raids: 0, peak_worth: 0,
+                 best_multiple: 0, worth_by_day: [] };
   this.log = [];
   this.state = new MarketState(this.rng);
   this.market = generate(this.station, this.rng, this.state);
-  this.say(`Day 1. You're at ${this.station.name} with $${START_CASH.toLocaleString()} and a $${START_DEBT.toLocaleString()} problem.`);
+  this.markStats();
+  this.say(`Day 1. You're at ${this.station.name} with $${Math.round(this.player.cash).toLocaleString()} and a $${Math.round(this.player.debt).toLocaleString()} problem.`);
   if (this.market.headline) this.say(this.market.headline);
 }
+Game.prototype.markStats = function () {
+  const worth = this.netWorth();
+  this.stats.peak_worth = Math.max(this.stats.peak_worth, worth);
+  this.stats.worth_by_day.push(Math.round(worth * 100) / 100);
+};
+Object.defineProperty(Game.prototype, "fare", {
+  get() { return this.perk === "metrocard" ? 0 : SUBWAY_FARE; } });
+Object.defineProperty(Game.prototype, "sharkRate", {
+  get() { return this.perk === "fixer" ? 0.085 : SHARK_RATE; } });
+Game.prototype.finalise = function () {
+  const held = Object.entries(this.player.wallet).filter(([, h]) => h.qty > 0).map(([s]) => s);
+  this.stats.meme_only_finish = held.length > 0 && held.every(s => COIN[s].meme);
+  this.markStats();
+};
 Game.prototype.say = function (m) { this.log.push(m); if (this.log.length > 200) this.log.shift(); };
 Game.prototype.holding = function (sym) {
   if (!this.player.wallet[sym]) this.player.wallet[sym] = { qty: 0, cost: 0 };
@@ -209,7 +233,7 @@ Game.prototype.netWorth = function () {
 Game.prototype.maxBuyable = function (sym) {
   const p = this.market.prices[sym];
   if (!(p > 0)) return 0;
-  const spendable = Math.max(0, this.player.cash - SUBWAY_FARE - FARE_BUFFER);
+  const spendable = Math.max(0, this.player.cash - this.fare - FARE_BUFFER);
   return Math.max(0, Math.min(spendable / p, this.freeCapacity() / p));
 };
 Game.prototype.buy = function (sym, qty) {
@@ -228,6 +252,7 @@ Game.prototype.sell = function (sym, qty) {
   if (qty > h.qty + 1e-12) throw new Error(`you only hold ${fmtQty(h.qty)} ${sym}`);
   const price = this.market.prices[sym], proceeds = price * qty;
   const released = h.qty > 0 ? h.cost * (qty / h.qty) : 0;
+  if (released > 0) this.stats.best_multiple = Math.max(this.stats.best_multiple, proceeds / released);
   const profit = proceeds - released;
   h.qty -= qty; h.cost -= released;
   if (h.qty <= 1e-12) { h.qty = 0; h.cost = 0; }
@@ -299,19 +324,21 @@ Game.prototype.buyVpn = function () {
 Game.prototype.travel = function (index) {
   const target = STATIONS[index];
   if (target.name === this.station.name) throw new Error("you're already here");
-  if (this.player.cash + 1e-9 < SUBWAY_FARE) throw new Error(`you can't even make the $${SUBWAY_FARE.toFixed(2)} fare`);
-  this.player.cash -= SUBWAY_FARE;
+  if (this.player.cash + 1e-9 < this.fare) throw new Error(`you can't even make the $${this.fare.toFixed(2)} fare`);
+  this.player.cash -= this.fare;
   this.station = target;
+  if (!this.stats.stations.includes(target.name)) this.stats.stations.push(target.name);
   this.day += 1;
-  this.player.debt *= (1 + SHARK_RATE);
+  this.player.debt *= (1 + this.sharkRate);
   this.player.vault *= (1 + VAULT_RATE);
   this.state.drift(this.rng);
   this.market = generate(this.station, this.rng, this.state);
   const messages = [`Day ${this.day}. ${target.name}.`, target.flavor];
   if (this.market.headline) messages.push(this.market.headline);
   for (const m of rollEvent(this)) messages.push(m);
+  this.markStats();
   messages.forEach(m => this.say(m));
-  if (this.day > DAYS) { this.finished = true; messages.push("Thirty days gone. That's the run."); }
+  if (this.day > this.days) { this.finished = true; messages.push("That's the run."); }
   return messages;
 };
 Game.prototype.finalScore = function () { return this.netWorth(); };
@@ -347,9 +374,11 @@ function takeCash(g, amount) {
 
 function secRaid(g) {
   if (!hasCoins(g)) {
+    g.stats.raids += 1;
     const fine = takeCash(g, 400 + g.rng.random() * 900);
     return [`SEC agents stop you at the turnstile. Nothing to seize, so they write you a $${fine.toFixed(2)} fine instead.`];
   }
+  g.stats.raids += 1;
   const f = g.rng.uniform(0.18, 0.42), lost = confiscate(g, f);
   return [`SEC raid on the platform. They seize ${Math.round(f * 100)}% of your wallet - $${lost.toFixed(2)} at cost.`];
 }
@@ -394,7 +423,10 @@ function whaleOffer(g) {
   return [`A whale takes your entire ${sym} bag at ${Math.round(premium * 100)}% of market - $${proceeds.toFixed(2)}.`];
 }
 function delayEvent(g) {
-  g.day += 1; g.player.debt *= 1.10;
+  if (g.perk === "metrocard") {
+    return ["Signal problems at Chambers St. You know the workaround and reroute without losing the day."];
+  }
+  g.day += 1; g.player.debt *= (1 + g.sharkRate);
   return ["Signal problems at Chambers St. You lose a day on a stopped train while your debt keeps compounding."];
 }
 const quiet = () => [];
@@ -405,10 +437,106 @@ const EVENTS = [
   [quiet, 34, false],
 ];
 function rollEvent(game) {
-  const heat = game.station.heat;
-  const shelter = 1.0 - Math.min(0.66, 0.22 * game.player.vpn);
+  const heat = Math.min(1, game.station.heat * (game.heatMult || 1));
+  let shelter = 1.0 - Math.min(0.66, 0.22 * game.player.vpn);
+  if (game.perk === "burner") shelter *= 0.66;
   const weights = EVENTS.map(([, w, scales]) => (scales ? w * (0.35 + 1.4 * heat) * shelter : w));
   return game.rng.choices(EVENTS.map(e => e[0]), weights)(game);
+}
+
+/* ---------------------------- progress.py ----------------------------- */
+/* Mirrors cryptowarz/progress.py. A lost run has to leave something behind,
+   or the thirtieth loss looks exactly like the first. */
+const ACHIEVEMENTS = [
+  { key: "first_run",    name: "Off Peak",            blurb: "Finish a run, any run.",
+    test: g => true },
+  { key: "in_the_black", name: "In the Black",        blurb: "Finish worth more than you started.",
+    test: g => g.finalScore() > 2000 },
+  { key: "debt_free",    name: "Paid in Full",        blurb: "Clear the Shark completely.",
+    test: g => g.player.debt <= 0 },
+  { key: "whale",        name: "Whale Watching",      blurb: "Be worth $100,000 at any point.",
+    test: g => (g.stats.peak_worth || 0) >= 100000 },
+  { key: "tourist",      name: "The Whole Map",       blurb: "Visit all ten stations in one run.",
+    test: g => (g.stats.stations || []).length >= STATIONS.length },
+  { key: "untouchable",  name: "Untouchable",         blurb: "Thirty days, no SEC raid.",
+    test: g => (g.stats.raids || 0) === 0 && g.day > 25 },
+  { key: "moonshot",     name: "Moonshot",            blurb: "Triple your money on one trade.",
+    test: g => (g.stats.best_multiple || 0) >= 3.0 },
+  { key: "degen",        name: "Nothing but Vibes",   blurb: "Finish in profit holding only memecoins.",
+    test: g => g.finalScore() > 2000 && !!g.stats.meme_only_finish },
+  { key: "six_figures",  name: "Six Figures",         blurb: "Finish above $100,000.",
+    test: g => g.finalScore() >= 100000 },
+  { key: "legend",       name: "They Named a Station", blurb: "Finish above $500,000.",
+    test: g => g.finalScore() >= 500000 },
+];
+
+const PERKS = [
+  { key: "metrocard",    name: "Unlimited MetroCard", blurb: "Rides are free, and signal delays never cost you a day.", by: "first_run" },
+  { key: "seed_round",   name: "Seed Round",          blurb: "Start with $2,000 more.",                                  by: "in_the_black" },
+  { key: "burner",       name: "Burner Phone",        blurb: "Trouble finds you a third less often.",                    by: "untouchable" },
+  { key: "cold_storage", name: "Cold Storage",        blurb: "+$15,000 wallet capacity.",                                by: "whale" },
+  { key: "fixer",        name: "The Fixer",           blurb: "The Shark charges 8.5% a day, not 10%.",                   by: "debt_free" },
+  { key: "insider",      name: "Insider",             blurb: "The map shows which coin each station pays most for.",     by: "tourist" },
+];
+
+/* Tuned by simulation: starting debt compounds daily while profit scales with
+   capacity, so leaning on debt made the top tier unwinnable. Capacity and heat
+   carry the ladder instead. */
+const TIERS = [
+  { level: 1, name: "Off Peak",   blurb: "The standard thirty days.",           debt: 5500,  capacity: 25000, heat: 1.00, days: 30 },
+  { level: 2, name: "Rush Hour",  blurb: "A bigger loan and more eyes on you.", debt: 6800,  capacity: 21000, heat: 1.25, days: 30 },
+  { level: 3, name: "Track Work", blurb: "Deeper in, carrying less.",           debt: 7800,  capacity: 17000, heat: 1.50, days: 30 },
+  { level: 4, name: "Last Train", blurb: "Four fewer days to do it in.",        debt: 7800,  capacity: 15000, heat: 1.60, days: 26 },
+  { level: 5, name: "Blackout",   blurb: "Everything at once.",                 debt: 9000,  capacity: 13000, heat: 1.80, days: 26 },
+];
+const TIER_BY_LEVEL = Object.fromEntries(TIERS.map(t => [t.level, t]));
+const PERK_BY_KEY = Object.fromEntries(PERKS.map(p => [p.key, p]));
+const PROGRESS_KEY = "cryptowarz.progress.v1";
+const PROGRESS_VERSION = 1;
+
+function blankProfile() {
+  return { version: PROGRESS_VERSION, runs: 0, achievements: [], best_net: 0,
+           best_tier_cleared: 0, daily_seed: null, daily_net: null, updated_at: 0 };
+}
+function readProfile() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "null");
+    if (!raw || raw.version !== PROGRESS_VERSION) return blankProfile();
+    const known = new Set(ACHIEVEMENTS.map(a => a.key));
+    raw.achievements = (raw.achievements || []).filter(k => known.has(k));
+    return Object.assign(blankProfile(), raw);
+  } catch (e) { return blankProfile(); }   // a profile is a reward, never a blocker
+}
+function writeProfile(p) {
+  p.updated_at = Date.now() / 1000;
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch (e) {}
+  return p;
+}
+function unlockedPerks(p) {
+  const earned = new Set(p.achievements);
+  return PERKS.filter(x => earned.has(x.by));
+}
+function maxTier(p) { return Math.max(1, Math.min(TIERS.length, (p.best_tier_cleared || 0) + 1)); }
+
+/* One shared run per calendar day. Not a streak: miss a day and nothing is
+   taken away, there is simply a new one waiting. */
+function dailySeed(when) {
+  const d = new Date(when === undefined ? Date.now() : when);
+  return Number(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`);
+}
+
+function award(profile, g) {
+  const earned = [];
+  for (const a of ACHIEVEMENTS) {
+    if (profile.achievements.includes(a.key)) continue;
+    let hit = false;
+    try { hit = !!a.test(g); } catch (e) { hit = false; }
+    if (hit) { profile.achievements.push(a.key); earned.push(a); }
+  }
+  profile.runs += 1;
+  profile.best_net = Math.max(profile.best_net, g.finalScore());
+  if (g.finalScore() > 2000 && g.tier > profile.best_tier_cleared) profile.best_tier_cleared = g.tier;
+  return earned;
 }
 
 /* ------------------------------ save.js ------------------------------- */
@@ -432,6 +560,9 @@ function saveToDict(g) {
     save_version: SAVE_VERSION,
     saved_at: Date.now() / 1000,
     seed: g.seed,
+    tier: g.tier,
+    perk: g.perk,
+    stats: g.stats,
     day: g.day,
     finished: g.finished,
     station: g.station.name,
@@ -453,8 +584,9 @@ function saveFromDict(data) {
   if (!data || data.save_version !== SAVE_VERSION) {
     throw new Error("that save is from a different version of the game");
   }
-  const g = new Game(data.seed === undefined ? 0 : data.seed);
+  const g = new Game(data.seed === undefined ? 0 : data.seed, data.tier || 1, data.perk || null);
   g.rng.setState(data.rng);
+  if (data.stats) g.stats = data.stats;
   g.day = data.day;
   g.finished = !!data.finished;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
@@ -526,5 +658,7 @@ function fmtMoney(v) {
 
 if (typeof module !== "undefined") {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
-                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION };
+                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
+                     ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
+                     unlockedPerks, maxTier };
 }

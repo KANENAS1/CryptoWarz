@@ -74,6 +74,11 @@ def to_dict(game) -> Dict[str, Any]:
         "save_version": SAVE_VERSION,
         "saved_at": time.time(),
         "seed": game.seed,
+        "tier": game.tier,
+        "perk": game.perk,
+        # stations is a set in memory; JSON needs a list, and the reload
+        # converts it back so achievement checks keep working after a resume
+        "stats": {**game.stats, "stations": sorted(game.stats.get("stations", []))},
         "day": game.day,
         "finished": game.finished,
         "station": game.station.name,
@@ -109,7 +114,11 @@ def from_dict(data: Dict[str, Any]):
             f"Start a new run - loading it anyway would corrupt it in ways that look like bugs."
         )
 
-    game = Game(seed=data.get("seed"))
+    game = Game(seed=data.get("seed"), tier=int(data.get("tier", 1)),
+                perk=data.get("perk"))
+    stats = data.get("stats")
+    if stats:
+        game.stats = {**stats, "stations": set(stats.get("stations", []))}
     game.rng = _decode_rng(data["rng"])
     game.day = int(data["day"])
     game.finished = bool(data.get("finished", False))

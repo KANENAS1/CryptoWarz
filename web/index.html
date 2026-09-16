@@ -54,7 +54,7 @@
   .cap i{display:block;height:100%;background:var(--yellow)}
 
   /* ---------- scroll body ---------- */
-  main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px}
+  main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px}
   .alert{background:var(--yellow);color:#000;font-weight:700;font-size:13px;
          padding:9px 12px;border-radius:3px;margin:10px 0}
   .alert.bad{background:var(--red);color:#fff}
@@ -103,7 +103,11 @@
          padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
   .sheet.on{display:flex}
   .sheet h3{font-size:12px;letter-spacing:.2em;color:var(--yellow);margin:0 0 12px;font-weight:700}
-  .sheetscroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  /* min-height:0 is load-bearing. A flex item defaults to min-height:auto,
+     which refuses to shrink below its content - so a long list overflows the
+     sheet and covers the button underneath instead of scrolling. With ten
+     achievements on the goals screen, BACK became unreachable on a phone. */
+  .sheetscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .stop{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;
         padding:13px 2px;border-bottom:1px solid var(--rule);cursor:pointer;min-height:56px}
   .stop .nm{font-weight:700;font-size:15px}
@@ -123,6 +127,33 @@
   .brk{display:flex;flex-direction:column;gap:5px;margin:20px auto 0;max-width:280px}
   .brk div{display:flex;justify-content:space-between;border-bottom:1px solid var(--rule);padding-bottom:4px}
   .brk span{color:var(--dim)}
+  /* ---------- setup / trophies ---------- */
+  .pick{border:1px solid var(--rule);border-radius:4px;padding:11px 12px;margin-bottom:7px;
+        cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+  .pick.on{border-color:var(--yellow);background:rgba(252,204,10,.08)}
+  .pick.locked{opacity:.4;cursor:not-allowed}
+  .pick .t{font-weight:700;font-size:14px}
+  .pick .d{color:var(--dim);font-size:11.5px;margin-top:2px}
+  .pick .k{font-size:9px;letter-spacing:.12em;color:var(--faint);text-align:right;max-width:110px}
+  .daily{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:12px;cursor:pointer}
+  .daily .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:12px}
+  .daily .d{color:var(--dim);font-size:11.5px;margin-top:3px}
+  .daily.done{border-color:var(--rule);cursor:default}
+  .trophy{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start;
+          padding:10px 2px;border-bottom:1px solid var(--rule)}
+  .trophy .mark{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;
+                justify-content:center;font-weight:700;font-size:13px;flex:none;
+                background:var(--rule);color:var(--faint)}
+  .trophy.got .mark{background:var(--green);color:#fff}
+  .trophy .t{font-weight:700;font-size:13.5px}
+  .trophy.got .t{color:var(--paper)} .trophy .t{color:var(--dim)}
+  .trophy .d{color:var(--faint);font-size:11.5px;margin-top:1px}
+  .trophy .u{color:var(--yellow);font-size:10px;letter-spacing:.1em;margin-top:3px}
+  .pillrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+  .pill{font-size:9px;letter-spacing:.12em;font-weight:700;padding:2px 7px;border-radius:2px;
+        border:1px solid var(--rule);color:var(--dim)}
+  .pill.tier{border-color:var(--purple);color:#e07ad8}
+  .pill.perk{border-color:var(--yellow);color:var(--yellow)}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -131,6 +162,7 @@
   <header>
     <div class="dayband">
       <span class="day" id="day">DAY 1 OF 30</span>
+      <span class="pill tier" id="tierpill" hidden>OFF PEAK</span>
       <div class="cap" aria-label="wallet capacity used"><i id="capbar" style="width:0%"></i></div>
       <span class="day num" id="capnum" style="color:var(--dim)">$0 / $25,000</span>
     </div>
@@ -163,8 +195,9 @@
 
   <footer>
     <button class="go" id="ride">RIDE THE TRAIN →</button>
-    <button id="board" style="flex:0 0 auto;min-width:56px">BEST</button>
-    <button id="newgame" style="flex:0 0 auto;min-width:56px">NEW</button>
+    <button id="trophies" style="flex:0 0 auto;min-width:54px">GOALS</button>
+    <button id="board" style="flex:0 0 auto;min-width:54px">BEST</button>
+    <button id="newgame" style="flex:0 0 auto;min-width:50px">NEW</button>
   </footer>
 </div>
 
@@ -172,6 +205,27 @@
   <h3>WHERE TO? — ONE DAY EACH WAY</h3>
   <div class="sheetscroll" id="stops"></div>
   <div style="padding-top:10px"><button id="cancel">CANCEL</button></div>
+</div>
+
+<div class="sheet" id="setup">
+  <h3 id="setuptitle">NEW RUN</h3>
+  <div class="sheetscroll">
+    <div id="dailybox"></div>
+    <h2 style="margin-top:2px">DIFFICULTY</h2>
+    <div id="tierpicks"></div>
+    <h2>CARRY ONE THING</h2>
+    <div id="perkpicks"></div>
+  </div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button id="startrun" class="go">START</button>
+    <button id="setupcancel" style="flex:0 0 auto;min-width:90px">BACK</button>
+  </div>
+</div>
+
+<div class="sheet" id="goals">
+  <h3 id="goalstitle">GOALS</h3>
+  <div class="sheetscroll" id="goallist"></div>
+  <div style="padding-top:10px"><button id="closegoals">BACK</button></div>
 </div>
 
 <div class="sheet" id="scores">
@@ -227,7 +281,12 @@ function tagFor(c, price){
 function render(){
   const g = game, p = g.player;
   const net = g.netWorth();
-  $("day").textContent = `DAY ${Math.min(g.day, DAYS)} OF ${DAYS}`;
+  $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
+  const tierInfo = TIER_BY_LEVEL[g.tier];
+  const pill = $("tierpill");
+  pill.hidden = g.tier === 1 && !g.perk && !g.isDaily;
+  pill.textContent = [g.isDaily ? "DAILY" : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
+                      g.perk ? PERK_BY_KEY[g.perk].name.toUpperCase() : null].filter(Boolean).join(" · ");
   $("station").textContent = g.station.name;
   $("bullets").innerHTML = g.station.lines.map(bullet).join("");
   $("flavor").textContent = g.station.flavor;
@@ -266,6 +325,17 @@ function render(){
       rows.push(`<div class="note">${c.note}${h.qty > 0 ? ` · you paid ${fmtPrice(h.cost / h.qty)} avg` : ""}</div>`);
       trade = rows.join("");
     }
+    // Insider: name the station that pays most for this coin
+    const insider = (open && game.perk === "insider")
+      ? (() => {
+          let best = null;
+          for (const st of STATIONS) {
+            const b = st.bias[c.symbol] === undefined ? 1 : st.bias[c.symbol];
+            if (!best || b > best[1]) best = [st.name, b];
+          }
+          return `<div class="note">Insider: ${best[0]} pays the most for ${c.symbol}.</div>`;
+        })() : "";
+    trade += insider;
     return `<div class="coin${open ? " open" : ""}">
       <div class="coinrow" data-coin="${c.symbol}" role="button" tabindex="0">
         <div><div class="sym">${c.symbol}</div></div>
@@ -360,13 +430,13 @@ $("ride").addEventListener("click", () => {
       <div><div class="nm">${s.name}</div><div class="meta">${chips}</div></div>
       <div class="bullets">${s.lines.map(bullet).join("")}</div></div>`;
   }).join("");
-  $("travel").classList.add("on");
+  openSheet("travel");
 });
-$("cancel").addEventListener("click", () => $("travel").classList.remove("on"));
+$("cancel").addEventListener("click", closeSheets);
 $("stops").addEventListener("click", e => {
   const s = e.target.closest("[data-go]");
   if (!s) return;
-  $("travel").classList.remove("on");
+  closeSheets();
   openCoin = null;
   try {
     const msgs = game.travel(parseInt(s.dataset.go, 10));
@@ -380,8 +450,13 @@ $("stops").addEventListener("click", e => {
 
 function showFinal(){
   const g = game, p = g.player, score = g.finalScore();
+  g.finalise();
   const board = recordScore(g);
   clearSave();
+  profile = readProfile();
+  const earned = award(profile, g);
+  if (g.isDaily) { profile.daily_seed = g.seed; profile.daily_net = score; }
+  writeProfile(profile);
   const rank = board.findIndex(s => Math.abs(s.net_worth - score) < 1e-9);
   $("fscore").textContent = fmtMoney(score);
   $("fscore").className = "big num " + (score >= 0 ? "up" : "down");
@@ -392,13 +467,107 @@ function showFinal(){
   ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
   // only crow about a personal best that is actually worth having - "a new
   // best run" above "the Shark owns you" reads like the game is mocking you
+  const unlocks = earned.map(a => PERKS.find(p => p.by === a.key)).filter(Boolean);
+  $("fbreak").insertAdjacentHTML("afterend", earned.length
+    ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
+         ${earned.map(a => `<span class="pill perk">${a.name.toUpperCase()}</span>`).join("")}
+       </div>
+       ${unlocks.length ? `<div class="note" style="text-align:center;margin-top:8px">
+         Unlocked: ${unlocks.map(p => p.name).join(", ")}</div>` : ""}`
+    : "");
   if (rank === 0 && score > 0 && board.length > 1) {
     $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
   } else if (rank > 0 && rank < 5 && score > 0) {
     $("fverdict").textContent = `Number ${rank + 1} on your board. ` + $("fverdict").textContent;
   }
-  $("over").classList.add("on");
+  openSheet("over");
 }
+
+/* ------------------------- progression & setup ------------------------- */
+/* One function owns which overlay is visible. Opening a sheet without closing
+   the others left two stacked full-screen panels, and the one later in the
+   document silently swallowed every tap meant for the one beneath it. */
+const SHEETS = ["setup", "goals", "scores", "travel", "over"];
+function openSheet(id){
+  SHEETS.forEach(s => $(s).classList.toggle("on", s === id));
+}
+function closeSheets(){ SHEETS.forEach(s => $(s).classList.remove("on")); }
+
+let profile = readProfile();
+let pickedTier = 1, pickedPerk = null, pickedDaily = false;
+
+function renderSetup(){
+  profile = readProfile();
+  const seed = dailySeed();
+  const donetoday = profile.daily_seed === seed;
+  $("dailybox").innerHTML = `<div class="daily${donetoday ? " done" : ""}" id="dailypick">
+      <div class="t">${donetoday ? "TODAY'S RUN — DONE" : "TODAY'S RUN"}</div>
+      <div class="d">${donetoday
+        ? `You finished it at ${fmtMoney(profile.daily_net || 0)}. A new one tomorrow.`
+        : "The same thirty days everyone else gets today. One go at it."}</div></div>`;
+  if (!donetoday) {
+    $("dailypick").addEventListener("click", () => {
+      pickedDaily = !pickedDaily;
+      $("dailypick").style.background = pickedDaily ? "rgba(252,204,10,.12)" : "";
+    });
+  }
+
+  const top = maxTier(profile);
+  $("tierpicks").innerHTML = TIERS.map(t => {
+    const locked = t.level > top;
+    return `<div class="pick${t.level === pickedTier ? " on" : ""}${locked ? " locked" : ""}"
+                 data-tier="${locked ? "" : t.level}">
+      <div><div class="t">${t.name}</div><div class="d">${t.blurb}</div>
+      <div class="d">$${t.debt.toLocaleString()} debt · $${t.capacity.toLocaleString()} wallet · ${t.days} days</div></div>
+      <div class="k">${locked ? "CLEAR TIER " + (t.level - 1) : "TIER " + t.level}</div></div>`;
+  }).join("");
+
+  const got = unlockedPerks(profile);
+  $("perkpicks").innerHTML =
+    `<div class="pick${pickedPerk === null ? " on" : ""}" data-perk="">
+       <div><div class="t">Nothing</div><div class="d">Just you and the map.</div></div>
+       <div class="k">ALWAYS</div></div>` +
+    PERKS.map(p => {
+      const have = got.some(x => x.key === p.key);
+      const need = ACHIEVEMENTS.find(a => a.key === p.by);
+      return `<div class="pick${pickedPerk === p.key ? " on" : ""}${have ? "" : " locked"}"
+                   data-perk="${have ? p.key : ""}">
+        <div><div class="t">${p.name}</div><div class="d">${p.blurb}</div></div>
+        <div class="k">${have ? "READY" : (need ? need.name.toUpperCase() : "LOCKED")}</div></div>`;
+    }).join("");
+}
+
+$("setup").addEventListener("click", e => {
+  const t = e.target.closest("[data-tier]");
+  if (t && t.dataset.tier) { pickedTier = +t.dataset.tier; return renderSetup(); }
+  const p = e.target.closest("[data-perk]");
+  if (p && p.classList.contains("pick") && !p.classList.contains("locked")) {
+    pickedPerk = p.dataset.perk || null; return renderSetup();
+  }
+});
+$("setupcancel").addEventListener("click", closeSheets);
+$("startrun").addEventListener("click", () => {
+  closeSheets();
+  start(pickedDaily ? dailySeed() : Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, pickedDaily);
+});
+
+function showGoals(){
+  profile = readProfile();
+  const got = new Set(profile.achievements);
+  $("goalstitle").textContent = `GOALS — ${got.size} OF ${ACHIEVEMENTS.length}`;
+  $("goallist").innerHTML = ACHIEVEMENTS.map(a => {
+    const perk = PERKS.find(p => p.by === a.key);
+    return `<div class="trophy${got.has(a.key) ? " got" : ""}">
+      <div class="mark">${got.has(a.key) ? "✓" : "·"}</div>
+      <div><div class="t">${a.name}</div><div class="d">${a.blurb}</div>
+      ${perk ? `<div class="u">UNLOCKS · ${perk.name.toUpperCase()}</div>` : ""}</div></div>`;
+  }).join("") + `<div class="note" style="padding:14px 2px">
+      ${profile.runs} run${profile.runs === 1 ? "" : "s"} played · best ${fmtMoney(profile.best_net)}
+      · tier ${maxTier(profile)} unlocked</div>`;
+  openSheet("goals");
+}
+$("trophies").addEventListener("click", showGoals);
+$("closegoals").addEventListener("click", closeSheets);
 
 /* ------------------------------ persistence ---------------------------- */
 /* The run is written after every move, so closing the tab mid-game loses
@@ -416,18 +585,25 @@ function showScores(){
         <div class="heat" style="max-width:150px;text-align:right">${s.verdict.split(".")[0]}</div>
       </div>`).join("")
     : `<div class="note" style="padding:14px 2px">No finished runs yet. Survive thirty days and you'll have one.</div>`;
-  $("scores").classList.add("on");
+  openSheet("scores");
 }
 $("board").addEventListener("click", showScores);
-$("closescores").addEventListener("click", () => $("scores").classList.remove("on"));
+$("closescores").addEventListener("click", closeSheets);
 
-function start(seed){
-  game = new Game(seed);
+function start(seed, tier, perk, isDaily){
+  game = new Game(seed, tier || 1, perk || null);
+  game.isDaily = !!isDaily;
   openCoin = null;
   clearSave();
-  ["over", "travel", "scores"].forEach(id => $(id).classList.remove("on"));
+  closeSheets();
   render();
   persist();
+}
+
+function openSetup(){
+  pickedDaily = false;
+  renderSetup();
+  openSheet("setup");
 }
 
 function boot(){
@@ -438,16 +614,16 @@ function boot(){
     render();
     flash(`Picked up where you left off - day ${game.day}, ${game.station.name}.`, true);
   } else {
-    start(Math.floor(Math.random() * 1e9));
+    start(Math.floor(Math.random() * 1e9), 1, null, false);
   }
 }
 
 $("newgame").addEventListener("click", () => {
   if (game && !game.finished && game.day > 1
       && !confirm("Abandon the run in progress and start over?")) return;
-  start(Math.floor(Math.random() * 1e9));
+  openSetup();
 });
-$("again").addEventListener("click", () => start(Math.floor(Math.random() * 1e9)));
+$("again").addEventListener("click", openSetup);
 
 /* carry the run across a republish as well as a page close */
 window.claude?.hot?.snapshot?.(() => (game ? saveToDict(game) : null));

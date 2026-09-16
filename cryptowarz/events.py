@@ -60,9 +60,11 @@ def _take_cash(game: "Game", amount: float) -> float:
 
 def sec_raid(game: "Game") -> List[str]:
     if not _has_coins(game):
+        game.stats["raids"] = game.stats.get("raids", 0) + 1
         fine = _take_cash(game, 400.0 + game.rng.random() * 900.0)
         return [f"SEC agents stop you at the turnstile. Nothing to seize, so they "
                 f"write you a ${fine:,.2f} fine instead."]
+    game.stats["raids"] = game.stats.get("raids", 0) + 1
     fraction = game.rng.uniform(0.18, 0.42)
     lost = _confiscate(game, fraction)
     return [f"SEC raid on the platform. They seize {fraction:.0%} of your wallet - "
@@ -136,8 +138,11 @@ def whale_offer(game: "Game") -> List[str]:
 
 
 def delay(game: "Game") -> List[str]:
+    if getattr(game, "perk", None) == "metrocard":
+        return ["Signal problems at Chambers St. You know the workaround and "
+                "reroute without losing the day."]
     game.day += 1
-    game.player.debt *= 1.10
+    game.player.debt *= (1.0 + game.shark_rate)
     return ["Signal problems at Chambers St. You lose a day on a stopped train "
             "while your debt keeps compounding."]
 
@@ -161,9 +166,12 @@ EVENTS: List[Tuple[Callable[["Game"], List[str]], float, bool]] = [
 
 
 def roll_event(game: "Game") -> List[str]:
-    """Pick one event for this arrival, weighted by heat and VPN level."""
-    heat = game.station.heat
+    """Pick one event for this arrival, weighted by heat, tier, VPN and perk."""
+    # a tier turns the whole map up; a VPN or a burner turns it back down
+    heat = min(1.0, game.station.heat * getattr(game, "heat_mult", 1.0))
     shelter = 1.0 - min(0.66, 0.22 * game.player.vpn)
+    if getattr(game, "perk", None) == "burner":
+        shelter *= 0.66
     weights = []
     for _fn, weight, scales in EVENTS:
         w = weight

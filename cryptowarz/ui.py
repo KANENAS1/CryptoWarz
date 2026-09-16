@@ -157,6 +157,30 @@ def scoreboard(scores, limit: int = 10) -> str:
     return "\n".join(rows)
 
 
+def goals_board(profile) -> str:
+    """Achievements, what they unlock, and where the ladder stands."""
+    from .progress import ACHIEVEMENTS, PERKS, TIERS
+    earned = set(profile.achievements)
+    rows = ["  " + c(f"GOALS  {len(earned)}/{len(ACHIEVEMENTS)}", MAG, True), ""]
+    for a in ACHIEVEMENTS:
+        got = a.key in earned
+        mark = c("✓", GREEN, True) if got else c("·", DARK := GREY)
+        name = c(f"{a.name:<22}", WHITE if got else GREY)
+        perk = next((p for p in PERKS if p.unlocked_by == a.key), None)
+        tail = c(f"unlocks {perk.name}", YELL) if perk else ""
+        rows.append(f"  {mark} {name}{c(a.blurb, GREY)}")
+        if tail:
+            rows.append(f"      {tail}")
+    rows += ["", "  " + c(f"TIERS  {profile.max_tier}/{len(TIERS)} unlocked", MAG, True)]
+    for t in TIERS:
+        open_ = t.level <= profile.max_tier
+        rows.append(f"  {c('✓' if open_ else '·', GREEN if open_ else GREY)} "
+                    f"{c(f'{t.level} {t.name:<12}', WHITE if open_ else GREY)}"
+                    f"{c(t.blurb, GREY)}")
+    rows += ["", "  " + c(f"{profile.runs} runs played · best {money(profile.best_net)}", GREY)]
+    return "\n".join(rows)
+
+
 HELP = f"""
   {c('TRADE', MAG, True)}
     buy  <coin> <qty|max>     {c('b BTC 0.1   ·   buy DOGE max', GREY)}
@@ -174,5 +198,6 @@ HELP = f"""
   {c('ELSE', MAG, True)}
     look        {c('redraw the market', GREY)}
     scores      {c('your best runs', GREY)}
+    goals       {c('achievements, perks and tiers', GREY)}
     help        quit  {c('- quitting saves; reloading replays the same dice', GREY)}
 """
