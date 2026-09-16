@@ -233,7 +233,7 @@ def play(args) -> int:
             print("  " + ui.c(f"GRADE {letter}", ui.YELL, True)
                   + ui.c(f"   {points:,.0f} pts"
                          f" (tier {game.tier} ×{progress_module.tier_mult(game.tier):.2f})"
-                         if counts else "   god mode · unranked", ui.GREY))
+                         if counts else "   unranked", ui.GREY))
             print("  " + ui.c(progress_module.grade_blurb(points) if counts else
                               "You found the turnstile. None of this counts, "
                               "and it never did - not even the ranked run.", ui.GREY))

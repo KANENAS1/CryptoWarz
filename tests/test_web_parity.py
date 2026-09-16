@@ -193,11 +193,11 @@ class TestProgressParity(unittest.TestCase):
 
 @requires_node
 class TestDiceParity(unittest.TestCase):
-    """Both front ends must hide the same Easter egg behind the same numbers.
+    """Both front ends must run the dice, and gate them, identically.
 
     The behavioural half matters more than the constants: a port that quietly
-    stopped gating god mode would keep passing every other test while handing
-    the leaderboard to anyone who called two numbers.
+    stopped gating would keep passing every other test while handing the
+    leaderboard to a run that is not supposed to reach it.
     """
 
     @classmethod
@@ -210,17 +210,17 @@ class TestDiceParity(unittest.TestCase):
         self.assertEqual(self.js["sides"], gm.DICE_SIDES)
         self.assertAlmostEqual(self.js["near_prize"], gm.DICE_NEAR_PRIZE)
         self.assertAlmostEqual(self.js["exact_prize"], gm.DICE_EXACT_PRIZE)
-        self.assertAlmostEqual(self.js["god_gift"], gm.GOD_GIFT)
-        self.assertEqual(self.js["god_sequence"], list(gm.GOD_SEQUENCE))
+        self.assertAlmostEqual(self.js["streak_gift"], gm.HOT_HAND_GIFT)
+        self.assertEqual(self.js["streak_calls"], list(gm.HOT_HAND))
 
-    def test_the_god_grade_matches(self):
-        from cryptowarz.progress import GOD_GRADE
-        self.assertEqual(self.js["god_grade"], GOD_GRADE)
-        self.assertEqual(self.js["god_grade_shown"], GOD_GRADE)
+    def test_the_unranked_grade_matches(self):
+        from cryptowarz.progress import UNRANKED_GRADE
+        self.assertEqual(self.js["unranked_grade"], UNRANKED_GRADE)
+        self.assertEqual(self.js["grade_shown"], UNRANKED_GRADE)
 
     def test_the_port_hides_it_the_same_way(self):
         self.assertFalse(self.js["ready_on_day_one"])
-        self.assertTrue(self.js["sequence_opens_it"])
+        self.assertTrue(self.js["calls_start_it"])
         self.assertFalse(self.js["reversed_does_not"])
 
     def test_the_port_gates_it_the_same_way(self):

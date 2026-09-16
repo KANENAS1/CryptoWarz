@@ -48,10 +48,9 @@ DICE_EVERY = 4           # rides between offers
 DICE_SIDES = 10          # call a number, one to ten
 DICE_NEAR_PRIZE = 400.0  # one off the number
 DICE_EXACT_PRIZE = 3_000.0
-#: Call these two numbers, in that order, and the turnstile stops caring.
-#: A run that finds it is a sandbox: see progress.counts_for_progress.
-GOD_SEQUENCE = (4, 2)
-GOD_GIFT = 1_800.0       # every ride, forever
+#: Opening calls that put a player on a streak, and what a streak pays per ride.
+HOT_HAND = (4, 2)
+HOT_HAND_GIFT = 1_800.0
 
 
 class GameOver(Exception):
@@ -142,8 +141,8 @@ class Game:
 
         self.stats = {"stations": {self.station.name}, "raids": 0, "peak_worth": 0.0,
                       "best_multiple": 0.0, "worth_by_day": [],
-                      "dice_picks": [], "dice_days": [], "god_mode": False}
-        self.god_mode = False
+                      "dice_picks": [], "dice_days": [], "hot_hand": False}
+        self.hot_hand = False
         self.rng = random.Random(self.seed)
         self.state = MarketState(self.rng)
         self.market = generate(self.station, self.rng, self.state)
@@ -292,16 +291,16 @@ class Game:
             messages.extend(self.gift(DICE_NEAR_PRIZE, "One off, and he's feeling generous"))
         else:
             messages.append("Nothing. It was free to play.")
-        messages.extend(self._check_god(picks))
+        messages.extend(self._check_streak(picks))
         for m in messages:
             self.say(m)
         return messages
 
-    def _check_god(self, picks: List[int]) -> List[str]:
-        if self.god_mode or tuple(picks[:len(GOD_SEQUENCE)]) != GOD_SEQUENCE:
+    def _check_streak(self, picks: List[int]) -> List[str]:
+        if self.hot_hand or tuple(picks[:len(HOT_HAND)]) != HOT_HAND:
             return []
-        self.god_mode = True
-        self.stats["god_mode"] = True
+        self.hot_hand = True
+        self.stats["hot_hand"] = True
         return ["", "The dice stop mid-air.",
                 "GOD MODE. The turnstile swings open for you from now on - "
                 "free crypto every ride.",
@@ -431,8 +430,8 @@ class Game:
         messages = [f"Day {self.day}. {target.name} ({target.lines}).", target.flavor]
         if self.market.headline:
             messages.append(self.market.headline)
-        if self.god_mode:
-            messages.extend(self.gift(GOD_GIFT, "The turnstile blesses you"))
+        if self.hot_hand:
+            messages.extend(self.gift(HOT_HAND_GIFT, "The turnstile blesses you"))
         messages.extend(roll_event(self))
         if self.dice_ready and not was_ready:
             messages.append(f"Somebody's running dice on the platform. "

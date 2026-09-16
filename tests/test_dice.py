@@ -1,10 +1,10 @@
-"""The dice on the platform, and what two particular calls unlock.
+"""The dice on the platform, and the run they can turn into something else.
 
 The dice are a flourish: free to play, no stake, and the worst outcome is
 nothing. What needs testing is not the payout but the blast radius - a run that
-finds the Easter egg is handed money every ride, and if that could reach the
+ends up on a streak is handed money every ride, and if that could reach the
 leaderboard, the goals or the difficulty ladder it would quietly undo all
-three. So most of what is below is about what a god-mode run is NOT allowed to
+three. So most of what is below is about what such a run is NOT allowed to
 touch.
 """
 
@@ -12,7 +12,7 @@ import unittest
 
 from cryptowarz import progress as P
 from cryptowarz import save as S
-from cryptowarz.game import (DICE_EVERY, DICE_SIDES, GOD_SEQUENCE, Game)
+from cryptowarz.game import DICE_EVERY, DICE_SIDES, HOT_HAND, Game
 from cryptowarz.stations import STATIONS
 
 
@@ -118,61 +118,51 @@ class TestTheGift(unittest.TestCase):
         self.assertGreater(near.player.used_capacity, 0.0)
 
 
-class TestGodMode(unittest.TestCase):
-    def open_the_turnstile(self, seed=5):
-        game = to_first_offer(seed)
-        for pick in GOD_SEQUENCE:
-            while not game.dice_ready:
-                ride(game)
-            game.roll_dice(pick)
-        return game
+def play(calls, seed=5):
+    game = to_first_offer(seed)
+    for call in calls:
+        while not game.dice_ready:
+            ride(game)
+        game.roll_dice(call)
+    return game
 
-    def test_the_sequence_opens_it(self):
-        self.assertTrue(self.open_the_turnstile().god_mode)
+
+class TestTheStreak(unittest.TestCase):
+    def test_the_calls_start_it(self):
+        self.assertTrue(play(HOT_HAND).hot_hand)
 
     def test_the_same_numbers_the_other_way_round_do_not(self):
-        game = to_first_offer()
-        for pick in reversed(GOD_SEQUENCE):
-            while not game.dice_ready:
-                ride(game)
-            game.roll_dice(pick)
-        self.assertFalse(game.god_mode)
+        self.assertFalse(play(list(reversed(HOT_HAND))).hot_hand)
 
     def test_a_near_miss_does_not(self):
-        game = to_first_offer()
-        for pick in (GOD_SEQUENCE[0], GOD_SEQUENCE[1] + 1):
-            while not game.dice_ready:
-                ride(game)
-            game.roll_dice(pick)
-        self.assertFalse(game.god_mode)
+        self.assertFalse(play((HOT_HAND[0], HOT_HAND[1] + 1)).hot_hand)
 
     def test_it_pays_on_every_ride(self):
-        game = self.open_the_turnstile()
+        game = play(HOT_HAND)
         game.player.capacity = 1e9          # so the gift is never capped
         before = game.player.used_capacity
         ride(game)
         self.assertGreater(game.player.used_capacity, before)
 
     def test_a_reload_cannot_shake_it_off(self):
-        game = self.open_the_turnstile()
-        self.assertTrue(S.from_dict(S.to_dict(game)).god_mode)
+        self.assertTrue(S.from_dict(S.to_dict(play(HOT_HAND))).hot_hand)
 
 
-class TestGodModeCannotReachTheBoard(unittest.TestCase):
-    """The whole reason the Easter egg is safe to ship."""
+class TestAStreakCannotReachTheBoard(unittest.TestCase):
+    """The whole reason a run can be handed money and nothing breaks."""
 
-    def finished_god_run(self):
+    def finished_streak_run(self):
         game = Game(seed=5)
-        game.god_mode = True
-        game.stats["god_mode"] = True
+        game.hot_hand = True
+        game.stats["hot_hand"] = True
         game.player.debt = 0.0
         game.player.wallet.clear()
         game.player.cash = 900_000.0
         game.finalise()
         return game
 
-    def test_it_is_graded_as_the_toy_it_is(self):
-        self.assertEqual(P.run_grade(self.finished_god_run()), P.GOD_GRADE)
+    def test_it_is_not_given_a_grade_it_could_have_earned(self):
+        self.assertEqual(P.run_grade(self.finished_streak_run()), P.UNRANKED_GRADE)
 
     def test_an_honest_run_is_still_graded_honestly(self):
         game = Game(seed=5)
@@ -183,7 +173,7 @@ class TestGodModeCannotReachTheBoard(unittest.TestCase):
 
     def test_it_unlocks_nothing(self):
         profile = P.Profile()
-        self.assertEqual(P.award(profile, self.finished_god_run()), [])
+        self.assertEqual(P.award(profile, self.finished_streak_run()), [])
         self.assertEqual(profile.runs, 0)
         self.assertEqual(profile.achievements, [])
         self.assertEqual(profile.best_net, 0.0)
@@ -192,7 +182,7 @@ class TestGodModeCannotReachTheBoard(unittest.TestCase):
     def test_it_posts_nothing_and_costs_no_ranked_slot(self):
         profile = P.Profile()
         day = profile.roll_day(20_260_101)
-        P.record_daily(profile, self.finished_god_run(), 0, day)
+        P.record_daily(profile, self.finished_streak_run(), 0, day)
         self.assertEqual(profile.daily_runs, [])
         self.assertEqual(profile.next_slot(day), 0)
         self.assertAlmostEqual(profile.daily_total(day), 0.0)
@@ -203,7 +193,7 @@ class TestGodModeCannotReachTheBoard(unittest.TestCase):
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(S, "home", lambda: Path(tmp)):
-                self.assertEqual(S.record_score(self.finished_god_run()), [])
+                self.assertEqual(S.record_score(self.finished_streak_run()), [])
 
 
 if __name__ == "__main__":

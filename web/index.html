@@ -330,9 +330,9 @@ function render(){
   $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
   const tierInfo = TIER_BY_LEVEL[g.tier];
   const pill = $("tierpill");
-  pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.godMode;
-  pill.textContent = [g.godMode ? "GOD MODE" : null,
-    g.isDaily && !g.godMode ? `RANKED ${g.dailySlot + 1}/${RUNS_PER_DAY}` : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
+  pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.hotHand;
+  pill.textContent = [g.hotHand ? "GOD MODE" : null,
+    g.isDaily && !g.hotHand ? `RANKED ${g.dailySlot + 1}/${RUNS_PER_DAY}` : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
                       g.perk ? PERK_BY_KEY[g.perk].name.toUpperCase() : null].filter(Boolean).join(" · ");
   $("station").textContent = g.station.name;
   $("bullets").innerHTML = g.station.lines.map(bullet).join("");
@@ -552,7 +552,7 @@ function showFinal(){
            ? ` · ${left} left` : " · that's the slate. Back tomorrow."}</div>`
     : `<div class="note" style="text-align:center;margin-top:14px">${counts
          ? "Practice run - it doesn't touch the board."
-         : "A god-mode run posts nothing and unlocks nothing - and it didn't spend a ranked run either."}</div>`;
+         : "This run posts nothing and unlocks nothing - and it didn't spend a ranked run either."}</div>`;
   $("fbreak").insertAdjacentHTML("afterend", today + (earned.length
     ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
          ${earned.map(a => `<span class="pill perk">${a.name.toUpperCase()}</span>`).join("")}

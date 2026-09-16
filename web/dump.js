@@ -28,9 +28,9 @@ const out = {
     perks: G.PERKS.map(x => ({ key: x.key, by: x.by })),
   },
   dice: (() => {
-    /* Constants both sides must agree on, plus the three behaviours that make
-       the Easter egg safe to ship - asserted here rather than described, so a
-       port that quietly stops gating god mode fails the parity suite. */
+    /* Constants both sides must agree on, plus the behaviours that keep a run
+       the board must not rank from reaching it - asserted here rather than
+       described, so a port that quietly stops gating fails the parity suite. */
     const ride = (g, n) => {
       for (let i = 0; i < n; i++) {
         g.player.cash += 500;
@@ -46,23 +46,24 @@ const out = {
       }
       return g;
     };
-    const god = play(G.GOD_SEQUENCE);
-    god.player.debt = 0; god.player.wallet = {}; god.player.cash = 900000;
-    god.finalise();
+    const streak = play(G.HOT_HAND);
+    streak.player.debt = 0; streak.player.wallet = {}; streak.player.cash = 900000;
+    streak.finalise();
     const profile = G.blankProfile();
-    G.award(profile, god);
-    G.recordDaily(profile, god, 0);
+    G.award(profile, streak);
+    G.recordDaily(profile, streak, 0);
     return {
       every: G.DICE_EVERY, sides: G.DICE_SIDES,
       near_prize: G.DICE_NEAR_PRIZE, exact_prize: G.DICE_EXACT_PRIZE,
-      god_gift: G.GOD_GIFT, god_sequence: G.GOD_SEQUENCE, god_grade: G.GOD_GRADE,
+      streak_gift: G.HOT_HAND_GIFT, streak_calls: G.HOT_HAND,
+      unranked_grade: G.UNRANKED_GRADE,
       ready_on_day_one: new G.Game(1).diceReady,
-      sequence_opens_it: god.godMode,
-      reversed_does_not: play(G.GOD_SEQUENCE.slice().reverse()).godMode,
-      god_grade_shown: G.runGrade(god),
+      calls_start_it: streak.hotHand,
+      reversed_does_not: play(G.HOT_HAND.slice().reverse()).hotHand,
+      grade_shown: G.runGrade(streak),
       unlocks_nothing: profile.achievements.length === 0 && profile.runs === 0,
       spends_no_ranked_slot: G.nextSlot(profile) === 0,
-      survives_reload: G.saveFromDict(G.saveToDict(god)).godMode,
+      survives_reload: G.saveFromDict(G.saveToDict(streak)).hotHand,
     };
   })(),
   stations: G.STATIONS.map(s => ({

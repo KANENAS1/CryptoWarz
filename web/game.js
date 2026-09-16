@@ -170,9 +170,8 @@ const FARE_BUFFER = 0.01;
    worst outcome is nothing, so this is a flourish rather than a decision, and
    deliberately not a way to gamble out of a bad run. */
 const DICE_EVERY = 4, DICE_SIDES = 10, DICE_NEAR_PRIZE = 400, DICE_EXACT_PRIZE = 3000;
-/* Call these two numbers, in that order, and the turnstile stops caring.
-   A run that finds it is a sandbox - see countsForProgress. */
-const GOD_SEQUENCE = [4, 2], GOD_GIFT = 1800;
+/* Opening calls that put a player on a streak, and what a streak pays per ride. */
+const HOT_HAND = [4, 2], HOT_HAND_GIFT = 1800;
 
 function Game(seed, tier, perk) {
   // kept so a save records which run this was - the RNG state is what restores
@@ -193,8 +192,8 @@ function Game(seed, tier, perk) {
   if (this.perk === "cold_storage") this.player.capacity += 15000;
   this.stats = { stations: [this.station.name], raids: 0, peak_worth: 0,
                  best_multiple: 0, worth_by_day: [],
-                 dice_picks: [], dice_days: [], god_mode: false };
-  this.godMode = false;
+                 dice_picks: [], dice_days: [], hot_hand: false };
+  this.hotHand = false;
   this.log = [];
   this.state = new MarketState(this.rng);
   this.market = generate(this.station, this.rng, this.state);
@@ -249,15 +248,15 @@ Game.prototype.rollDice = function (pick) {
   if (rolled === pick) messages.push(...this.gift(DICE_EXACT_PRIZE, "Dead on"));
   else if (Math.abs(rolled - pick) === 1) messages.push(...this.gift(DICE_NEAR_PRIZE, "One off, and he's feeling generous"));
   else messages.push("Nothing. It was free to play.");
-  messages.push(...this.checkGod(picks));
+  messages.push(...this.checkStreak(picks));
   messages.forEach(m => this.say(m));
   return messages;
 };
-Game.prototype.checkGod = function (picks) {
-  if (this.godMode || picks.length < GOD_SEQUENCE.length) return [];
-  if (!GOD_SEQUENCE.every((n, i) => picks[i] === n)) return [];
-  this.godMode = true;
-  this.stats.god_mode = true;
+Game.prototype.checkStreak = function (picks) {
+  if (this.hotHand || picks.length < HOT_HAND.length) return [];
+  if (!HOT_HAND.every((n, i) => picks[i] === n)) return [];
+  this.hotHand = true;
+  this.stats.hot_hand = true;
   return ["The dice stop mid-air.",
           "GOD MODE. The turnstile swings open for you from now on - free crypto every ride.",
           "This run is a sandbox now: it posts nothing and unlocks nothing."];
@@ -398,7 +397,7 @@ Game.prototype.travel = function (index) {
   this.market = generate(this.station, this.rng, this.state);
   const messages = [`Day ${this.day}. ${target.name}.`, target.flavor];
   if (this.market.headline) messages.push(this.market.headline);
-  if (this.godMode) for (const m of this.gift(GOD_GIFT, "The turnstile blesses you")) messages.push(m);
+  if (this.hotHand) for (const m of this.gift(HOT_HAND_GIFT, "The turnstile blesses you")) messages.push(m);
   for (const m of rollEvent(this)) messages.push(m);
   if (this.diceReady && !wasReady) messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
   this.markStats();
@@ -573,14 +572,14 @@ const GRADES = [
   [2000,   "D",  "You finished. Barely."],
   [0,      "F",  "The Shark got paid. You didn't."],
 ];
-/* Not a grade you can earn by playing; it is the game saying this one was a toy. */
-const GOD_GRADE = "G";
-/* A run handed free crypto every ride may not touch the board, the goals or
-   the ladder: posting it would end the leaderboard, and unlocking from it would
-   hand somebody the whole progression for two dice calls. It costs nothing
-   either - the ranked slot stays unspent. */
-function countsForProgress(g) { return !(g && g.godMode); }
-function runGrade(g) { return countsForProgress(g) ? gradeFor(runPoints(g)) : GOD_GRADE; }
+/* Shown instead of a letter for a run that is not eligible to be ranked. */
+const UNRANKED_GRADE = "G";
+/* A run handed money it did not earn may not touch the board, the goals or the
+   ladder: posting it would end the leaderboard, and unlocking from it would
+   hand somebody the whole progression for nothing. It costs nothing either -
+   the ranked slot stays unspent. */
+function countsForProgress(g) { return !(g && g.hotHand); }
+function runGrade(g) { return countsForProgress(g) ? gradeFor(runPoints(g)) : UNRANKED_GRADE; }
 function tierMult(tier) { return (TIER_BY_LEVEL[tier] || TIERS[0]).mult; }
 /* Floored at zero: a board that can be dragged down is one where the safe play
    is not to play. */
@@ -637,7 +636,7 @@ function recordDaily(p, g, slot, day) {
   day = rollDay(p, day);
   if (!countsForProgress(g)) {          // the slot is not spent either
     return { slot: slot, points: 0, net: Math.round(g.finalScore() * 100) / 100,
-             grade: GOD_GRADE, tier: g.tier || 1, at: Date.now() / 1000 };
+             grade: UNRANKED_GRADE, tier: g.tier || 1, at: Date.now() / 1000 };
   }
   const points = runPoints(g);
   const entry = { slot: slot, points: Math.round(points * 100) / 100,
@@ -737,9 +736,8 @@ function saveFromDict(data) {
   g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
   g.isDaily = g.dailySlot !== null;
   if (data.stats) g.stats = data.stats;
-  // god mode lives in stats, so it reloads with the run rather than needing a
-  // save key of its own - and a reload cannot be used to shake it off
-  g.godMode = !!(g.stats && g.stats.god_mode);
+  // carried in stats, so it reloads with the run and a reload cannot shake it
+  g.hotHand = !!(g.stats && g.stats.hot_hand);
   g.day = data.day;
   g.finished = !!data.finished;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
@@ -784,7 +782,7 @@ function readScores() {
 }
 function recordScore(g) {
   const scores = readScores();
-  if (!countsForProgress(g)) return scores;   // a god-mode run is a toy, not a result
+  if (!countsForProgress(g)) return scores;   // an ineligible run is not a result
   scores.push({ net_worth: g.finalScore(), day: Math.min(g.day, DAYS),
                 verdict: g.verdict(), finished_at: Date.now() / 1000, seed: g.seed });
   scores.sort((a, b) => b.net_worth - a.net_worth);
@@ -818,6 +816,6 @@ if (typeof module !== "undefined") {
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
                      PROGRESS_VERSION, DICE_EVERY, DICE_SIDES, DICE_NEAR_PRIZE,
-                     DICE_EXACT_PRIZE, GOD_GIFT, GOD_SEQUENCE, GOD_GRADE,
+                     DICE_EXACT_PRIZE, HOT_HAND_GIFT, HOT_HAND, UNRANKED_GRADE,
                      countsForProgress, runGrade };
 }

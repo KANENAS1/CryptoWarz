@@ -162,27 +162,25 @@ GRADES: List[tuple] = [
 ]
 
 
-#: What a run marked "god mode" is graded. It is not a grade you can earn by
-#: playing; it is the game telling you this one was a toy.
-GOD_GRADE = "G"
+#: Shown instead of a letter for a run that is not eligible to be ranked.
+UNRANKED_GRADE = "G"
 
 
 def counts_for_progress(game) -> bool:
     """Whether a finished run may touch the board, the goals or the ladder.
 
-    A run that found the Easter egg is handed free crypto every ride. Letting
-    that post a score would end the leaderboard, and letting it unlock perks
-    and tiers would quietly hand somebody the whole progression for two dice
-    calls. So the sandbox stays a sandbox - and because it also never spends a
-    ranked slot, finding it costs you nothing either.
+    Some runs are handed money they did not earn. Letting one post a score
+    would end the leaderboard, and letting it unlock perks and tiers would hand
+    somebody the whole progression for nothing. Such a run is a sandbox - and
+    because it never spends a ranked slot either, it costs the player nothing.
     """
-    return not getattr(game, "god_mode", False)
+    return not getattr(game, "hot_hand", False)
 
 
 def run_grade(game) -> str:
     """The letter a finished run is shown. Both front ends must agree."""
     if not counts_for_progress(game):
-        return GOD_GRADE
+        return UNRANKED_GRADE
     return grade(run_points(game))
 
 
@@ -384,9 +382,9 @@ def record_daily(profile: Profile, game, slot: int,
     day = profile.roll_day(day)
     points = run_points(game)
     if not counts_for_progress(game):
-        # the slot is not spent either: the Easter egg costs you nothing
+        # the slot is not spent either, so an ineligible run costs nothing
         return {"slot": int(slot), "points": 0.0, "net": round(game.final_score(), 2),
-                "grade": GOD_GRADE, "tier": int(getattr(game, "tier", 1)),
+                "grade": UNRANKED_GRADE, "tier": int(getattr(game, "tier", 1)),
                 "at": time.time()}
     entry = {"slot": int(slot), "points": round(points, 2),
              "net": round(game.final_score(), 2), "grade": grade(points),
