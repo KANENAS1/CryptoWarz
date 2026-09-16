@@ -177,9 +177,46 @@ left to go is where people stop. Each is unlocked by clearing the one below.
 | 4 | Last Train | $7,800 | $15,000 | 26 | 20% |
 | 5 | Blackout | $9,000 | $13,000 | 26 | 8% |
 
-**Today's Run** is seeded by the date — the same thirty days for everyone,
-once a day. It is deliberately *not* a streak: miss a day and nothing is taken
-away, there's simply a new one waiting.
+## Ranked runs, grades and the board
+
+**Three ranked runs a day.** The date deals a slate of three markets — the same
+three for everybody, in the same order — and you get one attempt at each. A
+leaderboard needs a fixed slate or it just ranks patience, and three is the
+number that makes a bad opening survivable without letting anyone grind the
+board. Practice runs stay unlimited and don't touch it.
+
+**Every finished run gets a grade.** What you are finally worth, weighted by
+the tier you played it on:
+
+| Points | Grade | |
+|---|---|---|
+| $750,000+ | **S+** | They'll name a station after you |
+| $300,000+ | **S** | Somebody is going to ask questions |
+| $100,000+ | **A** | Six figures |
+| $35,000+ | **B** | A real score |
+| $10,000+ | **C** | Out of the hole and then some |
+| $2,000+ | **D** | You finished. Barely |
+| below | **F** | The Shark got paid. You didn't |
+
+Points are net worth × the tier weight (×1.00 at Off Peak up to ×2.40 at
+Blackout), floored at zero — a board you can drag yourself *down* is a board
+where the safe play is not to play. Your day's score is the three runs added
+up; the day's grade is their average.
+
+The tier weights are roughly the inverse of the measured clear rate, flattened
+so tier 1 stays worth playing. Without them a leaderboard quietly instructs
+everyone to farm the easiest tier, and the ladder above it stops meaning
+anything.
+
+**The board itself** is shared, and lives on the published page — it rides the
+artifact `db` capability, one document per player rewritten when a ranked run
+lands, so it stays a few hundred rows rather than growing by a document per run
+forever. TODAY ranks the current slate; ALL TIME ranks best days. Your name is
+whatever you type and is the only thing that leaves the device. Where `db`
+isn't available — the local file, a signed-out viewer — the board degrades to
+your own runs and nothing breaks.
+
+Missing a day still takes nothing away: there's no streak, just a new slate.
 
 ### These numbers were simulated, not guessed
 
@@ -199,9 +236,9 @@ inside thirty runs.
 
 ### What is deliberately absent
 
-No streak counter that punishes a missed day, no timer that gates play, no
-manufactured urgency. This is a game you own — it should be worth returning to,
-not costly to leave.
+No streak counter that punishes a missed day, and no lockout: when the three
+ranked runs are spent, practice is still there, unlimited, with the same rules.
+The daily slate exists to make scores comparable, not to ration the game.
 
 ## Saving, and why you can't scum it
 
@@ -231,7 +268,7 @@ python3 -m cryptowarz --new        # start fresh, discard the save
 python3 -m cryptowarz --scores     # the board
 python3 -m cryptowarz --no-save    # touch nothing on disk
 python3 -m cryptowarz --goals      # achievements, perks and tiers
-python3 -m cryptowarz --daily      # today's run
+python3 -m cryptowarz --daily      # your next ranked run of the day
 python3 -m cryptowarz --tier 3 --perk fixer
 ```
 
@@ -242,7 +279,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 95 tests, no install needed
+python3 -m unittest discover -s tests     # 114 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

@@ -178,6 +178,32 @@ def goals_board(profile) -> str:
                     f"{c(f'{t.level} {t.name:<12}', WHITE if open_ else GREY)}"
                     f"{c(t.blurb, GREY)}")
     rows += ["", "  " + c(f"{profile.runs} runs played · best {money(profile.best_net)}", GREY)]
+    rows += ["", daily_board(profile)]
+    return "\n".join(rows)
+
+
+def daily_board(profile) -> str:
+    """Today's ranked slate: three markets, one attempt each."""
+    from .progress import RUNS_PER_DAY, grade
+    profile.roll_day()
+    done = {r.get("slot"): r for r in profile.runs_today()}
+    rows = ["  " + c(f"TODAY  {len(done)}/{RUNS_PER_DAY} ranked runs", MAG, True)]
+    for slot in range(RUNS_PER_DAY):
+        run = done.get(slot)
+        if run:
+            net = float(run.get("net", 0.0))
+            pts = float(run.get("points", 0.0))
+            letter = str(run.get("grade", "F"))
+            colour = GREEN if net > 0 else RED
+            rows.append(f"  {c('✓', GREEN)} {c(f'Run {slot + 1}', WHITE)}  "
+                        f"{c(f'grade {letter}', YELL, True)}"
+                        f"{c(f'{pts:>12,.0f} pts', colour)}"
+                        f"   {c(money(net), GREY)}")
+        else:
+            rows.append(f"  {c('·', GREY)} {c(f'Run {slot + 1}', GREY)}  {c('not played', GREY)}")
+    total = profile.daily_total()
+    rows.append("  " + c(f"today {total:,.0f} pts · grade {grade(total / max(1, RUNS_PER_DAY))}"
+                         f" · best day {profile.best_daily:,.0f} pts", GREY))
     return "\n".join(rows)
 
 

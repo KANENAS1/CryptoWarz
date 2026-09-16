@@ -18,9 +18,15 @@ costs you progress you can see.
 **Tiers** raise the ceiling once you have beaten the game, because mastery with
 nowhere left to go is where people stop.
 
-Deliberately absent: streak counters that punish a missed day, timers that gate
-play, and anything that manufactures urgency. This is a game you own - it
-should be worth returning to, not costly to leave.
+**Ranked runs** give the day a shape: three markets, the same three for
+everybody, and one attempt at each. That is the part a leaderboard needs -
+without a fixed slate, comparing two players compares their patience.
+
+Three rules keep it honest. Practice is unlimited and always available, so
+nobody is ever locked out of their own game. A missed day takes nothing away:
+there is no streak to break, just a new slate tomorrow. And the three markets
+differ from one another, so run two cannot be run one replayed with the
+answers.
 """
 
 from __future__ import annotations
@@ -31,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-PROGRESS_VERSION = 1
+PROGRESS_VERSION = 2
 
 
 # --------------------------------------------------------------- achievements
@@ -108,6 +114,11 @@ class Tier:
     capacity: float
     heat_mult: float
     days: int
+    #: what a dollar of net worth is worth on the leaderboard here. A tier 5
+    #: run is worth more than a tier 1 run of the same size because it is a
+    #: harder thing to have done; the ladder is roughly the inverse of the
+    #: measured clear rate, flattened so tier 1 stays worth playing.
+    score_mult: float = 1.0
 
     @property
     def unlocked_by_beating(self) -> int:
@@ -121,13 +132,73 @@ TIERS: List[Tier] = [
     # top tier mathematically unwinnable (0-3% even with a perk and good play).
     # The ladder leans on capacity and heat instead, and the top tier now sits
     # at 8% solo and 22% with a perk: hard, and beatable.
-    Tier(1, "Off Peak",   "The standard thirty days.",           5_500.0, 25_000.0, 1.00, 30),
-    Tier(2, "Rush Hour",  "A bigger loan and more eyes on you.", 6_800.0, 21_000.0, 1.25, 30),
-    Tier(3, "Track Work", "Deeper in, carrying less.",           7_800.0, 17_000.0, 1.50, 30),
-    Tier(4, "Last Train", "Four fewer days to do it in.",        7_800.0, 15_000.0, 1.60, 26),
-    Tier(5, "Blackout",   "Everything at once.",                 9_000.0, 13_000.0, 1.80, 26),
+    Tier(1, "Off Peak",   "The standard thirty days.",           5_500.0, 25_000.0, 1.00, 30, 1.00),
+    Tier(2, "Rush Hour",  "A bigger loan and more eyes on you.", 6_800.0, 21_000.0, 1.25, 30, 1.30),
+    Tier(3, "Track Work", "Deeper in, carrying less.",           7_800.0, 17_000.0, 1.50, 30, 1.65),
+    Tier(4, "Last Train", "Four fewer days to do it in.",        7_800.0, 15_000.0, 1.60, 26, 2.00),
+    Tier(5, "Blackout",   "Everything at once.",                 9_000.0, 13_000.0, 1.80, 26, 2.40),
 ]
 TIER_BY_LEVEL = {t.level: t for t in TIERS}
+
+
+# ------------------------------------------------------------------- grading
+
+#: Three ranked runs a day, each a full thirty-day market. Three is the number
+#: that makes a bad opening survivable without letting anyone grind the board.
+RUNS_PER_DAY = 3
+
+#: A finished run is graded on what it was finally worth, weighted by the tier
+#: it was played on. Thresholds are the verdict ladder's, subdivided: a run has
+#: to roughly triple to move up a letter, which is a step you can feel without
+#: being a step you can only take by luck.
+GRADES: List[tuple] = [
+    (750_000.0, "S+", "They'll name a station after you."),
+    (300_000.0, "S",  "Somebody is going to ask questions."),
+    (100_000.0, "A",  "Six figures. Quit while you're ahead."),
+    (35_000.0,  "B",  "A real score."),
+    (10_000.0,  "C",  "Out of the hole and then some."),
+    (2_000.0,   "D",  "You finished. Barely."),
+    (0.0,       "F",  "The Shark got paid. You didn't."),
+]
+
+
+def tier_mult(tier: int) -> float:
+    return TIER_BY_LEVEL.get(tier, TIER_BY_LEVEL[1]).score_mult
+
+
+def run_points(game) -> float:
+    """What a finished run is worth on the board.
+
+    Net worth times the tier weight, floored at zero: a run that ends underwater
+    scores nothing rather than scoring negatively, because a leaderboard that
+    can be dragged down is one where the safe play is not to play.
+    """
+    return max(0.0, game.final_score()) * tier_mult(getattr(game, "tier", 1))
+
+
+def grade(points: float) -> str:
+    for threshold, letter, _ in GRADES:
+        if points >= threshold:
+            return letter
+    return GRADES[-1][1]
+
+
+def grade_blurb(points: float) -> str:
+    for threshold, _, blurb in GRADES:
+        if points >= threshold:
+            return blurb
+    return GRADES[-1][2]
+
+
+def daily_seeds(when: Optional[float] = None) -> List[int]:
+    """The three markets everyone gets today, in order.
+
+    Derived from the date, so every player on a given day plays the same slate,
+    and derived per slot, so the second run is a new market rather than the
+    first one replayed with the answers.
+    """
+    day = daily_seed(when)
+    return [day * 10 + slot for slot in range(RUNS_PER_DAY)]
 
 
 # -------------------------------------------------------------------- profile
@@ -139,8 +210,13 @@ class Profile:
     achievements: List[str] = field(default_factory=list)
     best_net: float = 0.0
     best_tier_cleared: int = 0
-    daily_seed: Optional[int] = None
-    daily_net: Optional[float] = None
+    #: the date (YYYYMMDD) the ranked slate below belongs to
+    daily_day: Optional[int] = None
+    #: one entry per ranked run finished today, at most RUNS_PER_DAY of them
+    daily_runs: List[Dict[str, Any]] = field(default_factory=list)
+    #: best daily total ever posted, and the day it happened
+    best_daily: float = 0.0
+    best_daily_day: Optional[int] = None
     updated_at: float = 0.0
 
     # ----------------------------------------------------------- derived view
@@ -158,25 +234,59 @@ class Profile:
     def has(self, key: str) -> bool:
         return key in self.achievements
 
+    # --------------------------------------------------------- the daily slate
+
+    def roll_day(self, day: Optional[int] = None) -> int:
+        """Point the profile at today's slate, clearing yesterday's.
+
+        Nothing is lost by missing a day - the old slate is simply not today's
+        any more. Call this before reading anything about the ranked day.
+        """
+        day = daily_seed() if day is None else day
+        if self.daily_day != day:
+            self.daily_day, self.daily_runs = day, []
+        return day
+
+    def runs_today(self, day: Optional[int] = None) -> List[Dict[str, Any]]:
+        return list(self.daily_runs) if self.daily_day == (daily_seed() if day is None else day) else []
+
+    def next_slot(self, day: Optional[int] = None) -> Optional[int]:
+        """Which ranked run is next, or None when all three are spent."""
+        done = {r.get("slot") for r in self.runs_today(day)}
+        for slot in range(RUNS_PER_DAY):
+            if slot not in done:
+                return slot
+        return None
+
+    def daily_total(self, day: Optional[int] = None) -> float:
+        return sum(float(r.get("points", 0.0)) for r in self.runs_today(day))
+
     def to_dict(self) -> Dict[str, Any]:
         return {"version": self.version, "runs": self.runs,
                 "achievements": list(self.achievements), "best_net": self.best_net,
                 "best_tier_cleared": self.best_tier_cleared,
-                "daily_seed": self.daily_seed, "daily_net": self.daily_net,
+                "daily_day": self.daily_day, "daily_runs": list(self.daily_runs),
+                "best_daily": self.best_daily, "best_daily_day": self.best_daily_day,
                 "updated_at": self.updated_at}
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "Profile":
-        if not isinstance(data, dict) or data.get("version") != PROGRESS_VERSION:
+        # A version 1 profile predates ranked runs. Its achievements were still
+        # earned, so it is migrated rather than thrown away - losing somebody's
+        # unlocks to a format change is the one thing a profile must not do.
+        if not isinstance(data, dict) or data.get("version") not in (1, PROGRESS_VERSION):
             return Profile()          # a profile is a reward, never a blocker
         known = {a.key for a in ACHIEVEMENTS}
+        runs = data.get("daily_runs", [])
         return Profile(
             runs=int(data.get("runs", 0)),
             achievements=[k for k in data.get("achievements", []) if k in known],
             best_net=float(data.get("best_net", 0.0)),
             best_tier_cleared=int(data.get("best_tier_cleared", 0)),
-            daily_seed=data.get("daily_seed"),
-            daily_net=data.get("daily_net"),
+            daily_day=data.get("daily_day"),
+            daily_runs=[r for r in runs if isinstance(r, dict)] if isinstance(runs, list) else [],
+            best_daily=float(data.get("best_daily", 0.0)),
+            best_daily_day=data.get("best_daily_day"),
             updated_at=float(data.get("updated_at", 0.0)),
         )
 
@@ -207,11 +317,11 @@ def write_profile(profile: Profile) -> Profile:
 
 
 def daily_seed(when: Optional[float] = None) -> int:
-    """One shared run per calendar day - a reason to come back tomorrow.
+    """Today's date as YYYYMMDD - the key the ranked slate hangs on.
 
-    Derived from the date alone, so the same day always deals the same market.
-    Not a streak: miss a day and nothing is taken away, there is simply a new
-    one waiting.
+    Derived from the date alone, so the same day always deals the same markets
+    to everybody. Not a streak: miss a day and nothing is taken away, there is
+    simply a new slate waiting.
     """
     stamp = time.strftime("%Y%m%d", time.gmtime(when if when is not None else time.time()))
     return int(stamp)
@@ -235,3 +345,26 @@ def award(profile: Profile, game) -> List[Achievement]:
     if game.final_score() > 2_000 and tier > profile.best_tier_cleared:
         profile.best_tier_cleared = tier
     return earned
+
+
+def record_daily(profile: Profile, game, slot: int,
+                 day: Optional[int] = None) -> Dict[str, Any]:
+    """Log a finished ranked run against today's slate. Returns the entry.
+
+    Re-recording a slot is ignored rather than overwriting: the point of three
+    ranked runs is that each is played once, and the way that quietly breaks is
+    a crash-and-retry posting a second, better result for the same market.
+    """
+    day = profile.roll_day(day)
+    points = run_points(game)
+    entry = {"slot": int(slot), "points": round(points, 2),
+             "net": round(game.final_score(), 2), "grade": grade(points),
+             "tier": int(getattr(game, "tier", 1)), "at": time.time()}
+    if any(r.get("slot") == slot for r in profile.daily_runs):
+        return entry
+    profile.daily_runs.append(entry)
+    profile.daily_runs.sort(key=lambda r: r.get("slot", 0))
+    total = profile.daily_total(day)
+    if total > profile.best_daily:
+        profile.best_daily, profile.best_daily_day = total, day
+    return entry

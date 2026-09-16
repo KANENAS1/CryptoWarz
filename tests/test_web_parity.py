@@ -140,6 +140,58 @@ class TestSaveFormatParity(unittest.TestCase):
 
 
 @requires_node
+class TestProgressParity(unittest.TestCase):
+    """The ladder, the grades and the ranked slate must be one rule set.
+
+    This is the part a leaderboard cannot survive drifting on: if the phone
+    version grades a run differently, or deals a different market for today's
+    second ranked run, the two front ends are posting incomparable numbers to
+    the same board.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["progress"]
+
+    def test_the_profile_format_version_matches(self):
+        from cryptowarz.progress import PROGRESS_VERSION
+        self.assertEqual(self.js["version"], PROGRESS_VERSION)
+
+    def test_the_number_of_ranked_runs_a_day_matches(self):
+        from cryptowarz.progress import RUNS_PER_DAY
+        self.assertEqual(self.js["runs_per_day"], RUNS_PER_DAY)
+
+    def test_the_grade_ladder_matches(self):
+        from cryptowarz.progress import GRADES
+        self.assertEqual(len(self.js["grades"]), len(GRADES))
+        for js, (threshold, letter, blurb) in zip(self.js["grades"], GRADES):
+            self.assertAlmostEqual(js["threshold"], threshold, msg=letter)
+            self.assertEqual(js["letter"], letter)
+            self.assertEqual(js["blurb"], blurb, letter)
+
+    def test_every_tier_matches_including_its_score_weight(self):
+        from cryptowarz.progress import TIERS
+        self.assertEqual([t["level"] for t in self.js["tiers"]], [t.level for t in TIERS])
+        for js, py in zip(self.js["tiers"], TIERS):
+            self.assertEqual(js["name"], py.name, py.name)
+            self.assertAlmostEqual(js["debt"], py.debt, msg=py.name)
+            self.assertAlmostEqual(js["capacity"], py.capacity, msg=py.name)
+            self.assertAlmostEqual(js["heat"], py.heat_mult, msg=py.name)
+            self.assertEqual(js["days"], py.days, py.name)
+        self.assertEqual(self.js["tier_mults"], [t.score_mult for t in TIERS])
+
+    def test_todays_slate_is_the_same_three_markets_on_both_sides(self):
+        from cryptowarz.progress import daily_seeds
+        self.assertEqual(self.js["daily_seeds"], daily_seeds(1_700_000_000))
+
+    def test_the_goals_and_their_unlocks_match(self):
+        from cryptowarz.progress import ACHIEVEMENTS, PERKS
+        self.assertEqual(self.js["achievements"], [a.key for a in ACHIEVEMENTS])
+        self.assertEqual(self.js["perks"],
+                         [{"key": p.key, "by": p.unlocked_by} for p in PERKS])
+
+
+@requires_node
 class TestBalanceParity(unittest.TestCase):
     """Shape comparison.
 

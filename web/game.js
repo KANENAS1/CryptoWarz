@@ -483,29 +483,95 @@ const PERKS = [
    capacity, so leaning on debt made the top tier unwinnable. Capacity and heat
    carry the ladder instead. */
 const TIERS = [
-  { level: 1, name: "Off Peak",   blurb: "The standard thirty days.",           debt: 5500,  capacity: 25000, heat: 1.00, days: 30 },
-  { level: 2, name: "Rush Hour",  blurb: "A bigger loan and more eyes on you.", debt: 6800,  capacity: 21000, heat: 1.25, days: 30 },
-  { level: 3, name: "Track Work", blurb: "Deeper in, carrying less.",           debt: 7800,  capacity: 17000, heat: 1.50, days: 30 },
-  { level: 4, name: "Last Train", blurb: "Four fewer days to do it in.",        debt: 7800,  capacity: 15000, heat: 1.60, days: 26 },
-  { level: 5, name: "Blackout",   blurb: "Everything at once.",                 debt: 9000,  capacity: 13000, heat: 1.80, days: 26 },
+  { level: 1, name: "Off Peak",   blurb: "The standard thirty days.",           debt: 5500,  capacity: 25000, heat: 1.00, days: 30, mult: 1.00 },
+  { level: 2, name: "Rush Hour",  blurb: "A bigger loan and more eyes on you.", debt: 6800,  capacity: 21000, heat: 1.25, days: 30, mult: 1.30 },
+  { level: 3, name: "Track Work", blurb: "Deeper in, carrying less.",           debt: 7800,  capacity: 17000, heat: 1.50, days: 30, mult: 1.65 },
+  { level: 4, name: "Last Train", blurb: "Four fewer days to do it in.",        debt: 7800,  capacity: 15000, heat: 1.60, days: 26, mult: 2.00 },
+  { level: 5, name: "Blackout",   blurb: "Everything at once.",                 debt: 9000,  capacity: 13000, heat: 1.80, days: 26, mult: 2.40 },
 ];
 const TIER_BY_LEVEL = Object.fromEntries(TIERS.map(t => [t.level, t]));
 const PERK_BY_KEY = Object.fromEntries(PERKS.map(p => [p.key, p]));
 const PROGRESS_KEY = "cryptowarz.progress.v1";
-const PROGRESS_VERSION = 1;
+const PROGRESS_VERSION = 2;
+
+/* ---------------------------- grading -------------------------------- */
+/* Three ranked runs a day, each a full thirty-day market, each graded on what
+   it was finally worth weighted by the tier it was played on. A leaderboard
+   needs a fixed slate or it just ranks patience. */
+const RUNS_PER_DAY = 3;
+const GRADES = [
+  [750000, "S+", "They'll name a station after you."],
+  [300000, "S",  "Somebody is going to ask questions."],
+  [100000, "A",  "Six figures. Quit while you're ahead."],
+  [35000,  "B",  "A real score."],
+  [10000,  "C",  "Out of the hole and then some."],
+  [2000,   "D",  "You finished. Barely."],
+  [0,      "F",  "The Shark got paid. You didn't."],
+];
+function tierMult(tier) { return (TIER_BY_LEVEL[tier] || TIERS[0]).mult; }
+/* Floored at zero: a board that can be dragged down is one where the safe play
+   is not to play. */
+function runPoints(g) { return Math.max(0, g.finalScore()) * tierMult(g.tier || 1); }
+function gradeFor(points) { return (GRADES.find(r => points >= r[0]) || GRADES[GRADES.length - 1])[1]; }
+function gradeBlurb(points) { return (GRADES.find(r => points >= r[0]) || GRADES[GRADES.length - 1])[2]; }
+/* Per slot, so run two is a new market rather than run one replayed with the
+   answers; per date, so everyone plays the same three today. */
+function dailySeeds(when) {
+  const day = dailySeed(when);
+  return [0, 1, 2].map(slot => day * 10 + slot);
+}
 
 function blankProfile() {
   return { version: PROGRESS_VERSION, runs: 0, achievements: [], best_net: 0,
-           best_tier_cleared: 0, daily_seed: null, daily_net: null, updated_at: 0 };
+           best_tier_cleared: 0, daily_day: null, daily_runs: [],
+           best_daily: 0, best_daily_day: null, updated_at: 0 };
 }
 function readProfile() {
   try {
     const raw = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "null");
-    if (!raw || raw.version !== PROGRESS_VERSION) return blankProfile();
+    // a version 1 profile predates ranked runs; its achievements were still
+    // earned, so it migrates rather than being thrown away
+    if (!raw || (raw.version !== PROGRESS_VERSION && raw.version !== 1)) return blankProfile();
     const known = new Set(ACHIEVEMENTS.map(a => a.key));
     raw.achievements = (raw.achievements || []).filter(k => known.has(k));
-    return Object.assign(blankProfile(), raw);
+    if (!Array.isArray(raw.daily_runs)) raw.daily_runs = [];
+    delete raw.daily_seed; delete raw.daily_net;
+    return Object.assign(blankProfile(), raw, { version: PROGRESS_VERSION });
   } catch (e) { return blankProfile(); }   // a profile is a reward, never a blocker
+}
+/* Point the profile at today's slate, clearing yesterday's. Nothing is lost by
+   missing a day - the old slate simply is not today's any more. */
+function rollDay(p, day) {
+  day = day === undefined ? dailySeed() : day;
+  if (p.daily_day !== day) { p.daily_day = day; p.daily_runs = []; }
+  return day;
+}
+function runsToday(p, day) {
+  day = day === undefined ? dailySeed() : day;
+  return p.daily_day === day ? p.daily_runs.slice() : [];
+}
+function nextSlot(p, day) {
+  const done = new Set(runsToday(p, day).map(r => r.slot));
+  for (let i = 0; i < RUNS_PER_DAY; i++) if (!done.has(i)) return i;
+  return null;
+}
+function dailyTotal(p, day) {
+  return runsToday(p, day).reduce((a, r) => a + (r.points || 0), 0);
+}
+/* Re-recording a slot is ignored rather than overwriting: three ranked runs
+   only means something if each market is played once. */
+function recordDaily(p, g, slot, day) {
+  day = rollDay(p, day);
+  const points = runPoints(g);
+  const entry = { slot: slot, points: Math.round(points * 100) / 100,
+                  net: Math.round(g.finalScore() * 100) / 100,
+                  grade: gradeFor(points), tier: g.tier || 1, at: Date.now() / 1000 };
+  if (p.daily_runs.some(r => r.slot === slot)) return entry;
+  p.daily_runs.push(entry);
+  p.daily_runs.sort((a, b) => a.slot - b.slot);
+  const total = dailyTotal(p, day);
+  if (total > p.best_daily) { p.best_daily = total; p.best_daily_day = day; }
+  return entry;
 }
 function writeProfile(p) {
   p.updated_at = Date.now() / 1000;
@@ -518,8 +584,8 @@ function unlockedPerks(p) {
 }
 function maxTier(p) { return Math.max(1, Math.min(TIERS.length, (p.best_tier_cleared || 0) + 1)); }
 
-/* One shared run per calendar day. Not a streak: miss a day and nothing is
-   taken away, there is simply a new one waiting. */
+/* Today's date as YYYYMMDD - the key the ranked slate hangs on. Not a streak:
+   miss a day and nothing is taken away, there is simply a new slate waiting. */
 function dailySeed(when) {
   const d = new Date(when === undefined ? Date.now() : when);
   return Number(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`);
@@ -562,6 +628,10 @@ function saveToDict(g) {
     seed: g.seed,
     tier: g.tier,
     perk: g.perk,
+    /* which ranked run of today this is, or null for practice. Added after
+       version 1 shipped and read with a default, so an in-progress save from
+       the older build still loads - it simply resumes as practice. */
+    daily_slot: g.dailySlot === undefined ? null : g.dailySlot,
     stats: g.stats,
     day: g.day,
     finished: g.finished,
@@ -586,6 +656,8 @@ function saveFromDict(data) {
   }
   const g = new Game(data.seed === undefined ? 0 : data.seed, data.tier || 1, data.perk || null);
   g.rng.setState(data.rng);
+  g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
+  g.isDaily = g.dailySlot !== null;
   if (data.stats) g.stats = data.stats;
   g.day = data.day;
   g.finished = !!data.finished;
@@ -660,5 +732,8 @@ if (typeof module !== "undefined") {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
                      fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
-                     unlockedPerks, maxTier };
+                     unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
+                     runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
+                     runsToday, nextSlot, dailyTotal, recordDaily,
+                     PROGRESS_VERSION };
 }

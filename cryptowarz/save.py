@@ -76,6 +76,10 @@ def to_dict(game) -> Dict[str, Any]:
         "seed": game.seed,
         "tier": game.tier,
         "perk": game.perk,
+        # which ranked run of today this is, or null for practice. Added after
+        # version 1 shipped and read with a default, so an in-progress save from
+        # the older build still loads - it simply resumes as practice.
+        "daily_slot": getattr(game, "daily_slot", None),
         # stations is a set in memory; JSON needs a list, and the reload
         # converts it back so achievement checks keep working after a resume
         "stats": {**game.stats, "stations": sorted(game.stats.get("stations", []))},
@@ -116,6 +120,9 @@ def from_dict(data: Dict[str, Any]):
 
     game = Game(seed=data.get("seed"), tier=int(data.get("tier", 1)),
                 perk=data.get("perk"))
+    slot = data.get("daily_slot")
+    game.daily_slot = None if slot is None else int(slot)
+    game.is_daily = game.daily_slot is not None
     stats = data.get("stats")
     if stats:
         game.stats = {**stats, "stations": set(stats.get("stations", []))}

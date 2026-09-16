@@ -105,9 +105,22 @@ def new_game(args) -> Game:
     if perk and perk not in {p.key for p in profile.unlocked_perks}:
         print(ui.c(f"  You haven't unlocked '{perk}' yet. Running without it.", ui.YELL))
         perk = None
-    seed = progress_module.daily_seed() if args.daily else args.seed
+    slot = None
+    seed = args.seed
+    if args.daily:
+        profile.roll_day()
+        slot = profile.next_slot()
+        if slot is None:
+            print(ui.c(f"  All {progress_module.RUNS_PER_DAY} ranked runs are spent today "
+                       f"(total {ui.money(profile.daily_total())}). "
+                       f"This one is practice - it won't count.", ui.YELL))
+        else:
+            seed = progress_module.daily_seeds()[slot]
+            print(ui.c(f"  Ranked run {slot + 1} of {progress_module.RUNS_PER_DAY}. "
+                       f"Everyone plays this same market today.", ui.CYAN))
     game = Game(seed=seed, tier=tier, perk=perk)
-    game.is_daily = bool(args.daily)
+    game.is_daily = slot is not None
+    game.daily_slot = slot
     return game
 
 
@@ -206,9 +219,22 @@ def play(args) -> int:
             game.finalise()
             profile = progress_module.read_profile()
             earned = progress_module.award(profile, game)
+            points = progress_module.run_points(game)
+            letter = progress_module.grade(points)
             if getattr(game, "is_daily", False):
-                profile.daily_seed, profile.daily_net = game.seed, score
+                progress_module.record_daily(profile, game, game.daily_slot)
             progress_module.write_profile(profile)
+            print()
+            print("  " + ui.c(f"GRADE {letter}", ui.YELL, True)
+                  + ui.c(f"   {points:,.0f} pts"
+                         f" (tier {game.tier} ×{progress_module.tier_mult(game.tier):.2f})", ui.GREY))
+            print("  " + ui.c(progress_module.grade_blurb(points), ui.GREY))
+            if getattr(game, "is_daily", False):
+                left = progress_module.RUNS_PER_DAY - len(profile.runs_today())
+                print("  " + ui.c(f"Today: {ui.money(profile.daily_total())} across "
+                                  f"{len(profile.runs_today())} ranked run(s)"
+                                  + (f" · {left} left" if left else " · that's the slate"),
+                                  ui.CYAN))
             if earned:
                 print()
                 for a in earned:
@@ -239,7 +265,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--seed", type=int, default=None, help="replay the same thirty days")
     p.add_argument("--tier", type=int, default=1, help="difficulty 1-5; higher ones unlock as you clear them")
     p.add_argument("--perk", default=None, help="carry an unlocked perk (see 'goals')")
-    p.add_argument("--daily", action="store_true", help="today's run - same market for everyone, once a day")
+    p.add_argument("--daily", action="store_true", help="a ranked run - three a day, same markets for everyone")
     p.add_argument("--goals", action="store_true", help="show achievements and unlocks, then exit")
     p.add_argument("--new", action="store_true", help="start fresh, discarding any saved run")
     p.add_argument("--no-save", action="store_true", help="do not read or write save files")

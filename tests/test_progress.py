@@ -206,5 +206,121 @@ class TestDailyRun(unittest.TestCase):
                          [m.prices for m in [Game(seed=seed).market]])
 
 
+class TestGrading(unittest.TestCase):
+    """A run's grade is what the leaderboard actually compares."""
+
+    def finished(self, net_worth, tier=1):
+        g = Game(seed=7, tier=tier)
+        g.player.debt = 0.0
+        g.player.wallet.clear()
+        g.player.cash = net_worth
+        g.finalise()
+        return g
+
+    def test_a_losing_run_scores_nothing_rather_than_scoring_negatively(self):
+        g = self.finished(-4_000.0)
+        self.assertEqual(P.run_points(g), 0.0)
+        self.assertEqual(P.grade(P.run_points(g)), "F")
+
+    def test_the_grade_climbs_with_what_you_finished_holding(self):
+        letters = [P.grade(P.run_points(self.finished(n)))
+                   for n in (1_000, 5_000, 20_000, 60_000, 150_000, 400_000, 900_000)]
+        self.assertEqual(letters, ["F", "D", "C", "B", "A", "S", "S+"])
+
+    def test_the_same_run_is_worth_more_on_a_harder_tier(self):
+        easy = P.run_points(self.finished(100_000.0, tier=1))
+        hard = P.run_points(self.finished(100_000.0, tier=5))
+        self.assertGreater(hard, easy)
+        self.assertAlmostEqual(hard / easy, P.TIER_BY_LEVEL[5].score_mult)
+
+    def test_the_tier_weights_only_ever_climb(self):
+        mults = [t.score_mult for t in P.TIERS]
+        self.assertEqual(mults, sorted(mults))
+        self.assertEqual(mults[0], 1.0)
+
+    def test_every_grade_has_something_to_say(self):
+        for threshold, letter, blurb in P.GRADES:
+            self.assertTrue(blurb.strip(), letter)
+            self.assertEqual(P.grade_blurb(threshold), blurb)
+
+
+class TestRankedSlate(unittest.TestCase):
+    """Three ranked runs a day, one attempt at each of three markets."""
+
+    def finished(self, net_worth, tier=1):
+        g = Game(seed=7, tier=tier)
+        g.player.debt = 0.0
+        g.player.wallet.clear()
+        g.player.cash = net_worth
+        g.finalise()
+        return g
+
+    def test_the_day_deals_three_different_markets(self):
+        seeds = P.daily_seeds(1_700_000_000.0)
+        self.assertEqual(len(seeds), P.RUNS_PER_DAY)
+        self.assertEqual(len(set(seeds)), P.RUNS_PER_DAY)
+        prices = [Game(seed=s).market.prices for s in seeds]
+        self.assertNotEqual(prices[0], prices[1])
+
+    def test_the_slate_is_the_same_for_everyone_on_a_given_day(self):
+        day = 1_700_000_000.0
+        self.assertEqual(P.daily_seeds(day), P.daily_seeds(day + 3_600))
+        self.assertNotEqual(P.daily_seeds(day), P.daily_seeds(day + 86_400))
+
+    def test_slots_are_handed_out_in_order_and_then_run_out(self):
+        profile = P.Profile()
+        day = profile.roll_day(20_260_101)
+        for expected in range(P.RUNS_PER_DAY):
+            self.assertEqual(profile.next_slot(day), expected)
+            P.record_daily(profile, self.finished(30_000.0), expected, day)
+        self.assertIsNone(profile.next_slot(day))
+
+    def test_replaying_a_slot_cannot_improve_it(self):
+        profile = P.Profile()
+        day = profile.roll_day(20_260_101)
+        P.record_daily(profile, self.finished(10_000.0), 0, day)
+        P.record_daily(profile, self.finished(900_000.0), 0, day)
+        self.assertEqual(len(profile.daily_runs), 1)
+        self.assertAlmostEqual(profile.daily_total(day), 10_000.0)
+
+    def test_the_daily_total_is_the_three_runs_added_up(self):
+        profile = P.Profile()
+        day = profile.roll_day(20_260_101)
+        for slot, worth in enumerate((10_000.0, 25_000.0, 40_000.0)):
+            P.record_daily(profile, self.finished(worth), slot, day)
+        self.assertAlmostEqual(profile.daily_total(day), 75_000.0)
+        self.assertAlmostEqual(profile.best_daily, 75_000.0)
+
+    def test_a_new_day_clears_the_slate_and_takes_nothing_away(self):
+        profile = P.Profile(achievements=["first_run"])
+        day = profile.roll_day(20_260_101)
+        P.record_daily(profile, self.finished(40_000.0), 0, day)
+        profile.roll_day(20_260_102)
+        self.assertEqual(profile.daily_runs, [])
+        self.assertEqual(profile.next_slot(20_260_102), 0)
+        self.assertEqual(profile.achievements, ["first_run"])
+        self.assertAlmostEqual(profile.best_daily, 40_000.0)   # the record stands
+
+    def test_the_slate_survives_a_save_and_a_reload(self):
+        profile = P.Profile()
+        day = profile.roll_day(20_260_101)
+        P.record_daily(profile, self.finished(40_000.0), 1, day)
+        reloaded = P.Profile.from_dict(profile.to_dict())
+        self.assertEqual(reloaded.daily_day, day)
+        self.assertEqual(reloaded.next_slot(day), 0)
+        self.assertAlmostEqual(reloaded.daily_total(day), 40_000.0)
+
+    def test_a_version_1_profile_keeps_its_unlocks(self):
+        """Losing somebody's achievements to a format change is unforgivable."""
+        legacy = {"version": 1, "runs": 12, "achievements": ["first_run", "whale"],
+                  "best_net": 120_000.0, "best_tier_cleared": 2,
+                  "daily_seed": 20_251_231, "daily_net": 4_000.0, "updated_at": 1.0}
+        profile = P.Profile.from_dict(legacy)
+        self.assertEqual(profile.achievements, ["first_run", "whale"])
+        self.assertEqual(profile.runs, 12)
+        self.assertEqual(profile.max_tier, 3)
+        self.assertEqual(profile.daily_runs, [])
+
+
 if __name__ == "__main__":
     unittest.main()

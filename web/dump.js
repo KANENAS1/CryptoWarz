@@ -15,6 +15,18 @@ const out = {
   coins: G.COINS.map(c => ({
     symbol: c.symbol, name: c.name, low: c.low, high: c.high, meme: c.meme, note: c.note,
   })),
+  progress: {
+    version: G.PROGRESS_VERSION,
+    runs_per_day: G.RUNS_PER_DAY,
+    grades: G.GRADES.map(([threshold, letter, blurb]) => ({ threshold, letter, blurb })),
+    tier_mults: G.TIERS.map(t => t.mult),
+    tiers: G.TIERS.map(t => ({ level: t.level, name: t.name, debt: t.debt,
+                               capacity: t.capacity, heat: t.heat, days: t.days })),
+    /* a fixed instant, so both sides derive the same slate from the same date */
+    daily_seeds: G.dailySeeds(1_700_000_000_000),
+    achievements: G.ACHIEVEMENTS.map(a => a.key),
+    perks: G.PERKS.map(x => ({ key: x.key, by: x.by })),
+  },
   stations: G.STATIONS.map(s => ({
     name: s.name, heat: s.heat, bias: s.bias,
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,

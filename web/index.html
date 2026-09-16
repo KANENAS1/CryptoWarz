@@ -154,6 +154,30 @@
         border:1px solid var(--rule);color:var(--dim)}
   .pill.tier{border-color:var(--purple);color:#e07ad8}
   .pill.perk{border-color:var(--yellow);color:var(--yellow)}
+  /* ---------- grades, the ranked slate, the leaderboard ---------- */
+  .grade{font-size:56px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--yellow)}
+  .grade.f{color:var(--red)} .grade.s{color:var(--green)}
+  .gradeline{color:var(--dim);font-size:11.5px;letter-spacing:.1em;margin-top:6px}
+  .slate{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:12px}
+  .slate .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:12px}
+  .slate .d{color:var(--dim);font-size:11.5px;margin-top:3px}
+  .slate.spent{border-color:var(--rule)}
+  .slate.spent .t{color:var(--dim)}
+  .run{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+       padding:8px 0;border-top:1px solid var(--rule);font-size:12px}
+  .run .n{color:var(--faint);font-size:10px;letter-spacing:.1em}
+  .run .g{font-weight:700;font-size:15px;color:var(--yellow)}
+  .run.todo .g{color:var(--faint)}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tabs button{flex:1;font-size:10px;letter-spacing:.1em;padding:8px 4px}
+  .tabs button.on{background:var(--yellow);border-color:var(--yellow);color:#000}
+  .lbrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+         padding:11px 2px;border-bottom:1px solid var(--rule)}
+  .lbrow .pos{font-size:11px;letter-spacing:.1em;color:var(--faint);min-width:26px}
+  .lbrow.me{background:rgba(252,204,10,.07)}
+  .lbrow .who{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lbrow .sub{color:var(--faint);font-size:10px;letter-spacing:.08em;margin-top:2px}
+  .lbrow .pts{text-align:right;font-weight:700}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -196,7 +220,7 @@
   <footer>
     <button class="go" id="ride">RIDE THE TRAIN →</button>
     <button id="trophies" style="flex:0 0 auto;min-width:54px">GOALS</button>
-    <button id="board" style="flex:0 0 auto;min-width:54px">BEST</button>
+    <button id="board" style="flex:0 0 auto;min-width:54px">BOARD</button>
     <button id="newgame" style="flex:0 0 auto;min-width:50px">NEW</button>
   </footer>
 </div>
@@ -217,7 +241,7 @@
     <div id="perkpicks"></div>
   </div>
   <div style="padding-top:10px;display:flex;gap:9px">
-    <button id="startrun" class="go">START</button>
+    <button id="startrun" class="go">PRACTICE RUN</button>
     <button id="setupcancel" style="flex:0 0 auto;min-width:90px">BACK</button>
   </div>
 </div>
@@ -229,21 +253,34 @@
 </div>
 
 <div class="sheet" id="scores">
-  <h3>YOUR BEST RUNS</h3>
+  <h3 id="scorestitle">LEADERBOARD</h3>
+  <div class="tabs">
+    <button data-tab="today" class="on">TODAY</button>
+    <button data-tab="alltime">ALL TIME</button>
+    <button data-tab="mine">YOUR RUNS</button>
+  </div>
   <div class="sheetscroll" id="scorelist"></div>
-  <div style="padding-top:10px"><button id="closescores">BACK</button></div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button id="closescores" class="go">BACK</button>
+    <button id="rename" style="flex:0 0 auto;min-width:88px">NAME</button>
+  </div>
 </div>
 
 <div class="sheet" id="over">
   <div class="sheetscroll">
     <div class="final">
       <h3 style="margin-bottom:18px">THIRTY DAYS LATER</h3>
-      <div class="big num" id="fscore">$0</div>
+      <div class="grade" id="fgrade">F</div>
+      <div class="gradeline" id="fpoints"></div>
+      <div class="big num" id="fscore" style="font-size:30px;margin-top:14px">$0</div>
       <div class="verdict" id="fverdict"></div>
       <div class="brk num" id="fbreak"></div>
     </div>
   </div>
-  <div style="padding-top:10px"><button class="go" id="again">RIDE AGAIN</button></div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button class="go" id="again">RIDE AGAIN</button>
+    <button id="toboard" style="flex:0 0 auto;min-width:92px">BOARD</button>
+  </div>
 </div>
 
 <script src="game.js"></script>
@@ -285,7 +322,7 @@ function render(){
   const tierInfo = TIER_BY_LEVEL[g.tier];
   const pill = $("tierpill");
   pill.hidden = g.tier === 1 && !g.perk && !g.isDaily;
-  pill.textContent = [g.isDaily ? "DAILY" : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
+  pill.textContent = [g.isDaily ? `RANKED ${g.dailySlot + 1}/${RUNS_PER_DAY}` : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
                       g.perk ? PERK_BY_KEY[g.perk].name.toUpperCase() : null].filter(Boolean).join(" · ");
   $("station").textContent = g.station.name;
   $("bullets").innerHTML = g.station.lines.map(bullet).join("");
@@ -455,26 +492,45 @@ function showFinal(){
   clearSave();
   profile = readProfile();
   const earned = award(profile, g);
-  if (g.isDaily) { profile.daily_seed = g.seed; profile.daily_net = score; }
+  const points = runPoints(g), letter = gradeFor(points);
+  const ranked = g.dailySlot !== null && g.dailySlot !== undefined;
+  if (ranked) recordDaily(profile, g, g.dailySlot);
   writeProfile(profile);
+  if (ranked) postDaily(profile);          // fire and forget; the board is a bonus
+
   const rank = board.findIndex(s => Math.abs(s.net_worth - score) < 1e-9);
+  $("fgrade").textContent = letter;
+  $("fgrade").className = "grade " + (letter === "F" ? "f" : letter[0] === "S" ? "s" : "");
+  $("fpoints").textContent =
+    `${Math.round(points).toLocaleString()} PTS · TIER ${g.tier} ×${tierMult(g.tier).toFixed(2)}`
+    + (ranked ? ` · RANKED RUN ${g.dailySlot + 1}` : " · PRACTICE");
   $("fscore").textContent = fmtMoney(score);
   $("fscore").className = "big num " + (score >= 0 ? "up" : "down");
-  $("fverdict").textContent = g.verdict();
+  $("fverdict").textContent = gradeBlurb(points);
   $("fbreak").innerHTML = [
     ["cash", fmtMoney(p.cash)], ["vault", fmtMoney(p.vault)],
-    ["holdings", fmtMoney(g.portfolioValue())], ["debt", "-" + fmtMoney(p.debt).replace("-", "")],
+    ["holdings", fmtMoney(g.portfolioValue())],
+    ["debt", p.debt > 0.005 ? "-" + fmtMoney(p.debt).replace("-", "") : fmtMoney(0)],
   ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+
   // only crow about a personal best that is actually worth having - "a new
   // best run" above "the Shark owns you" reads like the game is mocking you
   const unlocks = earned.map(a => PERKS.find(p => p.by === a.key)).filter(Boolean);
-  $("fbreak").insertAdjacentHTML("afterend", earned.length
+  const left = ranked ? RUNS_PER_DAY - runsToday(profile).length : 0;
+  const today = ranked
+    ? `<div class="note" style="text-align:center;margin-top:14px">
+         Today: <b>${Math.round(dailyTotal(profile)).toLocaleString()} pts</b> across
+         ${runsToday(profile).length} of ${RUNS_PER_DAY} ranked runs${left
+           ? ` · ${left} left` : " · that's the slate. Back tomorrow."}</div>`
+    : `<div class="note" style="text-align:center;margin-top:14px">
+         Practice run - it doesn't touch the board.</div>`;
+  $("fbreak").insertAdjacentHTML("afterend", today + (earned.length
     ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
          ${earned.map(a => `<span class="pill perk">${a.name.toUpperCase()}</span>`).join("")}
        </div>
        ${unlocks.length ? `<div class="note" style="text-align:center;margin-top:8px">
          Unlocked: ${unlocks.map(p => p.name).join(", ")}</div>` : ""}`
-    : "");
+    : ""));
   if (rank === 0 && score > 0 && board.length > 1) {
     $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
   } else if (rank > 0 && rank < 5 && score > 0) {
@@ -494,23 +550,109 @@ function openSheet(id){
 function closeSheets(){ SHEETS.forEach(s => $(s).classList.remove("on")); }
 
 let profile = readProfile();
-let pickedTier = 1, pickedPerk = null, pickedDaily = false;
+let pickedTier = 1, pickedPerk = null;
+
+/* --------------------------- who you are ------------------------------ */
+/* A board needs a stable identity. There is no login here, so the page mints
+   one per browser and keeps it locally - the name is whatever you type, and
+   nothing about you leaves the device except the name and the score. */
+const IDENT_KEY = "cryptowarz.player.v1";
+function identity(){
+  let me = null;
+  try { me = JSON.parse(localStorage.getItem(IDENT_KEY) || "null"); } catch (e) {}
+  if (!me || !me.id) {
+    const raw = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : String(Math.random()).slice(2) + Date.now().toString(36);
+    me = { id: raw.replace(/[^a-z0-9]/gi, "").slice(0, 24), name: "" };
+    try { localStorage.setItem(IDENT_KEY, JSON.stringify(me)); } catch (e) {}
+  }
+  return me;
+}
+function setName(name){
+  const me = identity();
+  me.name = String(name).replace(/\s+/g, " ").trim().slice(0, 18);
+  try { localStorage.setItem(IDENT_KEY, JSON.stringify(me)); } catch (e) {}
+  return me;
+}
+
+/* ---------------------------- the board ------------------------------- */
+/* The shared leaderboard rides the artifact's db capability, which exists only
+   on the published page. Everything below degrades to your own scores when it
+   is absent - a game that breaks when the network does is a worse game. */
+let dbPromise = null;
+function store(){
+  if (!dbPromise) {
+    dbPromise = ((window.claude && claude.use) ? claude.use("db") : Promise.resolve(null))
+      .catch(() => null);
+  }
+  return dbPromise;
+}
+/* One document per player, rewritten when a ranked run lands: the board stays
+   a few hundred rows instead of growing by one document per run forever. */
+async function postDaily(prof){
+  const d = await store();
+  if (!d) return false;
+  const me = identity(), runs = runsToday(prof), total = dailyTotal(prof);
+  if (!runs.length) return false;
+  try {
+    await d.doc("leaderboard/" + me.id).set({
+      name: me.name || "Straphanger",
+      day: prof.daily_day || dailySeed(),
+      points: Math.round(total),
+      runs: runs.length,
+      grade: gradeFor(total / RUNS_PER_DAY),
+      best_run: Math.round(runs.reduce((a, r) => Math.max(a, r.points || 0), 0)),
+      tier: runs.reduce((a, r) => Math.max(a, r.tier || 1), 1),
+      best: Math.round(prof.best_daily || 0),
+      best_day: prof.best_daily_day || null,
+      at: Date.now() / 1000,
+    });
+    return true;
+  } catch (e) { return false; }          // a board that fails is never a blocker
+}
+async function fetchBoard(mode){
+  const d = await store();
+  if (!d) return null;
+  const c = d.collection("leaderboard");
+  const q = mode === "today"
+    ? c.where("day", "==", dailySeed()).orderBy("points", "desc").limit(50)
+    : c.orderBy("best", "desc").limit(50);
+  try {
+    return (await q.get()).docs.map(doc => Object.assign({ id: doc.id }, doc.data()));
+  } catch (e) { return null; }
+}
+/* Rows come from other people. Nothing from the store reaches innerHTML raw. */
+const esc = t => String(t == null ? "" : t)
+  .replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+/* ------------------------------- setup -------------------------------- */
 
 function renderSetup(){
   profile = readProfile();
-  const seed = dailySeed();
-  const donetoday = profile.daily_seed === seed;
-  $("dailybox").innerHTML = `<div class="daily${donetoday ? " done" : ""}" id="dailypick">
-      <div class="t">${donetoday ? "TODAY'S RUN — DONE" : "TODAY'S RUN"}</div>
-      <div class="d">${donetoday
-        ? `You finished it at ${fmtMoney(profile.daily_net || 0)}. A new one tomorrow.`
-        : "The same thirty days everyone else gets today. One go at it."}</div></div>`;
-  if (!donetoday) {
-    $("dailypick").addEventListener("click", () => {
-      pickedDaily = !pickedDaily;
-      $("dailypick").style.background = pickedDaily ? "rgba(252,204,10,.12)" : "";
-    });
+  rollDay(profile);
+  const runs = runsToday(profile), open = nextSlot(profile), total = dailyTotal(profile);
+  const rows = [];
+  for (let i = 0; i < RUNS_PER_DAY; i++) {
+    const r = runs.find(x => x.slot === i);
+    rows.push(r
+      ? `<div class="run"><span class="n">RUN ${i + 1}</span>
+           <span class="${r.net >= 0 ? "num up" : "num down"}">${fmtMoney(r.net)}
+           <span class="n"> · ${Math.round(r.points).toLocaleString()} pts</span></span>
+           <span class="g">${esc(r.grade)}</span></div>`
+      : `<div class="run todo"><span class="n">RUN ${i + 1}</span>
+           <span class="n">not played</span>
+           <button data-slot="${i}" style="padding:5px 10px;font-size:10px">PLAY</button></div>`);
   }
+  $("dailybox").innerHTML = `<div class="slate${open === null ? " spent" : ""}">
+      <div class="t">TODAY'S RANKED RUNS</div>
+      <div class="d">Three markets, the same three for everyone today. One go at each -
+        your grade is what you finish holding, weighted by the tier you played.</div>
+      ${rows.join("")}
+      <div class="d" style="margin-top:9px">Today <b>${Math.round(total).toLocaleString()} pts</b>
+        · grade ${gradeFor(total / RUNS_PER_DAY)}${open === null
+          ? " · slate complete, new markets tomorrow" : ""}
+        · best day ${Math.round(profile.best_daily || 0).toLocaleString()}</div>
+    </div>`;
 
   const top = maxTier(profile);
   $("tierpicks").innerHTML = TIERS.map(t => {
@@ -518,7 +660,8 @@ function renderSetup(){
     return `<div class="pick${t.level === pickedTier ? " on" : ""}${locked ? " locked" : ""}"
                  data-tier="${locked ? "" : t.level}">
       <div><div class="t">${t.name}</div><div class="d">${t.blurb}</div>
-      <div class="d">$${t.debt.toLocaleString()} debt · $${t.capacity.toLocaleString()} wallet · ${t.days} days</div></div>
+      <div class="d">$${t.debt.toLocaleString()} debt · $${t.capacity.toLocaleString()} wallet
+        · ${t.days} days · ×${t.mult.toFixed(2)} score</div></div>
       <div class="k">${locked ? "CLEAR TIER " + (t.level - 1) : "TIER " + t.level}</div></div>`;
   }).join("");
 
@@ -538,6 +681,8 @@ function renderSetup(){
 }
 
 $("setup").addEventListener("click", e => {
+  const slot = e.target.closest("[data-slot]");
+  if (slot) { closeSheets(); return start(dailySeeds()[+slot.dataset.slot], pickedTier, pickedPerk, +slot.dataset.slot); }
   const t = e.target.closest("[data-tier]");
   if (t && t.dataset.tier) { pickedTier = +t.dataset.tier; return renderSetup(); }
   const p = e.target.closest("[data-perk]");
@@ -548,7 +693,7 @@ $("setup").addEventListener("click", e => {
 $("setupcancel").addEventListener("click", closeSheets);
 $("startrun").addEventListener("click", () => {
   closeSheets();
-  start(pickedDaily ? dailySeed() : Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, pickedDaily);
+  start(Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, null);
 });
 
 function showGoals(){
@@ -575,7 +720,48 @@ $("closegoals").addEventListener("click", closeSheets);
    cannot close the tab to dodge a raid you have already walked into. */
 function persist(){ if (game && !game.finished) writeSave(game); }
 
+let lbTab = "today";
 function showScores(){
+  openSheet("scores");
+  renderBoard();
+}
+function renderBoard(){
+  const me = identity();
+  document.querySelectorAll("#scores .tabs button")
+    .forEach(b => b.classList.toggle("on", b.dataset.tab === lbTab));
+  if (lbTab === "mine") return renderOwnRuns();
+  $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">Loading the board…</div>`;
+  const want = lbTab;
+  fetchBoard(want).then(rows => {
+    if (want !== lbTab) return;                       // the player switched tabs
+    if (!rows) {
+      $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">
+        The shared board lives on the published page and needs you signed in.
+        Your own runs are under YOUR RUNS.</div>`;
+      return;
+    }
+    if (!rows.length) {
+      $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">
+        ${want === "today" ? "Nobody has posted a ranked run today. Be first."
+                           : "No runs posted yet."}</div>`;
+      return;
+    }
+    $("scorelist").innerHTML = rows.map((r, i) => {
+      const pts = want === "today" ? (r.points || 0) : (r.best || 0);
+      return `<div class="lbrow${r.id === me.id ? " me" : ""}">
+        <div class="pos">${i + 1}</div>
+        <div><div class="who">${esc(r.name || "Straphanger")}</div>
+          <div class="sub">${want === "today"
+            ? `${Math.max(0, Math.min(RUNS_PER_DAY, r.runs || 0))}/${RUNS_PER_DAY} RUNS · TIER ${Math.max(1, Math.min(TIERS.length, r.tier || 1))}`
+            : `BEST DAY`}</div></div>
+        <div class="pts"><div>${Math.round(pts).toLocaleString()}</div>
+          <div class="sub">GRADE ${esc(gradeFor(pts / RUNS_PER_DAY))}</div></div>
+      </div>`;
+    }).join("") + `<div class="note" style="padding:14px 2px">
+      You are <b>${esc(me.name || "Straphanger")}</b>. Tap NAME to change it.</div>`;
+  });
+}
+function renderOwnRuns(){
   const scores = readScores();
   $("scorelist").innerHTML = scores.length
     ? scores.slice(0, 15).map((s, i) => `<div class="stop">
@@ -585,14 +771,27 @@ function showScores(){
         <div class="heat" style="max-width:150px;text-align:right">${s.verdict.split(".")[0]}</div>
       </div>`).join("")
     : `<div class="note" style="padding:14px 2px">No finished runs yet. Survive thirty days and you'll have one.</div>`;
-  openSheet("scores");
 }
+document.querySelector("#scores .tabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-tab]");
+  if (b) { lbTab = b.dataset.tab; renderBoard(); }
+});
+$("rename").addEventListener("click", () => {
+  const typed = prompt("What name should the board show?", identity().name || "");
+  if (typed === null) return;
+  setName(typed);
+  profile = readProfile();
+  if (runsToday(profile).length) postDaily(profile).then(renderBoard);
+  else renderBoard();
+});
+$("toboard").addEventListener("click", () => { lbTab = "today"; showScores(); });
 $("board").addEventListener("click", showScores);
 $("closescores").addEventListener("click", closeSheets);
 
-function start(seed, tier, perk, isDaily){
+function start(seed, tier, perk, slot){
   game = new Game(seed, tier || 1, perk || null);
-  game.isDaily = !!isDaily;
+  game.dailySlot = (slot === null || slot === undefined) ? null : slot;
+  game.isDaily = game.dailySlot !== null;
   openCoin = null;
   clearSave();
   closeSheets();
@@ -601,7 +800,6 @@ function start(seed, tier, perk, isDaily){
 }
 
 function openSetup(){
-  pickedDaily = false;
   renderSetup();
   openSheet("setup");
 }
@@ -614,7 +812,7 @@ function boot(){
     render();
     flash(`Picked up where you left off - day ${game.day}, ${game.station.name}.`, true);
   } else {
-    start(Math.floor(Math.random() * 1e9), 1, null, false);
+    start(Math.floor(Math.random() * 1e9), 1, null, null);
   }
 }
 
