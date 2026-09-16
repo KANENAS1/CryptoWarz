@@ -179,9 +179,10 @@ def play(seed: Optional[int] = None, force_new: bool = False, autosave: bool = T
             scores = save_module.record_score(game)
             save_module.clear_save()
             rank = next((i for i, s in enumerate(scores) if abs(s.net_worth - score) < 1e-9), None)
-            if rank == 0:
+            # a personal best is only worth announcing if it is worth having
+            if rank == 0 and score > 0 and len(scores) > 1:
                 print("  " + ui.c("A new best run.", ui.GREEN, True))
-            elif rank is not None and rank < 5:
+            elif rank is not None and 0 < rank < 5 and score > 0:
                 print("  " + ui.c(f"Number {rank + 1} on your board.", ui.CYAN))
             print()
             print(ui.scoreboard(scores, limit=5))

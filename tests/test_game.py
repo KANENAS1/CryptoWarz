@@ -260,6 +260,83 @@ class TestMoney(unittest.TestCase):
         self.assertEqual(g.player.vault, 0)
 
 
+class TestCannotStrandYourself(unittest.TestCase):
+    """Regression: reserving the fare exactly was not enough.
+
+    max_buyable held back $2.90, but price * ((cash - 2.90) / price) lands a
+    fraction of a cent above cash - 2.90, leaving $2.8999999999 - and travel
+    then refused the very fare the reserve existed to protect. A player who
+    pressed BUY MAX on day one could be unable to leave the station.
+    """
+
+    def test_buy_max_always_leaves_enough_to_ride(self):
+        stranded = []
+        for seed in range(250):
+            g = Game(seed=seed)
+            qty = g.max_buyable("DOGE")
+            if qty <= 0:
+                continue
+            g.buy("DOGE", qty)
+            try:
+                g.travel(next(s.name for s in STATIONS if s.name != g.station.name))
+            except ValueError:
+                stranded.append(seed)
+        self.assertEqual(stranded, [], f"stranded after BUY MAX on seeds {stranded[:5]}")
+
+    def test_the_reserve_covers_every_coin(self):
+        for seed in (1, 17, 64):
+            for symbol in ("SHIB", "PEPE", "DOGE", "XRP", "SOL", "ETH", "BTC"):
+                g = Game(seed=seed)
+                qty = g.max_buyable(symbol)
+                if qty <= 0:
+                    continue
+                g.buy(symbol, qty)
+                self.assertGreaterEqual(g.player.cash, SUBWAY_FARE - 1e-9,
+                                        f"{symbol} at seed {seed}")
+
+
+class TestTheSharkIsUsable(unittest.TestCase):
+    """Regression: the borrow ceiling sat below the opening loan.
+
+    It was measured against net worth, which already subtracts the debt - so
+    the more you owed the less you could borrow, and a run that opens $3,500
+    underwater could never borrow at all. The button existed purely to refuse.
+    """
+
+    def shark_game(self, seed=1):
+        g = Game(seed=seed)
+        g.station = next(s for s in STATIONS if s.has_shark)
+        return g
+
+    def test_you_can_borrow_on_day_one(self):
+        g = self.shark_game()
+        self.assertGreater(g.borrowable(), 1_000)
+        g.borrow(g.borrowable())
+        self.assertGreater(g.player.debt, 5_500)
+
+    def test_the_window_closes_as_the_debt_compounds(self):
+        """Borrowing should get harder as you sink, not be impossible at the start."""
+        g = self.shark_game()
+        first = g.borrowable()
+        for _ in range(5):
+            g.player.debt *= 1.10
+        self.assertLess(g.borrowable(), first)
+
+    def test_holding_assets_raises_the_limit(self):
+        """The Shark lends against what he could seize."""
+        poor = self.shark_game()
+        rich = self.shark_game()
+        rich.player.cash = 200_000.0
+        self.assertGreater(rich.borrow_limit(), poor.borrow_limit())
+
+    def test_he_still_refuses_the_hopeless(self):
+        g = self.shark_game()
+        g.player.debt = 500_000.0
+        self.assertEqual(g.borrowable(), 0.0)
+        with self.assertRaises(ValueError):
+            g.borrow(100)
+
+
 class TestTravel(unittest.TestCase):
     def test_travel_advances_the_day_and_changes_the_market(self):
         g = Game(seed=5)

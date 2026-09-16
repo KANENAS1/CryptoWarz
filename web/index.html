@@ -278,8 +278,13 @@ function render(){
 
   const st = g.station, svc = [];
   if (st.shark) {
-    svc.push(`<button data-act="borrow">BORROW $2,500</button>`);
-    if (p.debt > 0) svc.push(`<button data-act="repay">REPAY ${fmtMoney(Math.min(p.cash, p.debt))}</button>`);
+    // offer what he will actually lend, and say so plainly when that is nothing
+    const available = Math.min(2500, game.borrowable());
+    svc.push(available >= 100
+      ? `<button data-act="borrow">BORROW ${fmtMoney(available)}</button>`
+      : `<button disabled title="The Shark won't extend you further">SHARK WON'T LEND</button>`);
+    if (p.debt > 0 && p.cash > 0)
+      svc.push(`<button data-act="repay">REPAY ${fmtMoney(Math.min(p.cash, p.debt))}</button>`);
   }
   if (st.vault) {
     svc.push(`<button data-act="deposit">VAULT HALF</button>`);
@@ -328,7 +333,7 @@ $("main").addEventListener("click", e => {
     return act(() => game.sell(sym, (game.player.wallet[sym]?.qty || 0) * frac));
   }
   const a = b.dataset.act;
-  if (a === "borrow") return act(() => game.borrow(2500));
+  if (a === "borrow") return act(() => game.borrow(Math.min(2500, game.borrowable())));
   if (a === "repay") return act(() => game.repay(Math.min(game.player.cash, game.player.debt)));
   if (a === "deposit") return act(() => game.deposit(game.player.cash / 2));
   if (a === "withdraw") return act(() => game.withdraw(game.player.vault));
@@ -385,9 +390,13 @@ function showFinal(){
     ["cash", fmtMoney(p.cash)], ["vault", fmtMoney(p.vault)],
     ["holdings", fmtMoney(g.portfolioValue())], ["debt", "-" + fmtMoney(p.debt).replace("-", "")],
   ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
-  if (rank === 0) $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
-  else if (rank > 0 && rank < 5) $("fverdict").textContent =
-    `Number ${rank + 1} on your board. ` + $("fverdict").textContent;
+  // only crow about a personal best that is actually worth having - "a new
+  // best run" above "the Shark owns you" reads like the game is mocking you
+  if (rank === 0 && score > 0 && board.length > 1) {
+    $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
+  } else if (rank > 0 && rank < 5 && score > 0) {
+    $("fverdict").textContent = `Number ${rank + 1} on your board. ` + $("fverdict").textContent;
+  }
   $("over").classList.add("on");
 }
 

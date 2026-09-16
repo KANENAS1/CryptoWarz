@@ -33,6 +33,12 @@ START_CAPACITY = 25_000.0
 SHARK_RATE = 0.10        # per day, compounding, no mercy
 VAULT_RATE = 0.04        # per day, if you can bear to leave it behind
 SUBWAY_FARE = 2.90       # it is still the best deal in the city
+#: Reserved on top of the fare when sizing a "max" buy. Reserving the fare
+#: exactly is not enough: price * (cash - fare) / price lands a fraction of a
+#: cent above cash - fare, leaving $2.8999999999 and a player who cannot afford
+#: the very fare the reserve existed to protect. A cent is beneath notice in a
+#: game with a $25,000 wallet and removes the whole class of boundary failure.
+FARE_BUFFER = 0.01
 
 
 class GameOver(Exception):
@@ -128,7 +134,7 @@ class Game:
         price = self.market.price(symbol)
         if price <= 0:
             return 0.0
-        spendable = max(0.0, self.player.cash - SUBWAY_FARE)
+        spendable = max(0.0, self.player.cash - SUBWAY_FARE - FARE_BUFFER)
         return max(0.0, min(spendable / price, self.player.free_capacity / price))
 
     def buy(self, symbol: str, qty: float) -> str:
@@ -173,15 +179,38 @@ class Game:
 
     # ---------------------------------------------------------------- money
 
+    def borrow_limit(self) -> float:
+        """The most total debt The Shark will carry on you.
+
+        Measured against what he could actually seize - cash, vault and the
+        bags in your wallet - rather than net worth. Net worth already
+        subtracts the debt, so the more you owed the less you could borrow,
+        and since a run opens $3,500 underwater the ceiling sat below the
+        opening loan: borrowing was refused every time a player first tried
+        it, while the button sat there inviting them to.
+        """
+        seizable = (self.player.cash + self.player.vault
+                    + self.player.portfolio_value(self.market))
+        # The floor is twice the opening loan on purpose. Set any lower and the
+        # Shark is dead UI: a $6,000 ceiling is already below day two's $6,050
+        # of debt, so the button would exist purely to refuse you. At twice the
+        # opening loan the classic move is available - borrow big, trade hard,
+        # repay before the interest catches you - which is a real decision and
+        # usually a trap, rather than no decision at all.
+        return max(START_DEBT * 2.0, seizable * 2.0)
+
+    def borrowable(self) -> float:
+        """How much more he will actually hand over right now."""
+        return max(0.0, self.borrow_limit() - self.player.debt)
+
     def borrow(self, amount: float) -> str:
         if not self.station.has_shark:
             raise ValueError("The Shark doesn't work this station")
         if amount <= 0:
             raise ValueError("borrow how much?")
-        ceiling = max(2_000.0, self.player.net_worth(self.market) * 2.0)
-        if self.player.debt + amount > ceiling:
+        if self.player.debt + amount > self.borrow_limit():
             raise ValueError(f"The Shark looks you up and down. Not a chance over "
-                             f"${max(0.0, ceiling - self.player.debt):,.0f}")
+                             f"${self.borrowable():,.0f}")
         self.player.debt += amount
         self.player.cash += amount
         return f"Borrowed ${amount:,.2f}. The Shark smiles. That's never good."
@@ -256,7 +285,7 @@ class Game:
         target = station(name)
         if target.name == self.station.name:
             raise ValueError("you're already here")
-        if self.player.cash < SUBWAY_FARE:
+        if self.player.cash + 1e-9 < SUBWAY_FARE:
             raise ValueError(f"you can't even make the ${SUBWAY_FARE:.2f} fare")
 
         self.player.cash -= SUBWAY_FARE

@@ -161,6 +161,9 @@ function generate(st, rng, state, shockChance) {
 /* ------------------------------ game.py ------------------------------- */
 const DAYS = 30, START_CASH = 2000, START_DEBT = 5500, START_CAPACITY = 25000;
 const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
+// reserving the fare exactly is not enough: rounding leaves $2.8999999999 and
+// a player who cannot afford the fare the reserve was protecting
+const FARE_BUFFER = 0.01;
 
 function Game(seed) {
   // kept so a save records which run this was - the RNG state is what restores
@@ -206,7 +209,7 @@ Game.prototype.netWorth = function () {
 Game.prototype.maxBuyable = function (sym) {
   const p = this.market.prices[sym];
   if (!(p > 0)) return 0;
-  const spendable = Math.max(0, this.player.cash - SUBWAY_FARE);
+  const spendable = Math.max(0, this.player.cash - SUBWAY_FARE - FARE_BUFFER);
   return Math.max(0, Math.min(spendable / p, this.freeCapacity() / p));
 };
 Game.prototype.buy = function (sym, qty) {
@@ -233,12 +236,22 @@ Game.prototype.sell = function (sym, qty) {
   return { text: `Sold ${fmtQty(qty)} ${sym} for $${proceeds.toFixed(2)} (${profit >= 0 ? "made" : "lost"} $${Math.abs(profit).toFixed(2)})`,
            good: profit >= 0, profit };
 };
+// measured against what The Shark could seize, not net worth - net worth
+// already subtracts the debt, so the ceiling sat below the opening loan and
+// borrowing was refused every time a player first tried it
+Game.prototype.borrowLimit = function () {
+  // twice the opening loan: any lower and the Shark is dead UI, since a $6,000
+  // ceiling already sits below day two's $6,050 of debt
+  return Math.max(START_DEBT * 2, (this.player.cash + this.player.vault + this.portfolioValue()) * 2);
+};
+Game.prototype.borrowable = function () {
+  return Math.max(0, this.borrowLimit() - this.player.debt);
+};
 Game.prototype.borrow = function (amount) {
   if (!this.station.shark) throw new Error("The Shark doesn't work this station");
   if (!(amount > 0)) throw new Error("borrow how much?");
-  const ceiling = Math.max(2000, this.netWorth() * 2);
-  if (this.player.debt + amount > ceiling)
-    throw new Error(`The Shark looks you up and down. Not a chance over $${Math.max(0, ceiling - this.player.debt).toFixed(0)}`);
+  if (this.player.debt + amount > this.borrowLimit())
+    throw new Error(`The Shark looks you up and down. Not a chance over $${this.borrowable().toFixed(0)}`);
   this.player.debt += amount; this.player.cash += amount;
   return { text: `Borrowed $${amount.toFixed(2)}. The Shark smiles. That's never good.`, good: false };
 };
@@ -286,7 +299,7 @@ Game.prototype.buyVpn = function () {
 Game.prototype.travel = function (index) {
   const target = STATIONS[index];
   if (target.name === this.station.name) throw new Error("you're already here");
-  if (this.player.cash < SUBWAY_FARE) throw new Error(`you can't even make the $${SUBWAY_FARE.toFixed(2)} fare`);
+  if (this.player.cash + 1e-9 < SUBWAY_FARE) throw new Error(`you can't even make the $${SUBWAY_FARE.toFixed(2)} fare`);
   this.player.cash -= SUBWAY_FARE;
   this.station = target;
   this.day += 1;
