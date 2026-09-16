@@ -143,6 +143,20 @@ def recent(game: Game, n: int = 6) -> str:
     return "\n".join("  " + c(line, GREY) for line in game.log[-n:])
 
 
+def scoreboard(scores, limit: int = 10) -> str:
+    """The board, or an honest note that there isn't one yet."""
+    if not scores:
+        return "  " + c("No finished runs yet. Survive thirty days and you'll have one.", GREY)
+    from datetime import datetime
+    rows = ["  " + c(f"{'#':<3}{'NET WORTH':>15}{'DAY':>6}  WHEN         VERDICT", GREY)]
+    for i, s in enumerate(scores[:limit], 1):
+        when = datetime.fromtimestamp(s.finished_at).strftime("%d %b %H:%M") if s.finished_at else ""
+        colour = GREEN if s.net_worth > 0 else RED
+        rows.append(f"  {c(f'{i:<3}', YELL)}{c(money(s.net_worth), colour):>15}"
+                    f"{s.day:>6}  {c(f'{when:<12}', GREY)} {c(s.verdict[:38], GREY)}")
+    return "\n".join(rows)
+
+
 HELP = f"""
   {c('TRADE', MAG, True)}
     buy  <coin> <qty|max>     {c('b BTC 0.1   ·   buy DOGE max', GREY)}
@@ -159,5 +173,6 @@ HELP = f"""
 
   {c('ELSE', MAG, True)}
     look        {c('redraw the market', GREY)}
-    help        quit
+    scores      {c('your best runs', GREY)}
+    help        quit  {c('- quitting saves; reloading replays the same dice', GREY)}
 """

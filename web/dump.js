@@ -20,4 +20,15 @@ const out = {
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,
   })),
 };
-process.stdout.write(JSON.stringify(out, null, 2));
+/* A representative save, so the Python side can check both implementations
+   still agree on the format. Two front ends that disagree about what a save
+   looks like is the same silent-drift problem as disagreeing about a coin. */
+if (process.argv.includes("--save")) {
+  const g = new G.Game(21);
+  const q = g.maxBuyable("DOGE") * 0.3;
+  if (q > 0) g.buy("DOGE", q);
+  try { g.travel(0); } catch (e) { /* fare */ }
+  process.stdout.write(JSON.stringify({ save_version: G.SAVE_VERSION, save: G.saveToDict(g) }, null, 2));
+} else {
+  process.stdout.write(JSON.stringify(out, null, 2));
+}

@@ -4,15 +4,20 @@
 
 /* ---- seeded RNG: mulberry32 + Box-Muller, mirroring random.Random's API ---- */
 function RNG(seed) {
-  let a = (seed >>> 0) || 1;
-  this._next = function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  // the counter is a property rather than a closure variable so the whole
+  // generator state can be serialised - a save that could not restore the
+  // dice would let a reload reroll a bad day
+  this._a = (seed >>> 0) || 1;
   this._spare = null;
 }
+RNG.prototype._next = function () {
+  this._a = (this._a + 0x6D2B79F5) | 0;
+  let t = Math.imul(this._a ^ (this._a >>> 15), 1 | this._a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+RNG.prototype.getState = function () { return { a: this._a, spare: this._spare }; };
+RNG.prototype.setState = function (s) { this._a = s.a | 0; this._spare = s.spare === undefined ? null : s.spare; };
 RNG.prototype.random = function () { return this._next(); };
 RNG.prototype.uniform = function (a, b) { return a + (b - a) * this._next(); };
 RNG.prototype.gauss = function (mu, sigma) {
@@ -158,7 +163,10 @@ const DAYS = 30, START_CASH = 2000, START_DEBT = 5500, START_CAPACITY = 25000;
 const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
 
 function Game(seed) {
-  this.rng = new RNG(seed === undefined || seed === null ? (Math.random() * 1e9) | 0 : seed);
+  // kept so a save records which run this was - the RNG state is what restores
+  // the dice, but the seed is what lets you tell someone else to try it
+  this.seed = (seed === undefined || seed === null) ? (Math.random() * 1e9) | 0 : seed;
+  this.rng = new RNG(this.seed);
   this.day = 1;
   this.finished = false;
   this.station = STATIONS[9];              // 14 St-Union Sq
@@ -174,6 +182,12 @@ Game.prototype.say = function (m) { this.log.push(m); if (this.log.length > 200)
 Game.prototype.holding = function (sym) {
   if (!this.player.wallet[sym]) this.player.wallet[sym] = { qty: 0, cost: 0 };
   return this.player.wallet[sym];
+};
+Game.prototype.dropEmpty = function () {
+  // an empty bag is not a holding - keeps saved and live wallets identical
+  for (const [sym, h] of Object.entries(this.player.wallet)) {
+    if (h.qty <= 1e-12 && h.cost <= 1e-12) delete this.player.wallet[sym];
+  }
 };
 Game.prototype.usedCapacity = function () {
   return Object.values(this.player.wallet).reduce((s, h) => s + h.cost, 0);
@@ -214,6 +228,7 @@ Game.prototype.sell = function (sym, qty) {
   const profit = proceeds - released;
   h.qty -= qty; h.cost -= released;
   if (h.qty <= 1e-12) { h.qty = 0; h.cost = 0; }
+  this.dropEmpty();
   this.player.cash += proceeds;
   return { text: `Sold ${fmtQty(qty)} ${sym} for $${proceeds.toFixed(2)} (${profit >= 0 ? "made" : "lost"} $${Math.abs(profit).toFixed(2)})`,
            good: profit >= 0, profit };
@@ -308,11 +323,18 @@ function confiscate(game, fraction) {
   return removed;
 }
 const hasCoins = g => Object.values(g.player.wallet).some(h => h.qty > 0);
+/* Take cash, but never the last fare: stripped to nothing with an empty
+   wallet a player cannot buy, sell or travel - a dead end, not a hard spot. */
+function takeCash(g, amount) {
+  const spendable = Math.max(0, g.player.cash - SUBWAY_FARE);
+  const taken = Math.min(amount, spendable);
+  g.player.cash -= taken;
+  return taken;
+}
 
 function secRaid(g) {
   if (!hasCoins(g)) {
-    const fine = Math.min(g.player.cash, 400 + g.rng.random() * 900);
-    g.player.cash -= fine;
+    const fine = takeCash(g, 400 + g.rng.random() * 900);
     return [`SEC agents stop you at the turnstile. Nothing to seize, so they write you a $${fine.toFixed(2)} fine instead.`];
   }
   const f = g.rng.uniform(0.18, 0.42), lost = confiscate(g, f);
@@ -324,8 +346,7 @@ function phishing(g) {
   return [`You signed something you shouldn't have. A drainer takes $${lost.toFixed(2)} of your bags.`];
 }
 function gasSpike(g) {
-  const fee = Math.min(g.player.cash, 120 + g.rng.random() * 700);
-  g.player.cash -= fee;
+  const fee = takeCash(g, 120 + g.rng.random() * 700);
   return [`Network congestion. Gas eats $${fee.toFixed(2)} just to move your own money.`];
 }
 function airdrop(g) {
@@ -345,7 +366,7 @@ function foundWallet(g) {
 }
 function sharkVisit(g) {
   if (g.player.debt <= 0) return ["A large man studies you on the platform, decides you're nobody, and goes back to his phone."];
-  const demand = Math.min(g.player.cash, g.player.debt * 0.25);
+  const demand = Math.min(Math.max(0, g.player.cash - SUBWAY_FARE), g.player.debt * 0.25);
   if (demand < 50) return ["The Shark's associate finds you. You have nothing. He is patient. That's worse."];
   g.player.cash -= demand; g.player.debt -= demand;
   return [`The Shark's associate takes $${demand.toFixed(2)} off you on the platform.`];
@@ -356,7 +377,7 @@ function whaleOffer(g) {
   const [sym, h] = g.rng.choice(held);
   const premium = g.rng.uniform(1.25, 1.85);
   const proceeds = h.qty * g.market.prices[sym] * premium;
-  g.player.cash += proceeds; h.qty = 0; h.cost = 0;
+  g.player.cash += proceeds; h.qty = 0; h.cost = 0; g.dropEmpty();
   return [`A whale takes your entire ${sym} bag at ${Math.round(premium * 100)}% of market - $${proceeds.toFixed(2)}.`];
 }
 function delayEvent(g) {
@@ -377,6 +398,102 @@ function rollEvent(game) {
   return game.rng.choices(EVENTS.map(e => e[0]), weights)(game);
 }
 
+/* ------------------------------ save.js ------------------------------- */
+/* Mirrors cryptowarz/save.py, including the decision that matters: the RNG
+   state is saved, so reloading replays the same dice. A game of raids and rug
+   pulls where a reload rerolls is a game where the risk is optional.
+
+   localStorage is per-browser and can throw (private mode, blocked site data),
+   so every read and write is guarded and the game plays fine without it. */
+const SAVE_VERSION = 1;
+const SAVE_KEY = "cryptowarz.save.v1";
+const SCORE_KEY = "cryptowarz.scores.v1";
+const MAX_SCORES = 25;
+
+function saveToDict(g) {
+  const wallet = {};
+  for (const [sym, h] of Object.entries(g.player.wallet)) {
+    if (h.qty > 0 || h.cost > 0) wallet[sym] = { qty: h.qty, cost: h.cost };
+  }
+  return {
+    save_version: SAVE_VERSION,
+    saved_at: Date.now() / 1000,
+    seed: g.seed,
+    day: g.day,
+    finished: g.finished,
+    station: g.station.name,
+    player: { cash: g.player.cash, debt: g.player.debt, vault: g.player.vault,
+              capacity: g.player.capacity, vpn: g.player.vpn, wallet },
+    levels: Object.assign({}, g.state.levels),
+    market: {
+      prices: Object.assign({}, g.market.prices),
+      shock: g.market.shock ? { symbol: g.market.shock.symbol,
+                                headline: g.market.shock.headline,
+                                factor: g.market.shock.factor } : null,
+    },
+    rng: g.rng.getState(),
+    log: g.log.slice(-40),
+  };
+}
+
+function saveFromDict(data) {
+  if (!data || data.save_version !== SAVE_VERSION) {
+    throw new Error("that save is from a different version of the game");
+  }
+  const g = new Game(data.seed === undefined ? 0 : data.seed);
+  g.rng.setState(data.rng);
+  g.day = data.day;
+  g.finished = !!data.finished;
+  g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
+  g.log = (data.log || []).slice();
+  const p = data.player;
+  g.player = { cash: p.cash, debt: p.debt, vault: p.vault, capacity: p.capacity,
+               vpn: p.vpn || 0, wallet: {} };
+  for (const [sym, h] of Object.entries(p.wallet || {})) {
+    if (COIN[sym]) g.player.wallet[sym] = { qty: h.qty, cost: h.cost };
+  }
+  for (const c of COINS) {
+    if (data.levels[c.symbol] === undefined) throw new Error("that save predates " + c.symbol);
+  }
+  g.state.levels = Object.assign({}, data.levels);
+  g.market = { station: g.station, prices: Object.assign({}, data.market.prices),
+               shock: data.market.shock ? Object.assign({ crash: data.market.shock.factor < 1 },
+                                                        data.market.shock) : null,
+               headline: data.market.shock ? data.market.shock.headline : null };
+  return g;
+}
+
+function writeSave(g) {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveToDict(g))); return true; }
+  catch (e) { return false; }
+}
+function readSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    return saveFromDict(JSON.parse(raw));
+  } catch (e) { clearSave(); return null; }
+}
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+function readScores() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SCORE_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(r => r && typeof r.net_worth === "number")
+              .sort((a, b) => b.net_worth - a.net_worth);
+  } catch (e) { return []; }
+}
+function recordScore(g) {
+  const scores = readScores();
+  scores.push({ net_worth: g.finalScore(), day: Math.min(g.day, DAYS),
+                verdict: g.verdict(), finished_at: Date.now() / 1000, seed: g.seed });
+  scores.sort((a, b) => b.net_worth - a.net_worth);
+  const kept = scores.slice(0, MAX_SCORES);
+  try { localStorage.setItem(SCORE_KEY, JSON.stringify(kept)); } catch (e) {}
+  return kept;
+}
+
 /* ------------------------------ helpers ------------------------------- */
 function fmtQty(q) {
   if (q >= 1000) return q.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -395,5 +512,6 @@ function fmtMoney(v) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE, fmtQty, fmtPrice, fmtMoney };
+  module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
+                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION };
 }

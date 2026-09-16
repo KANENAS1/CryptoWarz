@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Callable, List, Tuple
 if TYPE_CHECKING:                       # pragma: no cover
     from .game import Game
 
+from .game import SUBWAY_FARE  # noqa: E402  (module-level constant, no cycle)
+
 
 def _confiscate(game: "Game", fraction: float) -> float:
     """Take a share of every holding. Returns the cost basis removed."""
@@ -38,12 +40,27 @@ def _has_coins(game: "Game") -> bool:
     return any(h.qty > 0 for h in game.player.wallet.values())
 
 
+def _take_cash(game: "Game", amount: float) -> float:
+    """Take cash, but never the last subway fare.
+
+    Stripped to nothing with an empty wallet, a player cannot buy, cannot sell
+    and cannot travel - the run is over with twenty days left and no move
+    available. That is a dead end rather than a hard position, and it is the
+    same reason ``max_buyable`` reserves the fare. Events can ruin you; they
+    should not be able to strip you of the ability to play.
+    """
+    from .game import SUBWAY_FARE
+    spendable = max(0.0, game.player.cash - SUBWAY_FARE)
+    taken = min(amount, spendable)
+    game.player.cash -= taken
+    return taken
+
+
 # ---------------------------------------------------------------- the events
 
 def sec_raid(game: "Game") -> List[str]:
     if not _has_coins(game):
-        fine = min(game.player.cash, 400.0 + game.rng.random() * 900.0)
-        game.player.cash -= fine
+        fine = _take_cash(game, 400.0 + game.rng.random() * 900.0)
         return [f"SEC agents stop you at the turnstile. Nothing to seize, so they "
                 f"write you a ${fine:,.2f} fine instead."]
     fraction = game.rng.uniform(0.18, 0.42)
@@ -62,8 +79,7 @@ def phishing(game: "Game") -> List[str]:
 
 
 def gas_spike(game: "Game") -> List[str]:
-    fee = min(game.player.cash, 120.0 + game.rng.random() * 700.0)
-    game.player.cash -= fee
+    fee = _take_cash(game, 120.0 + game.rng.random() * 700.0)
     return [f"Network congestion. Gas eats ${fee:,.2f} just to move your own money."]
 
 
@@ -94,7 +110,7 @@ def shark_visit(game: "Game") -> List[str]:
     if game.player.debt <= 0:
         return ["A large man studies you on the platform, decides you're nobody, "
                 "and goes back to his phone."]
-    demand = min(game.player.cash, game.player.debt * 0.25)
+    demand = min(max(0.0, game.player.cash - SUBWAY_FARE), game.player.debt * 0.25)
     if demand < 50:
         return ["The Shark's associate finds you. You have nothing. He is patient. "
                 "That's worse."]
@@ -114,6 +130,7 @@ def whale_offer(game: "Game") -> List[str]:
     proceeds = holding.qty * price
     game.player.cash += proceeds
     holding.qty, holding.cost = 0.0, 0.0
+    game.player.drop_empty()
     return [f"A whale takes your entire {symbol} bag off you at {premium:.0%} of "
             f"market - ${proceeds:,.2f}. Ask no questions."]
 

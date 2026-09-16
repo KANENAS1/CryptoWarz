@@ -163,7 +163,8 @@
 
   <footer>
     <button class="go" id="ride">RIDE THE TRAIN →</button>
-    <button id="newgame" style="flex:0 0 auto;min-width:78px">NEW</button>
+    <button id="board" style="flex:0 0 auto;min-width:56px">BEST</button>
+    <button id="newgame" style="flex:0 0 auto;min-width:56px">NEW</button>
   </footer>
 </div>
 
@@ -171,6 +172,12 @@
   <h3>WHERE TO? — ONE DAY EACH WAY</h3>
   <div class="sheetscroll" id="stops"></div>
   <div style="padding-top:10px"><button id="cancel">CANCEL</button></div>
+</div>
+
+<div class="sheet" id="scores">
+  <h3>YOUR BEST RUNS</h3>
+  <div class="sheetscroll" id="scorelist"></div>
+  <div style="padding-top:10px"><button id="closescores">BACK</button></div>
 </div>
 
 <div class="sheet" id="over">
@@ -301,6 +308,7 @@ function act(fn){
   try { const r = fn(); if (r && r.text) { game.say(r.text); flash(r.text, r.good !== false); } }
   catch (e) { flash(e.message, false); }
   render();
+  persist();
 }
 
 $("main").addEventListener("click", e => {
@@ -361,11 +369,15 @@ $("stops").addEventListener("click", e => {
     const notable = msgs.slice(2).find(m => m);
     if (notable) flash(notable, !/SEC|drainer|Gas|Signal|Shark's/.test(notable));
   } catch (err) { flash(err.message, false); }
+  persist();
   if (game.finished) showFinal();
 });
 
 function showFinal(){
   const g = game, p = g.player, score = g.finalScore();
+  const board = recordScore(g);
+  clearSave();
+  const rank = board.findIndex(s => Math.abs(s.net_worth - score) < 1e-9);
   $("fscore").textContent = fmtMoney(score);
   $("fscore").className = "big num " + (score >= 0 ? "up" : "down");
   $("fverdict").textContent = g.verdict();
@@ -373,22 +385,64 @@ function showFinal(){
     ["cash", fmtMoney(p.cash)], ["vault", fmtMoney(p.vault)],
     ["holdings", fmtMoney(g.portfolioValue())], ["debt", "-" + fmtMoney(p.debt).replace("-", "")],
   ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+  if (rank === 0) $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
+  else if (rank > 0 && rank < 5) $("fverdict").textContent =
+    `Number ${rank + 1} on your board. ` + $("fverdict").textContent;
   $("over").classList.add("on");
 }
+
+/* ------------------------------ persistence ---------------------------- */
+/* The run is written after every move, so closing the tab mid-game loses
+   nothing. The saved RNG state means reopening replays the same dice - you
+   cannot close the tab to dodge a raid you have already walked into. */
+function persist(){ if (game && !game.finished) writeSave(game); }
+
+function showScores(){
+  const scores = readScores();
+  $("scorelist").innerHTML = scores.length
+    ? scores.slice(0, 15).map((s, i) => `<div class="stop">
+        <div><div class="nm num ${s.net_worth >= 0 ? "up" : "down"}">${fmtMoney(s.net_worth)}</div>
+        <div class="meta"><span class="heat">DAY ${s.day} · ${new Date(s.finished_at * 1000)
+          .toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span></div></div>
+        <div class="heat" style="max-width:150px;text-align:right">${s.verdict.split(".")[0]}</div>
+      </div>`).join("")
+    : `<div class="note" style="padding:14px 2px">No finished runs yet. Survive thirty days and you'll have one.</div>`;
+  $("scores").classList.add("on");
+}
+$("board").addEventListener("click", showScores);
+$("closescores").addEventListener("click", () => $("scores").classList.remove("on"));
 
 function start(seed){
   game = new Game(seed);
   openCoin = null;
-  $("over").classList.remove("on");
-  $("travel").classList.remove("on");
+  clearSave();
+  ["over", "travel", "scores"].forEach(id => $(id).classList.remove("on"));
   render();
+  persist();
 }
-$("newgame").addEventListener("click", () => start());
-$("again").addEventListener("click", () => start());
 
-/* the run survives a republish */
-window.claude?.hot?.snapshot?.(() => null);
-start(Math.floor(Math.random() * 1e9));
+function boot(){
+  const resumed = readSave();
+  if (resumed && !resumed.finished) {
+    game = resumed;
+    openCoin = null;
+    render();
+    flash(`Picked up where you left off - day ${game.day}, ${game.station.name}.`, true);
+  } else {
+    start(Math.floor(Math.random() * 1e9));
+  }
+}
+
+$("newgame").addEventListener("click", () => {
+  if (game && !game.finished && game.day > 1
+      && !confirm("Abandon the run in progress and start over?")) return;
+  start(Math.floor(Math.random() * 1e9));
+});
+$("again").addEventListener("click", () => start(Math.floor(Math.random() * 1e9)));
+
+/* carry the run across a republish as well as a page close */
+window.claude?.hot?.snapshot?.(() => (game ? saveToDict(game) : null));
+boot();
 </script>
 </body>
 </html>

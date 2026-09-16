@@ -144,10 +144,43 @@ table supports must hold on both sides.
 Those tests skip cleanly when node isn't installed, because the Python package
 itself stays dependency-free.
 
+## Saving, and why you can't scum it
+
+Quit whenever. The terminal game writes to `~/.cryptowarz/save.json` after
+every move and offers to pick the run back up; the phone version does the same
+in `localStorage`, so closing the tab mid-run loses nothing. Finished runs go
+on a scoreboard (`scores` in the game, or `--scores`).
+
+**The save includes the random state.** That is the whole design, not a
+detail. A game of SEC raids and rug pulls invites savescumming — quit before a
+bad outcome, reload, take the ride again and hope for different dice. If
+reloading rerolled, the risk here would be optional, and a game where the risk
+is optional has no decisions in it. So a reload replays the same day with the
+same result, and the only way past a bad roll is to live with it.
+
+It follows that prices and the pending shock are stored rather than
+regenerated — regenerating would draw from the generator and desynchronise
+everything after it.
+
+A save from a different version is **refused**, not guessed at. Silently
+loading one the rules have moved past would corrupt a run in ways that look
+like bugs.
+
+```bash
+python3 -m cryptowarz              # resumes if there's a run in progress
+python3 -m cryptowarz --new        # start fresh, discard the save
+python3 -m cryptowarz --scores     # the board
+python3 -m cryptowarz --no-save    # touch nothing on disk
+```
+
+Both front ends write the **same save shape** and the same version, and
+`test_web_parity.py` checks it — which caught a real divergence the first time
+it ran, where Python recorded the run's seed and the port didn't.
+
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 48 tests, no install needed
+python3 -m unittest discover -s tests     # 68 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

@@ -91,6 +91,55 @@ class TestDataParity(unittest.TestCase):
 
 
 @requires_node
+class TestSaveFormatParity(unittest.TestCase):
+    """Both front ends must agree on what a save looks like.
+
+    They store in different places - a JSON file versus localStorage - but the
+    shape and the version are shared, so a save format change on one side is a
+    visible break rather than a quiet divergence.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js", "--save")
+
+    def python_save(self):
+        import tempfile
+        from cryptowarz import save as S
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+        g = Game(seed=21)
+        qty = g.max_buyable("DOGE") * 0.3
+        if qty > 0:
+            g.buy("DOGE", qty)
+        try:
+            g.travel(next(s.name for s in STATIONS if s.name != g.station.name))
+        except ValueError:
+            pass
+        return S.to_dict(g)
+
+    def test_the_save_version_matches(self):
+        from cryptowarz.save import SAVE_VERSION
+        self.assertEqual(self.js["save_version"], SAVE_VERSION)
+
+    def test_the_top_level_shape_matches(self):
+        py = self.python_save()
+        self.assertEqual(sorted(self.js["save"]), sorted(py),
+                         "the two save formats have drifted apart")
+
+    def test_the_player_shape_matches(self):
+        py = self.python_save()
+        self.assertEqual(sorted(self.js["save"]["player"]), sorted(py["player"]))
+
+    def test_both_record_prices_and_the_pending_shock(self):
+        for save in (self.js["save"], self.python_save()):
+            self.assertIn("prices", save["market"])
+            self.assertIn("shock", save["market"])
+            self.assertIn("levels", save)
+            self.assertIn("rng", save)     # the anti-savescum guarantee
+
+
+@requires_node
 class TestBalanceParity(unittest.TestCase):
     """Shape comparison.
 

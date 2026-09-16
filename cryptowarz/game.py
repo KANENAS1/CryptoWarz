@@ -61,6 +61,18 @@ class Player:
     def holding(self, symbol: str) -> Holding:
         return self.wallet.setdefault(symbol.upper(), Holding())
 
+    def drop_empty(self) -> None:
+        """Forget positions that have gone to zero.
+
+        An empty bag is not a holding. Keeping the key around made the live
+        wallet and a reloaded one disagree - a save prunes them, memory did
+        not - which is harmless right now and exactly the sort of difference
+        that turns into a confusing bug the first time something iterates the
+        wallet and assumes every key is a real position.
+        """
+        for symbol in [s for s, h in self.wallet.items() if h.qty <= 1e-12 and h.cost <= 1e-12]:
+            del self.wallet[symbol]
+
     @property
     def used_capacity(self) -> float:
         return math.fsum(h.cost for h in self.wallet.values())
@@ -153,6 +165,7 @@ class Game:
         h.cost -= released
         if h.qty <= 1e-12:
             h.qty, h.cost = 0.0, 0.0
+        self.player.drop_empty()
         self.player.cash += proceeds
         verb = "made" if profit >= 0 else "lost"
         return (f"Sold {qty:,.6f} {symbol} at ${price:,.6f} for ${proceeds:,.2f} "

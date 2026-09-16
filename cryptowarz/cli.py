@@ -11,6 +11,7 @@ import random
 import sys
 from typing import List, Optional
 
+from . import save as save_module
 from . import ui
 from .coins import BY_SYMBOL
 from .game import DAYS, Game, GameOver
@@ -82,6 +83,8 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("look", "l", ""):
         return []
+    if cmd in ("scores", "score", "hof"):
+        return [ui.scoreboard(save_module.read_scores())]
     if cmd in ("help", "h", "?"):
         return [ui.HELP]
     if cmd in ("quit", "exit", "q"):
@@ -89,10 +92,41 @@ def handle(game: Game, raw: str) -> List[str]:
     return [f"'{cmd}'? try 'help'"]
 
 
-def play(seed: Optional[int] = None) -> int:
+def resume_or_new(seed: Optional[int], force_new: bool) -> Game:
+    """Offer to pick up an interrupted run, unless told to start fresh."""
+    if force_new or not save_module.has_save():
+        save_module.clear_save()
+        return Game(seed=seed)
+    try:
+        saved = save_module.read_save()
+    except save_module.SaveError as exc:
+        print(ui.c(f"  {exc}", ui.RED))
+        save_module.clear_save()
+        return Game(seed=seed)
+    if saved is None or saved.finished:
+        save_module.clear_save()
+        return Game(seed=seed)
+
+    worth = saved.player.net_worth(saved.market)
+    print(ui.c(f"  You have a run in progress: day {saved.day}, {saved.station.name}, "
+               f"net {ui.money(worth)}.", ui.YELL))
+    try:
+        answer = input(ui.c("  Pick it up? [Y/n] ", ui.MAG, True)).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = "y"
+    if answer in ("", "y", "yes"):
+        return saved
+    save_module.clear_save()
+    return Game(seed=seed)
+
+
+def play(seed: Optional[int] = None, force_new: bool = False, autosave: bool = True) -> int:
     ui.enable_color()
-    game = Game(seed=seed)
     print(ui.banner())
+    best = save_module.best_score()
+    if best:
+        print(ui.c(f"  Best run so far: {ui.money(best.net_worth)}", ui.GREY))
+    game = resume_or_new(seed, force_new)
     print(ui.c("  Buy low at one stop, sell high at another. You have thirty days\n"
                "  and a debt that grows 10% a day. Type 'help' for commands.", ui.GREY))
     draw(game)
@@ -107,12 +141,21 @@ def play(seed: Optional[int] = None) -> int:
             for line in handle(game, raw):
                 # multi-line blocks (map, help) carry their own indentation
                 print(line if "\n" in line else "  " + line)
+            if autosave and not game.finished:
+                save_module.write_save(game)
         except GameOver as exc:
             print("\n  " + str(exc))
+            if autosave and not game.finished:
+                save_module.write_save(game)
+                print(ui.c("  Run saved. It will be waiting.", ui.GREY))
             break
         except (ValueError, KeyError) as exc:
             print("  " + ui.c(str(exc), ui.RED))
             continue
+        except OSError as exc:
+            # a read-only home directory must not end a game
+            print("  " + ui.c(f"could not save ({exc}); play on, nothing else is affected", ui.RED))
+            autosave = False
         if game.day > DAYS:
             game.finished = True
             break
@@ -130,6 +173,20 @@ def play(seed: Optional[int] = None) -> int:
           f"{ui.c(ui.money(score), ui.GREEN if score > 0 else ui.RED, True)}")
     print()
     print("  " + ui.c(game.verdict(), ui.YELL))
+
+    if game.finished:
+        try:
+            scores = save_module.record_score(game)
+            save_module.clear_save()
+            rank = next((i for i, s in enumerate(scores) if abs(s.net_worth - score) < 1e-9), None)
+            if rank == 0:
+                print("  " + ui.c("A new best run.", ui.GREEN, True))
+            elif rank is not None and rank < 5:
+                print("  " + ui.c(f"Number {rank + 1} on your board.", ui.CYAN))
+            print()
+            print(ui.scoreboard(scores, limit=5))
+        except OSError as exc:
+            print("  " + ui.c(f"could not record the score ({exc})", ui.RED))
     print()
     return 0
 
@@ -138,11 +195,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(prog="cryptowarz",
                                 description="Buy low, sell high, ride the subway, dodge the SEC.")
     p.add_argument("--seed", type=int, default=None, help="replay the same thirty days")
+    p.add_argument("--new", action="store_true", help="start fresh, discarding any saved run")
+    p.add_argument("--no-save", action="store_true", help="do not read or write save files")
+    p.add_argument("--scores", action="store_true", help="show the scoreboard and exit")
     p.add_argument("--no-color", action="store_true")
     args = p.parse_args(argv)
     if args.no_color:
         ui.enable_color(False)
-    return play(args.seed)
+    if args.scores:
+        ui.enable_color()
+        print(ui.scoreboard(save_module.read_scores()))
+        return 0
+    return play(args.seed, force_new=args.new or args.no_save, autosave=not args.no_save)
 
 
 if __name__ == "__main__":
