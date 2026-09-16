@@ -126,6 +126,9 @@ def from_dict(data: Dict[str, Any]):
     stats = data.get("stats")
     if stats:
         game.stats = {**stats, "stations": set(stats.get("stations", []))}
+    # god mode lives in stats, so it reloads with the run rather than needing a
+    # save key of its own - and a reload cannot be used to shake it off
+    game.god_mode = bool(game.stats.get("god_mode", False))
     game.rng = _decode_rng(data["rng"])
     game.day = int(data["day"])
     game.finished = bool(data.get("finished", False))
@@ -230,7 +233,11 @@ def read_scores() -> List[Score]:
 
 
 def record_score(game) -> List[Score]:
+    from .progress import counts_for_progress
+
     scores = read_scores()
+    if not counts_for_progress(game):
+        return scores          # a god-mode run is a toy, not a result
     scores.append(Score(game.final_score(), min(game.day, 30), game.verdict(),
                         time.time(), game.seed))
     scores.sort(key=lambda s: s.net_worth, reverse=True)

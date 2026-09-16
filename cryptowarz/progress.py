@@ -162,6 +162,30 @@ GRADES: List[tuple] = [
 ]
 
 
+#: What a run marked "god mode" is graded. It is not a grade you can earn by
+#: playing; it is the game telling you this one was a toy.
+GOD_GRADE = "G"
+
+
+def counts_for_progress(game) -> bool:
+    """Whether a finished run may touch the board, the goals or the ladder.
+
+    A run that found the Easter egg is handed free crypto every ride. Letting
+    that post a score would end the leaderboard, and letting it unlock perks
+    and tiers would quietly hand somebody the whole progression for two dice
+    calls. So the sandbox stays a sandbox - and because it also never spends a
+    ranked slot, finding it costs you nothing either.
+    """
+    return not getattr(game, "god_mode", False)
+
+
+def run_grade(game) -> str:
+    """The letter a finished run is shown. Both front ends must agree."""
+    if not counts_for_progress(game):
+        return GOD_GRADE
+    return grade(run_points(game))
+
+
 def tier_mult(tier: int) -> float:
     return TIER_BY_LEVEL.get(tier, TIER_BY_LEVEL[1]).score_mult
 
@@ -329,6 +353,8 @@ def daily_seed(when: Optional[float] = None) -> int:
 
 def award(profile: Profile, game) -> List[Achievement]:
     """Score a finished run against the profile. Returns what was newly earned."""
+    if not counts_for_progress(game):
+        return []
     earned = []
     for achievement in ACHIEVEMENTS:
         if achievement.key in profile.achievements:
@@ -357,6 +383,11 @@ def record_daily(profile: Profile, game, slot: int,
     """
     day = profile.roll_day(day)
     points = run_points(game)
+    if not counts_for_progress(game):
+        # the slot is not spent either: the Easter egg costs you nothing
+        return {"slot": int(slot), "points": 0.0, "net": round(game.final_score(), 2),
+                "grade": GOD_GRADE, "tier": int(getattr(game, "tier", 1)),
+                "at": time.time()}
     entry = {"slot": int(slot), "points": round(points, 2),
              "net": round(game.final_score(), 2), "grade": grade(points),
              "tier": int(getattr(game, "tier", 1)), "at": time.time()}

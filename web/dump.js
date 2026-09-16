@@ -27,6 +27,44 @@ const out = {
     achievements: G.ACHIEVEMENTS.map(a => a.key),
     perks: G.PERKS.map(x => ({ key: x.key, by: x.by })),
   },
+  dice: (() => {
+    /* Constants both sides must agree on, plus the three behaviours that make
+       the Easter egg safe to ship - asserted here rather than described, so a
+       port that quietly stops gating god mode fails the parity suite. */
+    const ride = (g, n) => {
+      for (let i = 0; i < n; i++) {
+        g.player.cash += 500;
+        const here = G.STATIONS.findIndex(s => s.name === g.station.name);
+        g.travel((here + 3) % G.STATIONS.length);
+      }
+    };
+    const play = picks => {
+      const g = new G.Game(5);
+      for (const pick of picks) {
+        while (!g.diceReady) ride(g, 1);
+        g.rollDice(pick);
+      }
+      return g;
+    };
+    const god = play(G.GOD_SEQUENCE);
+    god.player.debt = 0; god.player.wallet = {}; god.player.cash = 900000;
+    god.finalise();
+    const profile = G.blankProfile();
+    G.award(profile, god);
+    G.recordDaily(profile, god, 0);
+    return {
+      every: G.DICE_EVERY, sides: G.DICE_SIDES,
+      near_prize: G.DICE_NEAR_PRIZE, exact_prize: G.DICE_EXACT_PRIZE,
+      god_gift: G.GOD_GIFT, god_sequence: G.GOD_SEQUENCE, god_grade: G.GOD_GRADE,
+      ready_on_day_one: new G.Game(1).diceReady,
+      sequence_opens_it: god.godMode,
+      reversed_does_not: play(G.GOD_SEQUENCE.slice().reverse()).godMode,
+      god_grade_shown: G.runGrade(god),
+      unlocks_nothing: profile.achievements.length === 0 && profile.runs === 0,
+      spends_no_ranked_slot: G.nextSlot(profile) === 0,
+      survives_reload: G.saveFromDict(G.saveToDict(god)).godMode,
+    };
+  })(),
   stations: G.STATIONS.map(s => ({
     name: s.name, heat: s.heat, bias: s.bias,
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,

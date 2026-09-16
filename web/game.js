@@ -165,6 +165,15 @@ const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
 // a player who cannot afford the fare the reserve was protecting
 const FARE_BUFFER = 0.01;
 
+/* ------------------------------- the dice ------------------------------
+   Somebody runs dice on the platform every few rides. There is no stake: the
+   worst outcome is nothing, so this is a flourish rather than a decision, and
+   deliberately not a way to gamble out of a bad run. */
+const DICE_EVERY = 4, DICE_SIDES = 10, DICE_NEAR_PRIZE = 400, DICE_EXACT_PRIZE = 3000;
+/* Call these two numbers, in that order, and the turnstile stops caring.
+   A run that finds it is a sandbox - see countsForProgress. */
+const GOD_SEQUENCE = [4, 2], GOD_GIFT = 1800;
+
 function Game(seed, tier, perk) {
   // kept so a save records which run this was - the RNG state is what restores
   // the dice, but the seed is what lets you tell someone else to try it
@@ -183,7 +192,9 @@ function Game(seed, tier, perk) {
   if (this.perk === "seed_round") this.player.cash += 2000;
   if (this.perk === "cold_storage") this.player.capacity += 15000;
   this.stats = { stations: [this.station.name], raids: 0, peak_worth: 0,
-                 best_multiple: 0, worth_by_day: [] };
+                 best_multiple: 0, worth_by_day: [],
+                 dice_picks: [], dice_days: [], god_mode: false };
+  this.godMode = false;
   this.log = [];
   this.state = new MarketState(this.rng);
   this.market = generate(this.station, this.rng, this.state);
@@ -200,6 +211,57 @@ Object.defineProperty(Game.prototype, "fare", {
   get() { return this.perk === "metrocard" ? 0 : SUBWAY_FARE; } });
 Object.defineProperty(Game.prototype, "sharkRate", {
   get() { return this.perk === "fixer" ? 0.085 : SHARK_RATE; } });
+
+/* ------------------------------- the dice ---------------------------- */
+/* Measured from the last roll rather than off the calendar: a signal delay
+   costs two days instead of one, and a plain `day % 4` offer silently skipped
+   every time one landed on the wrong day. Counting from the last roll also
+   means an offer you ignore keeps standing. */
+Object.defineProperty(Game.prototype, "diceReady", {
+  get() {
+    const days = this.stats.dice_days || [];
+    return this.day - (days.length ? days[days.length - 1] : 0) >= DICE_EVERY;
+  } });
+/* Fair value rather than zero cost on purpose: a bag with no cost basis would
+   take up no wallet room and make every sale an infinite multiple. Free means
+   you did not pay cash for it, not that it weighs nothing. */
+Game.prototype.gift = function (value, why) {
+  const target = this.rng.choice(COINS.filter(c => c.symbol !== "USDC"));
+  const price = this.market.prices[target.symbol];
+  if (price <= 0) return [];
+  const room = this.freeCapacity();
+  if (room < 1) return [`${why} - and your wallet is full. It goes to somebody else.`];
+  value = Math.min(value, room);
+  const h = this.holding(target.symbol);
+  h.qty += value / price;
+  h.cost += value;
+  return [`${why}: ${fmtQty(value / price)} ${target.symbol} (~$${value.toFixed(2)}).`];
+};
+Game.prototype.rollDice = function (pick) {
+  if (!this.diceReady) throw new Error("nobody's running dice right now");
+  pick = parseInt(pick, 10);
+  if (!(pick >= 1 && pick <= DICE_SIDES)) throw new Error(`call a number from 1 to ${DICE_SIDES}`);
+  (this.stats.dice_days = this.stats.dice_days || []).push(this.day);
+  const picks = (this.stats.dice_picks = this.stats.dice_picks || []);
+  picks.push(pick);
+  const rolled = 1 + Math.floor(this.rng.random() * DICE_SIDES);
+  const messages = [`You call ${pick}. The dice come up ${rolled}.`];
+  if (rolled === pick) messages.push(...this.gift(DICE_EXACT_PRIZE, "Dead on"));
+  else if (Math.abs(rolled - pick) === 1) messages.push(...this.gift(DICE_NEAR_PRIZE, "One off, and he's feeling generous"));
+  else messages.push("Nothing. It was free to play.");
+  messages.push(...this.checkGod(picks));
+  messages.forEach(m => this.say(m));
+  return messages;
+};
+Game.prototype.checkGod = function (picks) {
+  if (this.godMode || picks.length < GOD_SEQUENCE.length) return [];
+  if (!GOD_SEQUENCE.every((n, i) => picks[i] === n)) return [];
+  this.godMode = true;
+  this.stats.god_mode = true;
+  return ["The dice stop mid-air.",
+          "GOD MODE. The turnstile swings open for you from now on - free crypto every ride.",
+          "This run is a sandbox now: it posts nothing and unlocks nothing."];
+};
 Game.prototype.finalise = function () {
   const held = Object.entries(this.player.wallet).filter(([, h]) => h.qty > 0).map(([s]) => s);
   this.stats.meme_only_finish = held.length > 0 && held.every(s => COIN[s].meme);
@@ -322,6 +384,7 @@ Game.prototype.buyVpn = function () {
   return { text: `VPN level ${this.player.vpn}. You draw less attention now.`, good: true };
 };
 Game.prototype.travel = function (index) {
+  const wasReady = this.diceReady;         // so the offer is announced once
   const target = STATIONS[index];
   if (target.name === this.station.name) throw new Error("you're already here");
   if (this.player.cash + 1e-9 < this.fare) throw new Error(`you can't even make the $${this.fare.toFixed(2)} fare`);
@@ -335,7 +398,9 @@ Game.prototype.travel = function (index) {
   this.market = generate(this.station, this.rng, this.state);
   const messages = [`Day ${this.day}. ${target.name}.`, target.flavor];
   if (this.market.headline) messages.push(this.market.headline);
+  if (this.godMode) for (const m of this.gift(GOD_GIFT, "The turnstile blesses you")) messages.push(m);
   for (const m of rollEvent(this)) messages.push(m);
+  if (this.diceReady && !wasReady) messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
   this.markStats();
   messages.forEach(m => this.say(m));
   if (this.day > this.days) { this.finished = true; messages.push("That's the run."); }
@@ -508,6 +573,14 @@ const GRADES = [
   [2000,   "D",  "You finished. Barely."],
   [0,      "F",  "The Shark got paid. You didn't."],
 ];
+/* Not a grade you can earn by playing; it is the game saying this one was a toy. */
+const GOD_GRADE = "G";
+/* A run handed free crypto every ride may not touch the board, the goals or
+   the ladder: posting it would end the leaderboard, and unlocking from it would
+   hand somebody the whole progression for two dice calls. It costs nothing
+   either - the ranked slot stays unspent. */
+function countsForProgress(g) { return !(g && g.godMode); }
+function runGrade(g) { return countsForProgress(g) ? gradeFor(runPoints(g)) : GOD_GRADE; }
 function tierMult(tier) { return (TIER_BY_LEVEL[tier] || TIERS[0]).mult; }
 /* Floored at zero: a board that can be dragged down is one where the safe play
    is not to play. */
@@ -562,6 +635,10 @@ function dailyTotal(p, day) {
    only means something if each market is played once. */
 function recordDaily(p, g, slot, day) {
   day = rollDay(p, day);
+  if (!countsForProgress(g)) {          // the slot is not spent either
+    return { slot: slot, points: 0, net: Math.round(g.finalScore() * 100) / 100,
+             grade: GOD_GRADE, tier: g.tier || 1, at: Date.now() / 1000 };
+  }
   const points = runPoints(g);
   const entry = { slot: slot, points: Math.round(points * 100) / 100,
                   net: Math.round(g.finalScore() * 100) / 100,
@@ -592,6 +669,7 @@ function dailySeed(when) {
 }
 
 function award(profile, g) {
+  if (!countsForProgress(g)) return [];
   const earned = [];
   for (const a of ACHIEVEMENTS) {
     if (profile.achievements.includes(a.key)) continue;
@@ -659,6 +737,9 @@ function saveFromDict(data) {
   g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
   g.isDaily = g.dailySlot !== null;
   if (data.stats) g.stats = data.stats;
+  // god mode lives in stats, so it reloads with the run rather than needing a
+  // save key of its own - and a reload cannot be used to shake it off
+  g.godMode = !!(g.stats && g.stats.god_mode);
   g.day = data.day;
   g.finished = !!data.finished;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
@@ -703,6 +784,7 @@ function readScores() {
 }
 function recordScore(g) {
   const scores = readScores();
+  if (!countsForProgress(g)) return scores;   // a god-mode run is a toy, not a result
   scores.push({ net_worth: g.finalScore(), day: Math.min(g.day, DAYS),
                 verdict: g.verdict(), finished_at: Date.now() / 1000, seed: g.seed });
   scores.sort((a, b) => b.net_worth - a.net_worth);
@@ -735,5 +817,7 @@ if (typeof module !== "undefined") {
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
-                     PROGRESS_VERSION };
+                     PROGRESS_VERSION, DICE_EVERY, DICE_SIDES, DICE_NEAR_PRIZE,
+                     DICE_EXACT_PRIZE, GOD_GIFT, GOD_SEQUENCE, GOD_GRADE,
+                     countsForProgress, runGrade };
 }

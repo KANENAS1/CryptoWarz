@@ -214,6 +214,7 @@ HELP = f"""
 
   {c('MOVE', MAG, True)}
     go <number>               {c('ride to a station - costs one day', GREY)}
+    roll <1-10>               {c("call a number when there's dice on the platform", GREY)}
     map                       {c('list the stations', GREY)}
 
   {c('MONEY', MAG, True)}

@@ -15,7 +15,7 @@ from . import progress as progress_module
 from . import save as save_module
 from . import ui
 from .coins import BY_SYMBOL
-from .game import DAYS, Game, GameOver
+from .game import DAYS, DICE_SIDES, Game, GameOver
 from .stations import STATIONS
 
 
@@ -66,6 +66,10 @@ def handle(game: Game, raw: str) -> List[str]:
         if not 1 <= index <= len(STATIONS):
             raise ValueError(f"pick 1-{len(STATIONS)}")
         return game.travel(STATIONS[index - 1].name)
+    if cmd in ("roll", "dice"):
+        if not args:
+            return [f"call a number from 1 to {DICE_SIDES}"]
+        return game.roll_dice(args[0])
     if cmd == "map":
         return [ui.station_menu()]
     if cmd == "borrow":
@@ -220,16 +224,20 @@ def play(args) -> int:
             profile = progress_module.read_profile()
             earned = progress_module.award(profile, game)
             points = progress_module.run_points(game)
-            letter = progress_module.grade(points)
-            if getattr(game, "is_daily", False):
+            counts = progress_module.counts_for_progress(game)
+            letter = progress_module.run_grade(game)
+            if counts and getattr(game, "is_daily", False):
                 progress_module.record_daily(profile, game, game.daily_slot)
             progress_module.write_profile(profile)
             print()
             print("  " + ui.c(f"GRADE {letter}", ui.YELL, True)
                   + ui.c(f"   {points:,.0f} pts"
-                         f" (tier {game.tier} ×{progress_module.tier_mult(game.tier):.2f})", ui.GREY))
-            print("  " + ui.c(progress_module.grade_blurb(points), ui.GREY))
-            if getattr(game, "is_daily", False):
+                         f" (tier {game.tier} ×{progress_module.tier_mult(game.tier):.2f})"
+                         if counts else "   god mode · unranked", ui.GREY))
+            print("  " + ui.c(progress_module.grade_blurb(points) if counts else
+                              "You found the turnstile. None of this counts, "
+                              "and it never did - not even the ranked run.", ui.GREY))
+            if counts and getattr(game, "is_daily", False):
                 left = progress_module.RUNS_PER_DAY - len(profile.runs_today())
                 print("  " + ui.c(f"Today: {ui.money(profile.daily_total())} across "
                                   f"{len(profile.runs_today())} ranked run(s)"
@@ -245,7 +253,8 @@ def play(args) -> int:
                     print("  " + ui.c(f"  unlocked: {p.name} — {p.blurb}", ui.CYAN))
             scores = save_module.record_score(game)
             save_module.clear_save()
-            rank = next((i for i, s in enumerate(scores) if abs(s.net_worth - score) < 1e-9), None)
+            rank = next((i for i, s in enumerate(scores)
+                         if abs(s.net_worth - score) < 1e-9), None) if counts else None
             # a personal best is only worth announcing if it is worth having
             if rank == 0 and score > 0 and len(scores) > 1:
                 print("  " + ui.c("A new best run.", ui.GREEN, True))

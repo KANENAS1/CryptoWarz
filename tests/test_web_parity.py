@@ -192,6 +192,44 @@ class TestProgressParity(unittest.TestCase):
 
 
 @requires_node
+class TestDiceParity(unittest.TestCase):
+    """Both front ends must hide the same Easter egg behind the same numbers.
+
+    The behavioural half matters more than the constants: a port that quietly
+    stopped gating god mode would keep passing every other test while handing
+    the leaderboard to anyone who called two numbers.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["dice"]
+
+    def test_the_dice_constants_match(self):
+        from cryptowarz import game as gm
+        self.assertEqual(self.js["every"], gm.DICE_EVERY)
+        self.assertEqual(self.js["sides"], gm.DICE_SIDES)
+        self.assertAlmostEqual(self.js["near_prize"], gm.DICE_NEAR_PRIZE)
+        self.assertAlmostEqual(self.js["exact_prize"], gm.DICE_EXACT_PRIZE)
+        self.assertAlmostEqual(self.js["god_gift"], gm.GOD_GIFT)
+        self.assertEqual(self.js["god_sequence"], list(gm.GOD_SEQUENCE))
+
+    def test_the_god_grade_matches(self):
+        from cryptowarz.progress import GOD_GRADE
+        self.assertEqual(self.js["god_grade"], GOD_GRADE)
+        self.assertEqual(self.js["god_grade_shown"], GOD_GRADE)
+
+    def test_the_port_hides_it_the_same_way(self):
+        self.assertFalse(self.js["ready_on_day_one"])
+        self.assertTrue(self.js["sequence_opens_it"])
+        self.assertFalse(self.js["reversed_does_not"])
+
+    def test_the_port_gates_it_the_same_way(self):
+        self.assertTrue(self.js["unlocks_nothing"])
+        self.assertTrue(self.js["spends_no_ranked_slot"])
+        self.assertTrue(self.js["survives_reload"])
+
+
+@requires_node
 class TestBalanceParity(unittest.TestCase):
     """Shape comparison.
 

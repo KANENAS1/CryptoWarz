@@ -234,6 +234,42 @@ Across 40 simulated players the curve lands about right: a median of **2 goals
 after one run, 4 after two**, then a long tail — none of the 40 finished all ten
 inside thirty runs.
 
+### The dice on the platform
+
+Every few rides somebody is running dice. Call a number, 1 to 10 — free to
+play, no stake, and the worst outcome is nothing. Hit it exactly and you walk
+away with free crypto; land one off and you get a smaller cut.
+
+Free means you didn't pay cash for it, not that it weighs nothing: the gift
+lands in your wallet **at fair value**, so it takes up capacity like anything
+else and has an honest cost basis. A bag with no cost basis would be invisible
+to the capacity rule and would make every later sale an infinite multiple.
+
+The offer is counted from your last roll, not off the calendar. `day % 4`
+looked equivalent and wasn't: a signal delay costs two days, so any offer whose
+day got jumped over never happened at all — invisible, because the next one
+along looked perfectly normal.
+
+<details>
+<summary>There is something hidden in the dice. Spoiler.</summary>
+
+Call **4** the first time the dice come out, then **2** the next time, and the
+turnstile stops caring: **god mode**, free crypto on every ride for the rest of
+the run.
+
+It is a toy, and the game treats it as one. A god-mode run posts no score,
+unlocks no achievement or perk, clears no tier, and is graded **G** rather than
+a letter you could have earned. It also **doesn't spend a ranked run**, so
+finding it costs you nothing. That gate lives in one function
+(`progress.counts_for_progress`) that the scoreboard, the goals and the daily
+slate all route through, and the parity suite asserts the web port gates it the
+same way — a port that quietly stopped would hand the leaderboard to anyone who
+called two numbers.
+
+God mode is stored in the run's stats, so it reloads with the save. You can't
+shake it off by reopening the tab, and you can't sneak it onto the board.
+</details>
+
 ### What is deliberately absent
 
 No streak counter that punishes a missed day, and no lockout: when the three
@@ -279,7 +315,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 114 tests, no install needed
+python3 -m unittest discover -s tests     # 139 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

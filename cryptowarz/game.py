@@ -40,6 +40,19 @@ SUBWAY_FARE = 2.90       # it is still the best deal in the city
 #: game with a $25,000 wallet and removes the whole class of boundary failure.
 FARE_BUFFER = 0.01
 
+# ------------------------------------------------------------------- the dice
+#: Somebody runs dice on the platform every few rides. There is no stake: the
+#: worst outcome is nothing, so this is a flourish rather than a decision, and
+#: it is deliberately not a way to gamble your way out of a bad run.
+DICE_EVERY = 4           # rides between offers
+DICE_SIDES = 10          # call a number, one to ten
+DICE_NEAR_PRIZE = 400.0  # one off the number
+DICE_EXACT_PRIZE = 3_000.0
+#: Call these two numbers, in that order, and the turnstile stops caring.
+#: A run that finds it is a sandbox: see progress.counts_for_progress.
+GOD_SEQUENCE = (4, 2)
+GOD_GIFT = 1_800.0       # every ride, forever
+
 
 class GameOver(Exception):
     """Raised when the run ends early - wiped out, or caught for good."""
@@ -128,7 +141,9 @@ class Game:
                 self.player.capacity += 15_000.0
 
         self.stats = {"stations": {self.station.name}, "raids": 0, "peak_worth": 0.0,
-                      "best_multiple": 0.0, "worth_by_day": []}
+                      "best_multiple": 0.0, "worth_by_day": [],
+                      "dice_picks": [], "dice_days": [], "god_mode": False}
+        self.god_mode = False
         self.rng = random.Random(self.seed)
         self.state = MarketState(self.rng)
         self.market = generate(self.station, self.rng, self.state)
@@ -217,6 +232,80 @@ class Game:
         verb = "made" if profit >= 0 else "lost"
         return (f"Sold {qty:,.6f} {symbol} at ${price:,.6f} for ${proceeds:,.2f} "
                 f"({verb} ${abs(profit):,.2f})")
+
+    # ----------------------------------------------------------------- dice
+
+    @property
+    def dice_ready(self) -> bool:
+        """The dice come around a few rides after the last time you played.
+
+        Measured from the last roll rather than off the calendar: a signal
+        delay costs two days instead of one, and a plain `day % 4` offer
+        silently skipped every time one landed on the wrong day. Counting from
+        the last roll also means an offer you ignore keeps standing.
+        """
+        days = self.stats.get("dice_days") or []
+        return self.day - (days[-1] if days else 0) >= DICE_EVERY
+
+    def gift(self, value: float, why: str) -> List[str]:
+        """Hand over free crypto, at fair value.
+
+        Fair value rather than zero cost on purpose: a bag with no cost basis
+        would take up no wallet room and make every sale an infinite multiple.
+        Free means you did not pay cash for it, not that it weighs nothing.
+        """
+        from .coins import COINS
+
+        target = self.rng.choice([c for c in COINS if c.symbol != "USDC"])
+        price = self.market.price(target.symbol)
+        if price <= 0:
+            return []
+        room = self.player.free_capacity
+        if room < 1.0:
+            return [f"{why} - and your wallet is full. It goes to somebody else."]
+        value = min(value, room)
+        h = self.player.holding(target.symbol)
+        h.qty += value / price
+        h.cost += value
+        return [f"{why}: {value / price:,.6f} {target.symbol} (~${value:,.2f})."]
+
+    def roll_dice(self, pick: int) -> List[str]:
+        """Call a number. Costs nothing, and once in a while pays."""
+        if not self.dice_ready:
+            raise ValueError("nobody's running dice right now")
+        try:
+            pick = int(pick)
+        except (TypeError, ValueError):
+            raise ValueError(f"call a number from 1 to {DICE_SIDES}")
+        if not 1 <= pick <= DICE_SIDES:
+            raise ValueError(f"call a number from 1 to {DICE_SIDES}")
+
+        self.stats.setdefault("dice_days", []).append(self.day)
+        picks = self.stats.setdefault("dice_picks", [])
+        picks.append(pick)
+        rolled = self.rng.randint(1, DICE_SIDES)
+
+        messages = [f"You call {pick}. The dice come up {rolled}."]
+        if rolled == pick:
+            messages.extend(self.gift(DICE_EXACT_PRIZE, "Dead on"))
+        elif abs(rolled - pick) == 1:
+            messages.extend(self.gift(DICE_NEAR_PRIZE, "One off, and he's feeling generous"))
+        else:
+            messages.append("Nothing. It was free to play.")
+        messages.extend(self._check_god(picks))
+        for m in messages:
+            self.say(m)
+        return messages
+
+    def _check_god(self, picks: List[int]) -> List[str]:
+        if self.god_mode or tuple(picks[:len(GOD_SEQUENCE)]) != GOD_SEQUENCE:
+            return []
+        self.god_mode = True
+        self.stats["god_mode"] = True
+        return ["", "The dice stop mid-air.",
+                "GOD MODE. The turnstile swings open for you from now on - "
+                "free crypto every ride.",
+                "This run is a sandbox now: it posts nothing and unlocks nothing."]
 
     # ---------------------------------------------------------------- money
 
@@ -323,6 +412,7 @@ class Game:
         """Ride to another station. Costs a day - the only thing you can't buy."""
         from .events import roll_event
 
+        was_ready = self.dice_ready          # so the offer is announced once
         target = station(name)
         if target.name == self.station.name:
             raise ValueError("you're already here")
@@ -341,7 +431,12 @@ class Game:
         messages = [f"Day {self.day}. {target.name} ({target.lines}).", target.flavor]
         if self.market.headline:
             messages.append(self.market.headline)
+        if self.god_mode:
+            messages.extend(self.gift(GOD_GIFT, "The turnstile blesses you"))
         messages.extend(roll_event(self))
+        if self.dice_ready and not was_ready:
+            messages.append(f"Somebody's running dice on the platform. "
+                            f"Call a number, 1 to {DICE_SIDES}.")
 
         self._mark_stats()
         for m in messages:

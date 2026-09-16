@@ -156,7 +156,11 @@
   .pill.perk{border-color:var(--yellow);color:var(--yellow)}
   /* ---------- grades, the ranked slate, the leaderboard ---------- */
   .grade{font-size:56px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--yellow)}
-  .grade.f{color:var(--red)} .grade.s{color:var(--green)}
+  .grade.f{color:var(--red)} .grade.s{color:var(--green)} .grade.g{color:var(--purple)}
+  .dicebox{border:2px solid var(--purple);border-radius:4px;padding:11px 12px;margin-bottom:12px}
+  .dicebox .t{color:#e07ad8;font-weight:700;letter-spacing:.14em;font-size:11px}
+  .dice{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:9px}
+  .dice button{padding:11px 0;font-size:14px;font-weight:700}
   .gradeline{color:var(--dim);font-size:11.5px;letter-spacing:.1em;margin-top:6px}
   .slate{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:12px}
   .slate .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:12px}
@@ -205,6 +209,11 @@
 
   <main id="main">
     <div id="alerts"></div>
+    <div class="dicebox" id="dicewrap" hidden>
+      <div class="t">DICE ON THE PLATFORM</div>
+      <div class="note">Call a number, 1 to 10. Free to play - the worst that happens is nothing.</div>
+      <div class="dice" id="dice"></div>
+    </div>
     <h2>Market</h2>
     <div id="market"></div>
     <div id="svcwrap" hidden>
@@ -321,8 +330,9 @@ function render(){
   $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
   const tierInfo = TIER_BY_LEVEL[g.tier];
   const pill = $("tierpill");
-  pill.hidden = g.tier === 1 && !g.perk && !g.isDaily;
-  pill.textContent = [g.isDaily ? `RANKED ${g.dailySlot + 1}/${RUNS_PER_DAY}` : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
+  pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.godMode;
+  pill.textContent = [g.godMode ? "GOD MODE" : null,
+    g.isDaily && !g.godMode ? `RANKED ${g.dailySlot + 1}/${RUNS_PER_DAY}` : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
                       g.perk ? PERK_BY_KEY[g.perk].name.toUpperCase() : null].filter(Boolean).join(" · ");
   $("station").textContent = g.station.name;
   $("bullets").innerHTML = g.station.lines.map(bullet).join("");
@@ -401,6 +411,12 @@ function render(){
     svc.push(`<button data-act="capacity">+$25K WALLET · ${fmtMoney(g.upgradeCost())}</button>`);
     if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
   }
+  $("dicewrap").hidden = !g.diceReady;
+  if (g.diceReady && !$("dice").firstChild) {
+    $("dice").innerHTML = Array.from({ length: DICE_SIDES },
+      (_, i) => `<button data-dice="${i + 1}">${i + 1}</button>`).join("");
+  }
+
   $("svcwrap").hidden = svc.length === 0;
   $("svc").innerHTML = svc.join("");
 
@@ -431,6 +447,14 @@ $("main").addEventListener("click", e => {
   }
   const b = e.target.closest("button");
   if (!b) return;
+  if (b.dataset.dice) {
+    // rollDice logs its own lines, so this flashes them rather than re-saying them
+    try { flash(game.rollDice(+b.dataset.dice).filter(Boolean).join(" "), true); }
+    catch (err) { flash(err.message, false); }
+    render();
+    persist();
+    return;
+  }
   if (b.dataset.buy) {
     const sym = b.dataset.buy, frac = parseFloat(b.dataset.frac);
     return act(() => game.buy(sym, game.maxBuyable(sym) * frac));
@@ -492,21 +516,25 @@ function showFinal(){
   clearSave();
   profile = readProfile();
   const earned = award(profile, g);
-  const points = runPoints(g), letter = gradeFor(points);
-  const ranked = g.dailySlot !== null && g.dailySlot !== undefined;
+  const points = runPoints(g), letter = runGrade(g);
+  const counts = countsForProgress(g);
+  const ranked = counts && g.dailySlot !== null && g.dailySlot !== undefined;
   if (ranked) recordDaily(profile, g, g.dailySlot);
   writeProfile(profile);
   if (ranked) postDaily(profile);          // fire and forget; the board is a bonus
 
   const rank = board.findIndex(s => Math.abs(s.net_worth - score) < 1e-9);
   $("fgrade").textContent = letter;
-  $("fgrade").className = "grade " + (letter === "F" ? "f" : letter[0] === "S" ? "s" : "");
-  $("fpoints").textContent =
-    `${Math.round(points).toLocaleString()} PTS · TIER ${g.tier} ×${tierMult(g.tier).toFixed(2)}`
-    + (ranked ? ` · RANKED RUN ${g.dailySlot + 1}` : " · PRACTICE");
+  $("fgrade").className = "grade " + (!counts ? "g" : letter === "F" ? "f" : letter[0] === "S" ? "s" : "");
+  $("fpoints").textContent = counts
+    ? `${Math.round(points).toLocaleString()} PTS · TIER ${g.tier} ×${tierMult(g.tier).toFixed(2)}`
+      + (ranked ? ` · RANKED RUN ${g.dailySlot + 1}` : " · PRACTICE")
+    : "GOD MODE · UNRANKED";
   $("fscore").textContent = fmtMoney(score);
   $("fscore").className = "big num " + (score >= 0 ? "up" : "down");
-  $("fverdict").textContent = gradeBlurb(points);
+  $("fverdict").textContent = counts
+    ? gradeBlurb(points)
+    : "You found the turnstile. None of this counts, and it never did.";
   $("fbreak").innerHTML = [
     ["cash", fmtMoney(p.cash)], ["vault", fmtMoney(p.vault)],
     ["holdings", fmtMoney(g.portfolioValue())],
@@ -522,8 +550,9 @@ function showFinal(){
          Today: <b>${Math.round(dailyTotal(profile)).toLocaleString()} pts</b> across
          ${runsToday(profile).length} of ${RUNS_PER_DAY} ranked runs${left
            ? ` · ${left} left` : " · that's the slate. Back tomorrow."}</div>`
-    : `<div class="note" style="text-align:center;margin-top:14px">
-         Practice run - it doesn't touch the board.</div>`;
+    : `<div class="note" style="text-align:center;margin-top:14px">${counts
+         ? "Practice run - it doesn't touch the board."
+         : "A god-mode run posts nothing and unlocks nothing - and it didn't spend a ranked run either."}</div>`;
   $("fbreak").insertAdjacentHTML("afterend", today + (earned.length
     ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
          ${earned.map(a => `<span class="pill perk">${a.name.toUpperCase()}</span>`).join("")}
@@ -531,7 +560,8 @@ function showFinal(){
        ${unlocks.length ? `<div class="note" style="text-align:center;margin-top:8px">
          Unlocked: ${unlocks.map(p => p.name).join(", ")}</div>` : ""}`
     : ""));
-  if (rank === 0 && score > 0 && board.length > 1) {
+  if (!counts) { /* no personal-best crowing over free money */ }
+  else if (rank === 0 && score > 0 && board.length > 1) {
     $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
   } else if (rank > 0 && rank < 5 && score > 0) {
     $("fverdict").textContent = `Number ${rank + 1} on your board. ` + $("fverdict").textContent;
