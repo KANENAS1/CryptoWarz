@@ -1,0 +1,131 @@
+"""Price generation: a drifting market, sampled differently at each station.
+
+The first version of this drew every station's price independently from the
+coin's whole range, so Solana could be $20 at one stop and $200 at the next.
+That made "buy whatever is cheapest relative to its range" a formula that won
+every single run - no judgement, no tension, no game.
+
+So there are two layers now.
+
+**A level per coin** that random-walks day to day, pulled gently back toward the
+middle of its range and shoved hard by shocks. This is the market's real price,
+shared by every station, and it is what makes *holding* a decision: a bag can
+appreciate overnight, or rug while you sleep.
+
+**A station's take on that level** - its bias, plus small noise. This is the
+arbitrage, and it is deliberately bounded: roughly 2x between the keenest buyer
+and the cheapest seller, not the 10x the old model allowed. Enough to be worth
+a trip, not enough to print money without thinking.
+
+Still not a market model. It is tuned for how it plays.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+from .coins import COINS, Coin
+from .stations import Station
+
+
+@dataclass(frozen=True)
+class Shock:
+    symbol: str
+    headline: str
+    factor: float
+
+    @property
+    def is_crash(self) -> bool:
+        return self.factor < 1.0
+
+
+CRASHES = [
+    ("{name} rugged - devs deleted the repo", 0.34),
+    ("Exchange delists {name} without warning", 0.46),
+    ("{name} bridge drained overnight", 0.38),
+    ("Influencer who shilled {name} deletes the account", 0.55),
+]
+PUMPS = [
+    ("{name} trending #1 - the normies are buying", 2.10),
+    ("Major fund announces a {name} allocation", 1.75),
+    ("{name} listed everywhere at once", 1.95),
+    ("Somebody's grandma asks about {name} on TV", 1.60),
+]
+MEME_PUMPS = [
+    ("A billionaire tweets a dog picture - {name} goes vertical", 3.10),
+    ("{name} adopted by an entire subreddit", 2.45),
+]
+
+
+class MarketState:
+    """The drifting level of every coin. One of these per game."""
+
+    def __init__(self, rng: random.Random) -> None:
+        self.levels: Dict[str, float] = {}
+        for c in COINS:
+            # start somewhere in the middle half of the range
+            self.levels[c.symbol] = c.mid * rng.uniform(0.8, 1.2)
+
+    def drift(self, rng: random.Random) -> None:
+        """One day of movement: a random walk that resists the extremes."""
+        for c in COINS:
+            level = self.levels[c.symbol]
+            if c.symbol == "USDC":
+                self.levels[c.symbol] = max(0.97, min(1.03, level * rng.uniform(0.997, 1.003)))
+                continue
+            vol = 0.30 if c.meme else 0.13
+            step = rng.gauss(0.0, vol)
+            # pull back toward the middle so nothing drifts off forever
+            pull = 0.18 * math.log(c.mid / level) if level > 0 else 0.0
+            level *= math.exp(step + pull)
+            self.levels[c.symbol] = max(c.low * 0.4, min(level, c.high * 1.6))
+
+    def apply(self, symbol: str, factor: float, coin: Coin) -> None:
+        """A shock moves the real level, so it persists beyond one station."""
+        level = self.levels[symbol] * factor
+        self.levels[symbol] = max(coin.low * 0.15, min(level, coin.high * 2.2))
+
+
+@dataclass
+class Market:
+    station: Station
+    prices: Dict[str, float]
+    shock: Optional[Shock] = None
+
+    def price(self, symbol: str) -> float:
+        return self.prices[symbol.upper()]
+
+    @property
+    def headline(self) -> Optional[str]:
+        return self.shock.headline if self.shock else None
+
+
+def _station_price(coin: Coin, level: float, station: Station, rng: random.Random) -> float:
+    """What this station will trade at, given the market level."""
+    # bias is compressed toward 1.0 so no single stop is a money printer
+    bias = 1.0 + (station.multiplier(coin.symbol) - 1.0) * 0.62
+    noise = rng.uniform(0.94, 1.06) if coin.meme else rng.uniform(0.975, 1.025)
+    return max(coin.low * 0.1, level * bias * noise)
+
+
+def generate(station: Station, rng: random.Random, state: Optional[MarketState] = None,
+             shock_chance: float = 0.24) -> Market:
+    """Prices at one station. Pass a MarketState to get a market with memory."""
+    if state is None:
+        state = MarketState(rng)
+
+    shock: Optional[Shock] = None
+    if rng.random() < shock_chance:
+        target = rng.choice([c for c in COINS if c.symbol != "USDC"])
+        if rng.random() < 0.5:
+            template, factor = rng.choice(CRASHES)
+        else:
+            template, factor = rng.choice(MEME_PUMPS + PUMPS if target.meme else PUMPS)
+        shock = Shock(target.symbol, template.format(name=target.name), factor)
+        state.apply(target.symbol, factor, target)
+
+    prices = {c.symbol: _station_price(c, state.levels[c.symbol], station, rng) for c in COINS}
+    return Market(station, prices, shock)

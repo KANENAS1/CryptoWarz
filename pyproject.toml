@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryptowarz"
+version = "1.0.0"
+description = "Dope Wars with crypto, played across the NYC subway. Made-up prices, real regret."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Kanenas"}]
+keywords = ["game", "terminal", "roguelike", "trading", "crypto", "dopewars"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Games/Entertainment",
+  "Environment :: Console",
+]
+dependencies = []
+
+[project.scripts]
+cryptowarz = "cryptowarz.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cryptowarz*"]
