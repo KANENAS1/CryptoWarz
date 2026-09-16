@@ -98,6 +98,35 @@ class TestMarket(unittest.TestCase):
         b = generate(station("Wall Street"), random.Random(5)).prices
         self.assertEqual(a, b)
 
+    def test_usdc_always_trades_near_a_dollar(self):
+        """Regression: the day-one level was not clamped to the coin's range.
+
+        USDC opened anywhere from $0.78 to $1.21, which made the one asset that
+        exists to be safe the best trade on the board - buy the "stablecoin"
+        cheap, wait for it to revert, collect a risk-free 16%.
+        """
+        from cryptowarz.market import MarketState
+        seen = []
+        for i in range(400):
+            state = MarketState(random.Random(i))
+            for s in STATIONS:
+                seen.append(generate(s, random.Random(i), state, shock_chance=0.0).price("USDC"))
+        self.assertGreaterEqual(min(seen), 0.95, "USDC broke its peg downward")
+        self.assertLessEqual(max(seen), 1.05, "USDC broke its peg upward")
+
+    def test_usdc_stays_pegged_across_a_whole_game(self):
+        g = Game(seed=4)
+        prices = [g.market.price("USDC")]
+        for _ in range(25):
+            try:
+                g.player.cash = max(g.player.cash, 50.0)
+                g.travel(next(s.name for s in STATIONS if s.name != g.station.name))
+            except ValueError:
+                break
+            prices.append(g.market.price("USDC"))
+        self.assertGreaterEqual(min(prices), 0.95)
+        self.assertLessEqual(max(prices), 1.05)
+
     def test_usdc_is_never_shocked(self):
         """Shocking the safe harbour would defeat the point of having one."""
         for i in range(600):

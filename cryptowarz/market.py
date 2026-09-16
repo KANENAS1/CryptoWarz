@@ -66,8 +66,13 @@ class MarketState:
     def __init__(self, rng: random.Random) -> None:
         self.levels: Dict[str, float] = {}
         for c in COINS:
-            # start somewhere in the middle half of the range
-            self.levels[c.symbol] = c.mid * rng.uniform(0.8, 1.2)
+            # Start in the middle of the range - but clamped to the coin's own
+            # bounds. Unclamped, USDC opened anywhere from $0.78 to $1.21, which
+            # made the one asset that exists to be safe the best trade on the
+            # board: buy the "stablecoin" at $0.86, wait for it to revert, take
+            # a risk-free 16%. drift() clamped it every later day; day one did
+            # not, so the exploit was only ever available on the first screen.
+            self.levels[c.symbol] = max(c.low, min(c.mid * rng.uniform(0.8, 1.2), c.high))
 
     def drift(self, rng: random.Random) -> None:
         """One day of movement: a random walk that resists the extremes."""
@@ -108,7 +113,11 @@ def _station_price(coin: Coin, level: float, station: Station, rng: random.Rando
     # bias is compressed toward 1.0 so no single stop is a money printer
     bias = 1.0 + (station.multiplier(coin.symbol) - 1.0) * 0.62
     noise = rng.uniform(0.94, 1.06) if coin.meme else rng.uniform(0.975, 1.025)
-    return max(coin.low * 0.1, level * bias * noise)
+    price = level * bias * noise
+    if coin.symbol == "USDC":
+        # the safe harbour has to actually be safe, at every station
+        return max(coin.low, min(price, coin.high))
+    return max(coin.low * 0.1, price)
 
 
 def generate(station: Station, rng: random.Random, state: Optional[MarketState] = None,
