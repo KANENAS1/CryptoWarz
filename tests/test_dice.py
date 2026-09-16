@@ -12,7 +12,8 @@ import unittest
 
 from cryptowarz import progress as P
 from cryptowarz import save as S
-from cryptowarz.game import DICE_EVERY, DICE_SIDES, HOT_HAND, Game
+from cryptowarz.game import (DICE_EVERY, DICE_SIDES, HOT_HAND, HOT_HAND_CHANCE,
+                             HOT_HAND_MAX, HOT_HAND_MIN, Game)
 from cryptowarz.stations import STATIONS
 
 
@@ -137,12 +138,48 @@ class TestTheStreak(unittest.TestCase):
     def test_a_near_miss_does_not(self):
         self.assertFalse(play((HOT_HAND[0], HOT_HAND[1] + 1)).hot_hand)
 
-    def test_it_pays_on_every_ride(self):
+    def test_it_pays_often_but_not_every_time(self):
         game = play(HOT_HAND)
-        game.player.capacity = 1e9          # so the gift is never capped
+        game.player.capacity = 1e9          # so nothing is clipped
+        paid = 0
+        for _ in range(2_000):
+            before = game.player.used_capacity
+            game._streak_gift()
+            if game.player.used_capacity > before:
+                paid += 1
+        self.assertAlmostEqual(paid / 2_000, HOT_HAND_CHANCE, delta=0.05)
+        self.assertLess(paid, 2_000, "a payout you can count on is not a windfall")
+
+    def test_the_amount_varies_and_never_clears_the_ceiling(self):
+        game = play(HOT_HAND)
+        game.player.capacity = 1e9
+        amounts = []
+        for _ in range(2_000):
+            before = game.player.used_capacity
+            game._streak_gift()
+            got = game.player.used_capacity - before
+            if got > 0:
+                amounts.append(got)
+        self.assertGreater(len(set(round(a, 2) for a in amounts)), 100, "a flat payout")
+        self.assertLessEqual(max(amounts), HOT_HAND_MAX + 1e-6)
+        self.assertGreaterEqual(min(amounts), HOT_HAND_MIN - 1e-6)
+        # squared draw: most payouts sit nearer the floor than the ceiling
+        midpoint = (HOT_HAND_MIN + HOT_HAND_MAX) / 2
+        self.assertGreater(sum(a < midpoint for a in amounts) / len(amounts), 0.6)
+
+    def test_a_full_wallet_is_why_a_ride_can_pay_nothing(self):
+        """The other reason a ride comes up empty, and the one worth saying.
+
+        Free crypto still needs somewhere to go. A player on a streak who never
+        sells fills the wallet and then watches rides arrive with nothing on
+        them - that is the capacity rule doing its job, not a broken payout.
+        """
+        game = play(HOT_HAND)
+        game.player.capacity = game.player.used_capacity   # not a cent of room
         before = game.player.used_capacity
-        ride(game)
-        self.assertGreater(game.player.used_capacity, before)
+        for _ in range(20):
+            game._streak_gift()
+        self.assertAlmostEqual(game.player.used_capacity, before)
 
     def test_a_reload_cannot_shake_it_off(self):
         self.assertTrue(S.from_dict(S.to_dict(play(HOT_HAND))).hot_hand)

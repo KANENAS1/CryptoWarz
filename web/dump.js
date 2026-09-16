@@ -55,7 +55,8 @@ const out = {
     return {
       every: G.DICE_EVERY, sides: G.DICE_SIDES,
       near_prize: G.DICE_NEAR_PRIZE, exact_prize: G.DICE_EXACT_PRIZE,
-      streak_gift: G.HOT_HAND_GIFT, streak_calls: G.HOT_HAND,
+      streak_calls: G.HOT_HAND, streak_chance: G.HOT_HAND_CHANCE,
+      streak_min: G.HOT_HAND_MIN, streak_max: G.HOT_HAND_MAX,
       unranked_grade: G.UNRANKED_GRADE,
       ready_on_day_one: new G.Game(1).diceReady,
       calls_start_it: streak.hotHand,
@@ -64,6 +65,27 @@ const out = {
       unlocks_nothing: profile.achievements.length === 0 && profile.runs === 0,
       spends_no_ranked_slot: G.nextSlot(profile) === 0,
       survives_reload: G.saveFromDict(G.saveToDict(streak)).hotHand,
+      /* the shape of the payout, measured rather than asserted from the
+         constants: the two ports must skip and pay about as often as each
+         other, and neither may ever exceed the ceiling */
+      payouts: (() => {
+        const g = new G.Game(77);
+        g.hotHand = true;
+        g.player.capacity = 1e9;               // so nothing is clipped
+        let paid = 0, skipped = 0, biggest = 0, smallest = Infinity;
+        for (let i = 0; i < 4000; i++) {
+          const before = g.usedCapacity();
+          const said = g.streakGift();
+          const got = g.usedCapacity() - before;
+          if (said.length && got > 0) {
+            paid++;
+            biggest = Math.max(biggest, got);
+            smallest = Math.min(smallest, got);
+          } else skipped++;
+        }
+        return { paid_share: paid / (paid + skipped), biggest, smallest,
+                 distinct_enough: biggest - smallest > 1000 };
+      })(),
     };
   })(),
   stations: G.STATIONS.map(s => ({

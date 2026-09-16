@@ -170,8 +170,11 @@ const FARE_BUFFER = 0.01;
    worst outcome is nothing, so this is a flourish rather than a decision, and
    deliberately not a way to gamble out of a bad run. */
 const DICE_EVERY = 4, DICE_SIDES = 10, DICE_NEAR_PRIZE = 400, DICE_EXACT_PRIZE = 3000;
-/* Opening calls that put a player on a streak, and what a streak pays per ride. */
-const HOT_HAND = [4, 2], HOT_HAND_GIFT = 1800;
+/* Opening calls that put a player on a streak, and what a streak pays. Not
+   every ride and not the same amount: a fixed payment on a metronome stopped
+   being a windfall by the third station and started being a salary. */
+const HOT_HAND = [4, 2];
+const HOT_HAND_CHANCE = 0.75, HOT_HAND_MIN = 250, HOT_HAND_MAX = 10000;
 
 function Game(seed, tier, perk) {
   // kept so a save records which run this was - the RNG state is what restores
@@ -235,6 +238,15 @@ Game.prototype.gift = function (value, why) {
   h.qty += value / price;
   h.cost += value;
   return [`${why}: ${fmtQty(value / price)} ${target.symbol} (~$${value.toFixed(2)}).`];
+};
+/* Sometimes, and never the same amount twice. The draw is squared, which pulls
+   most payouts down toward the floor and leaves the ceiling rare - a flat draw
+   made five figures ordinary, and a windfall you can count on is not one. */
+Game.prototype.streakGift = function () {
+  if (this.rng.random() > HOT_HAND_CHANCE) return [];
+  const draw = this.rng.random() ** 2;
+  return this.gift(HOT_HAND_MIN + (HOT_HAND_MAX - HOT_HAND_MIN) * draw,
+                   "The turnstile blesses you");
 };
 Game.prototype.rollDice = function (pick) {
   if (!this.diceReady) throw new Error("nobody's running dice right now");
@@ -397,7 +409,7 @@ Game.prototype.travel = function (index) {
   this.market = generate(this.station, this.rng, this.state);
   const messages = [`Day ${this.day}. ${target.name}.`, target.flavor];
   if (this.market.headline) messages.push(this.market.headline);
-  if (this.hotHand) for (const m of this.gift(HOT_HAND_GIFT, "The turnstile blesses you")) messages.push(m);
+  if (this.hotHand) for (const m of this.streakGift()) messages.push(m);
   for (const m of rollEvent(this)) messages.push(m);
   if (this.diceReady && !wasReady) messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
   this.markStats();
@@ -816,6 +828,7 @@ if (typeof module !== "undefined") {
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
                      PROGRESS_VERSION, DICE_EVERY, DICE_SIDES, DICE_NEAR_PRIZE,
-                     DICE_EXACT_PRIZE, HOT_HAND_GIFT, HOT_HAND, UNRANKED_GRADE,
+                     DICE_EXACT_PRIZE, HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
+                     HOT_HAND_MAX, UNRANKED_GRADE,
                      countsForProgress, runGrade };
 }

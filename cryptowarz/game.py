@@ -48,9 +48,13 @@ DICE_EVERY = 4           # rides between offers
 DICE_SIDES = 10          # call a number, one to ten
 DICE_NEAR_PRIZE = 400.0  # one off the number
 DICE_EXACT_PRIZE = 3_000.0
-#: Opening calls that put a player on a streak, and what a streak pays per ride.
+#: Opening calls that put a player on a streak, and what a streak pays.
+#: Not every ride and not the same amount: a fixed payment on a metronome
+#: stopped being a windfall by the third station and started being a salary.
 HOT_HAND = (4, 2)
-HOT_HAND_GIFT = 1_800.0
+HOT_HAND_CHANCE = 0.75            # roughly three rides in four
+HOT_HAND_MIN = 250.0
+HOT_HAND_MAX = 10_000.0
 
 
 class GameOver(Exception):
@@ -268,6 +272,19 @@ class Game:
         h.cost += value
         return [f"{why}: {value / price:,.6f} {target.symbol} (~${value:,.2f})."]
 
+    def _streak_gift(self) -> List[str]:
+        """Sometimes, and never the same amount twice.
+
+        The draw is squared, which pulls most payouts down toward the floor and
+        leaves the ceiling rare - a flat draw made five figures ordinary, and a
+        windfall you can count on is not a windfall.
+        """
+        if self.rng.random() > HOT_HAND_CHANCE:
+            return []
+        draw = self.rng.random() ** 2
+        return self.gift(HOT_HAND_MIN + (HOT_HAND_MAX - HOT_HAND_MIN) * draw,
+                         "The turnstile blesses you")
+
     def roll_dice(self, pick: int) -> List[str]:
         """Call a number. Costs nothing, and once in a while pays."""
         if not self.dice_ready:
@@ -431,7 +448,7 @@ class Game:
         if self.market.headline:
             messages.append(self.market.headline)
         if self.hot_hand:
-            messages.extend(self.gift(HOT_HAND_GIFT, "The turnstile blesses you"))
+            messages.extend(self._streak_gift())
         messages.extend(roll_event(self))
         if self.dice_ready and not was_ready:
             messages.append(f"Somebody's running dice on the platform. "

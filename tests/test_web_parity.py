@@ -210,8 +210,10 @@ class TestDiceParity(unittest.TestCase):
         self.assertEqual(self.js["sides"], gm.DICE_SIDES)
         self.assertAlmostEqual(self.js["near_prize"], gm.DICE_NEAR_PRIZE)
         self.assertAlmostEqual(self.js["exact_prize"], gm.DICE_EXACT_PRIZE)
-        self.assertAlmostEqual(self.js["streak_gift"], gm.HOT_HAND_GIFT)
         self.assertEqual(self.js["streak_calls"], list(gm.HOT_HAND))
+        self.assertAlmostEqual(self.js["streak_chance"], gm.HOT_HAND_CHANCE)
+        self.assertAlmostEqual(self.js["streak_min"], gm.HOT_HAND_MIN)
+        self.assertAlmostEqual(self.js["streak_max"], gm.HOT_HAND_MAX)
 
     def test_the_unranked_grade_matches(self):
         from cryptowarz.progress import UNRANKED_GRADE
@@ -222,6 +224,21 @@ class TestDiceParity(unittest.TestCase):
         self.assertFalse(self.js["ready_on_day_one"])
         self.assertTrue(self.js["calls_start_it"])
         self.assertFalse(self.js["reversed_does_not"])
+
+    def test_the_payout_has_the_same_shape_on_both_sides(self):
+        """Measured, not read off the constants.
+
+        Two generators from one seed produce different streams, so the exact
+        payouts cannot match. What must match is the behaviour the player
+        feels: it skips some rides, the amounts vary widely, and nothing ever
+        comes out above the ceiling.
+        """
+        from cryptowarz.game import HOT_HAND_CHANCE, HOT_HAND_MAX, HOT_HAND_MIN
+        js = self.js["payouts"]
+        self.assertAlmostEqual(js["paid_share"], HOT_HAND_CHANCE, delta=0.05)
+        self.assertLessEqual(js["biggest"], HOT_HAND_MAX + 1e-6)
+        self.assertGreaterEqual(js["smallest"], HOT_HAND_MIN - 1e-6)
+        self.assertTrue(js["distinct_enough"], "the port pays a flat amount")
 
     def test_the_port_gates_it_the_same_way(self):
         self.assertTrue(self.js["unlocks_nothing"])
