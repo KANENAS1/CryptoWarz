@@ -115,10 +115,39 @@ Doing nothing loses. Acting at random loses badly. A sensible heuristic is a
 coin flip with real upside, and better judgement raises both the median and the
 ceiling. That is the shape a game should have.
 
+## Play it on a phone
+
+The terminal version is canonical, but the same rules run in a browser — open
+`web/index.html` on your phone, or add it to the Home Screen and it runs
+fullscreen. It is dressed as MTA station signage: Helvetica (the subway's
+typeface since 1989) on signage black, with real route bullets in real MTA
+colours. Profit green and loss red are the **4·5·6 green** and **1·2·3 red**,
+so even the semantic colours come off the map.
+
+```
+web/game.js      the rules, ported from cryptowarz/*.py
+web/index.html   the phone UI - loads game.js, readable as source
+web/build.py     flattens both into one file for publishing
+web/balance.js   the balance table, run against the port
+web/dump.js      the port's game data as JSON, for the parity test
+```
+
+**Two implementations of one rule set drift**, and the drift is silent — each
+version keeps working perfectly while quietly becoming a different game. So
+`tests/test_web_parity.py` compares the data **exactly** (every coin's range,
+every station's bias and services, every constant) and the behaviour **by
+shape** (doing nothing loses, random loses badly, a sensible strategy is a real
+contest, better judgement raises the ceiling). Exact medians can't match — the
+two languages seed different RNG streams — but every conclusion the balance
+table supports must hold on both sides.
+
+Those tests skip cleanly when node isn't installed, because the Python package
+itself stays dependency-free.
+
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 36 tests, no install needed
+python3 -m unittest discover -s tests     # 48 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells
