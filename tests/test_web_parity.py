@@ -43,6 +43,26 @@ class TestWebSourcesExist(unittest.TestCase):
         self.assertIn('<script src="game.js"></script>', html)
         self.assertIn("viewport-fit=cover", html)   # iPhone safe areas
 
+    def test_a_fresh_open_starts_a_ranked_run_not_practice(self):
+        """The bug this guards is the one that shipped.
+
+        Opening the page started a practice run, so a player who simply pressed
+        play went thirty days and posted nothing - the score was "not saving"
+        because it had never been a ranked run. A slot is spent by finishing,
+        not by starting, so booting into one costs a wanderer nothing.
+        """
+        html = (WEB / "index.html").read_text()
+        boot = html[html.index("function boot()"):html.index('$("newgame")')]
+        self.assertIn("nextSlot(profile)", boot)
+        self.assertIn("dailySeeds()", boot)
+
+    def test_a_board_write_reports_back_instead_of_vanishing(self):
+        """A score that fails to save silently is worse than one that never did."""
+        html = (WEB / "index.html").read_text()
+        self.assertIn('id="fsave"', html)
+        self.assertIn('return "saved"', html)
+        self.assertIn("boardDirty", html)          # a failed post is retried
+
     def test_the_artifact_build_inlines_everything(self):
         import sys
         sys.path.insert(0, str(WEB))

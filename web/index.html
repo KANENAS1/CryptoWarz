@@ -521,7 +521,6 @@ function showFinal(){
   const ranked = counts && g.dailySlot !== null && g.dailySlot !== undefined;
   if (ranked) recordDaily(profile, g, g.dailySlot);
   writeProfile(profile);
-  if (ranked) postDaily(profile);          // fire and forget; the board is a bonus
 
   const rank = board.findIndex(s => Math.abs(s.net_worth - score) < 1e-9);
   $("fgrade").textContent = letter;
@@ -545,13 +544,17 @@ function showFinal(){
   // best run" above "the Shark owns you" reads like the game is mocking you
   const unlocks = earned.map(a => PERKS.find(p => p.by === a.key)).filter(Boolean);
   const left = ranked ? RUNS_PER_DAY - runsToday(profile).length : 0;
+  const slotsLeft = counts ? nextSlot(profile) : null;
   const today = ranked
     ? `<div class="note" style="text-align:center;margin-top:14px">
          Today: <b>${Math.round(dailyTotal(profile)).toLocaleString()} pts</b> across
          ${runsToday(profile).length} of ${RUNS_PER_DAY} ranked runs${left
-           ? ` · ${left} left` : " · that's the slate. Back tomorrow."}</div>`
+           ? ` · ${left} left` : " · that's the slate. Back tomorrow."}</div>
+       <div class="note" id="fsave" style="text-align:center;margin-top:6px">Saving to the board…</div>`
     : `<div class="note" style="text-align:center;margin-top:14px">${counts
          ? "Practice run - it doesn't touch the board."
+           + (slotsLeft !== null
+              ? ` You still have ranked run ${slotsLeft + 1} of ${RUNS_PER_DAY} today.` : "")
          : "This run posts nothing and unlocks nothing - and it didn't spend a ranked run either."}</div>`;
   $("fbreak").insertAdjacentHTML("afterend", today + (earned.length
     ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
@@ -560,6 +563,20 @@ function showFinal(){
        ${unlocks.length ? `<div class="note" style="text-align:center;margin-top:8px">
          Unlocked: ${unlocks.map(p => p.name).join(", ")}</div>` : ""}`
     : ""));
+  // the board write is the one thing here that can fail for reasons outside the
+  // game, so it reports back rather than disappearing
+  if (ranked) {
+    postDaily(profile).then(status => {
+      const note = $("fsave");
+      if (!note) return;
+      note.textContent = status === "saved"
+        ? "Saved to the leaderboard."
+        : status === "unavailable"
+          ? "The shared board only runs on the published page, signed in. Your score is kept on this device."
+          : "Couldn't reach the board just now. Your score is kept on this device - open BOARD to try again.";
+    });
+  }
+
   if (!counts) { /* no personal-best crowing over free money */ }
   else if (rank === 0 && score > 0 && board.length > 1) {
     $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
@@ -617,13 +634,21 @@ function store(){
   }
   return dbPromise;
 }
+/* Today's runs are finished but not yet on the board. A post can fail for
+   reasons that have nothing to do with the player - offline, signed out, the
+   local file - and a score that vanishes silently is worse than one that never
+   saved, so the flag survives the attempt and the board sheet retries. */
+let boardDirty = false;
+
 /* One document per player, rewritten when a ranked run lands: the board stays
-   a few hundred rows instead of growing by one document per run forever. */
+   a few hundred rows instead of growing by one document per run forever.
+   Resolves "saved", "unavailable", "failed" or "empty" - never throws, and
+   never fails quietly. */
 async function postDaily(prof){
   const d = await store();
-  if (!d) return false;
+  if (!d) { boardDirty = true; return "unavailable"; }
   const me = identity(), runs = runsToday(prof), total = dailyTotal(prof);
-  if (!runs.length) return false;
+  if (!runs.length) return "empty";
   try {
     await d.doc("leaderboard/" + me.id).set({
       name: me.name || "Straphanger",
@@ -637,8 +662,12 @@ async function postDaily(prof){
       best_day: prof.best_daily_day || null,
       at: Date.now() / 1000,
     });
-    return true;
-  } catch (e) { return false; }          // a board that fails is never a blocker
+    boardDirty = false;
+    return "saved";
+  } catch (e) {
+    boardDirty = true;                   // a failed board is never a blocker
+    return "failed";
+  }
 }
 async function fetchBoard(mode){
   const d = await store();
@@ -757,6 +786,8 @@ function showScores(){
 }
 function renderBoard(){
   const me = identity();
+  // a post that failed earlier gets another go the moment the player looks
+  if (boardDirty && runsToday(profile).length) postDaily(profile);
   document.querySelectorAll("#scores .tabs button")
     .forEach(b => b.classList.toggle("on", b.dataset.tab === lbTab));
   if (lbTab === "mine") return renderOwnRuns();
@@ -842,7 +873,16 @@ function boot(){
     render();
     flash(`Picked up where you left off - day ${game.day}, ${game.station.name}.`, true);
   } else {
-    start(Math.floor(Math.random() * 1e9), 1, null, null);
+    // Opening the page used to start a practice run, so a player who just
+    // pressed play finished thirty days and posted nothing - the score was
+    // "not saving" because it was never a ranked run in the first place. A
+    // slot is only spent by FINISHING, so starting here costs nothing if they
+    // wander off; practice is still a button away on the NEW screen.
+    profile = readProfile();
+    rollDay(profile);
+    const slot = nextSlot(profile);
+    start(slot === null ? Math.floor(Math.random() * 1e9) : dailySeeds()[slot],
+          1, null, slot);
   }
 }
 
