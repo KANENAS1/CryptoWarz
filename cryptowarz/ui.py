@@ -178,7 +178,37 @@ def goals_board(profile) -> str:
                     f"{c(f'{t.level} {t.name:<12}', WHITE if open_ else GREY)}"
                     f"{c(t.blurb, GREY)}")
     rows += ["", "  " + c(f"{profile.runs} runs played · best {money(profile.best_net)}", GREY)]
-    rows += ["", daily_board(profile)]
+    rows += ["", daily_board(profile), "", gear_board(profile)]
+    return "\n".join(rows)
+
+
+def gear_board(profile, game=None) -> str:
+    """What you have earned by winning, and what it is doing for you."""
+    from .gear import GEAR, LUCK_PER_LEVEL, MAX_LEVEL, WINS_FOR_LEVEL, level_for
+
+    levels = profile.gear_levels
+    rows = ["  " + c("GEAR", MAG, True), ""]
+    for piece in GEAR:
+        wins = int(profile.gear_wins.get(piece.key, 0))
+        level = level_for(wins)
+        pips = c("●" * level, YELL) + c("○" * (MAX_LEVEL - level), GREY)
+        name = c(f"{piece.name:<22}", WHITE if level else GREY)
+        rows.append(f"  {pips}  {name}{c(piece.covers, GREY)}")
+        if level:
+            rows.append(f"        {c(f'+{level * LUCK_PER_LEVEL:.0%} luck while holding', GREEN)}"
+                        f"{c(' · ' + piece.blurb, GREY)}")
+        else:
+            rows.append(f"        {c('win a run holding these to earn it', GREY)}")
+        nxt = next((n for n in WINS_FOR_LEVEL if n > wins), None)
+        if nxt:
+            rows.append(f"        {c(f'{wins} win(s) · {nxt - wins} more for level {level + 1}', GREY)}")
+    if game is not None:
+        held = game.luck
+        rows += ["", "  " + c(f"holding right now: {held:+.0%} luck" if held
+                              else "holding right now: nothing your gear covers", CYAN)]
+    rows += ["", "  " + c("Luck tilts a shock toward a pump on what you hold, and keeps "
+                          "trouble away.", GREY),
+             "  " + c("It is never a sum - you get your best piece, not all of them.", GREY)]
     return "\n".join(rows)
 
 

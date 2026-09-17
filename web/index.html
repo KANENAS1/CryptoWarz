@@ -154,6 +154,15 @@
         border:1px solid var(--rule);color:var(--dim)}
   .pill.tier{border-color:var(--purple);color:#e07ad8}
   .pill.perk{border-color:var(--yellow);color:var(--yellow)}
+  .pill.luck{border-color:var(--green);color:var(--green)}
+  .gearrow{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start;
+           padding:11px 2px;border-bottom:1px solid var(--rule)}
+  .pips{letter-spacing:2px;font-size:13px;color:var(--faint);white-space:nowrap}
+  .pips b{color:var(--yellow);font-weight:400}
+  .gearrow .t{font-weight:700;font-size:13.5px;color:var(--dim)}
+  .gearrow.on .t{color:var(--paper)}
+  .gearrow .d{color:var(--faint);font-size:11.5px;margin-top:2px}
+  .gearrow .u{color:var(--green);font-size:10.5px;letter-spacing:.06em;margin-top:3px}
   /* ---------- grades, the ranked slate, the leaderboard ---------- */
   .grade{font-size:56px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--yellow)}
   .grade.f{color:var(--red)} .grade.s{color:var(--green)} .grade.g{color:var(--purple)}
@@ -191,6 +200,7 @@
     <div class="dayband">
       <span class="day" id="day">DAY 1 OF 30</span>
       <span class="pill tier" id="tierpill" hidden>OFF PEAK</span>
+      <span class="pill luck" id="luckpill" hidden>+5% LUCK</span>
       <div class="cap" aria-label="wallet capacity used"><i id="capbar" style="width:0%"></i></div>
       <span class="day num" id="capnum" style="color:var(--dim)">$0 / $25,000</span>
     </div>
@@ -330,6 +340,8 @@ function render(){
   $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
   const tierInfo = TIER_BY_LEVEL[g.tier];
   const pill = $("tierpill");
+  $("luckpill").hidden = g.luck <= 0;
+  $("luckpill").textContent = `+${Math.round(g.luck * 100)}% LUCK`;
   pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.hotHand;
   pill.textContent = [g.hotHand ? "GOD MODE" : null,
     g.isDaily && !g.hotHand ? `RANKED ${g.dailySlot + 1}/${RUNS_PER_DAY}` : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
@@ -516,6 +528,7 @@ function showFinal(){
   clearSave();
   profile = readProfile();
   const earned = award(profile, g);
+  const levelled = creditWin(profile, g);
   const points = runPoints(g), letter = runGrade(g);
   const counts = countsForProgress(g);
   const ranked = counts && g.dailySlot !== null && g.dailySlot !== undefined;
@@ -542,6 +555,12 @@ function showFinal(){
 
   // only crow about a personal best that is actually worth having - "a new
   // best run" above "the Shark owns you" reads like the game is mocking you
+  const gearNote = (levelled && levelled[2] > levelled[1])
+    ? `<div class="note" style="text-align:center;margin-top:16px;color:var(--green)">
+         <b>${esc(levelled[0].name)} — level ${levelled[2]}</b><br>
+         +${Math.round(levelled[2] * LUCK_PER_LEVEL * 100)}% luck while you're holding
+         ${esc(levelled[0].covers)}</div>`
+    : "";
   const unlocks = earned.map(a => PERKS.find(p => p.by === a.key)).filter(Boolean);
   const left = ranked ? RUNS_PER_DAY - runsToday(profile).length : 0;
   const slotsLeft = counts ? nextSlot(profile) : null;
@@ -556,7 +575,7 @@ function showFinal(){
            + (slotsLeft !== null
               ? ` You still have ranked run ${slotsLeft + 1} of ${RUNS_PER_DAY} today.` : "")
          : "This run posts nothing and unlocks nothing - and it didn't spend a ranked run either."}</div>`;
-  $("fbreak").insertAdjacentHTML("afterend", today + (earned.length
+  $("fbreak").insertAdjacentHTML("afterend", today + gearNote + (earned.length
     ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
          ${earned.map(a => `<span class="pill perk">${a.name.toUpperCase()}</span>`).join("")}
        </div>
@@ -765,11 +784,36 @@ function showGoals(){
       <div class="mark">${got.has(a.key) ? "✓" : "·"}</div>
       <div><div class="t">${a.name}</div><div class="d">${a.blurb}</div>
       ${perk ? `<div class="u">UNLOCKS · ${perk.name.toUpperCase()}</div>` : ""}</div></div>`;
-  }).join("") + `<div class="note" style="padding:14px 2px">
+  }).join("") + gearList() + `<div class="note" style="padding:14px 2px">
       ${profile.runs} run${profile.runs === 1 ? "" : "s"} played · best ${fmtMoney(profile.best_net)}
       · tier ${maxTier(profile)} unlocked</div>`;
   openSheet("goals");
 }
+/* Gear is earned, never chosen, so it belongs next to the goals rather than on
+   the setup screen where a player would look for something to pick. */
+function gearList(){
+  const held = game ? game.luckBySymbol() : {};
+  return `<h3 style="margin:22px 0 4px">GEAR</h3>
+    <div class="note" style="margin-bottom:8px">Win a run holding a kind of coin and you
+      keep the gear for it. Luck tilts a shock toward a pump on what you're holding and
+      keeps trouble away - you get your best piece, never the sum of them.</div>`
+    + GEAR.map(piece => {
+      const wins = (profile.gear_wins && profile.gear_wins[piece.key]) || 0;
+      const level = levelFor(wins);
+      const next = WINS_FOR_LEVEL.find(n => n > wins);
+      const active = Object.keys(held).some(sym => CLASS_OF[sym] === piece.key);
+      return `<div class="gearrow${level ? " on" : ""}">
+        <div class="pips"><b>${"●".repeat(level)}</b>${"○".repeat(MAX_LEVEL - level)}</div>
+        <div><div class="t">${esc(piece.name)}</div>
+          <div class="d">${esc(piece.covers)} · ${esc(piece.blurb)}</div>
+          ${level ? `<div class="u">+${Math.round(level * LUCK_PER_LEVEL * 100)}% luck while holding${
+            active ? " · ACTIVE RIGHT NOW" : ""}</div>` : ""}
+          <div class="d">${next
+            ? `${wins} win${wins === 1 ? "" : "s"} · ${next - wins} more for level ${level + 1}`
+            : `${wins} wins · fully levelled`}</div></div></div>`;
+    }).join("");
+}
+
 $("trophies").addEventListener("click", showGoals);
 $("closegoals").addEventListener("click", closeSheets);
 
@@ -850,7 +894,8 @@ $("board").addEventListener("click", showScores);
 $("closescores").addEventListener("click", closeSheets);
 
 function start(seed, tier, perk, slot){
-  game = new Game(seed, tier || 1, perk || null);
+  profile = readProfile();
+  game = new Game(seed, tier || 1, perk || null, levelsFromWins(profile.gear_wins));
   game.dailySlot = (slot === null || slot === undefined) ? null : slot;
   game.isDaily = game.dailySlot !== null;
   openCoin = null;

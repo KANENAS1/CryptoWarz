@@ -88,6 +88,42 @@ const out = {
       })(),
     };
   })(),
+  gear: (() => {
+    const full = {}; for (const k of Object.keys(G.CLASSES)) full[k] = G.MAX_LEVEL;
+    const held = sym => { const g = new G.Game(5, 1, null, full);
+      g.player.capacity = 1e9; g.holding(sym).qty = 1; return g.luck; };
+    const mixed = () => { const g = new G.Game(5, 1, null, { meme: 1, major: 3 });
+      g.holding("DOGE").qty = 1; g.holding("BTC").qty = 1; return g.luck; };
+    const win = (symbols, net, streak) => {
+      const g = new G.Game(5); g.player.debt = 0; g.player.wallet = {};
+      g.player.capacity = 1e9; g.player.cash = net; g.hotHand = !!streak;
+      for (const sym of symbols) {
+        const h = g.holding(sym); h.qty += 1000 / g.market.prices[sym]; h.cost += 1000;
+        g.player.cash -= 1000;
+      }
+      g.finalise();
+      const profile = G.blankProfile();
+      const out = G.creditWin(profile, g);
+      return { wins: profile.gear_wins, key: out ? out[0].key : null };
+    };
+    return {
+      classes: G.CLASSES,
+      pieces: G.GEAR.map(x => ({ key: x.key, name: x.name, covers: x.covers, blurb: x.blurb })),
+      max_level: G.MAX_LEVEL, wins_for_level: G.WINS_FOR_LEVEL,
+      luck_per_level: G.LUCK_PER_LEVEL, win_at: G.WIN_AT,
+      levels: [0, 1, 2, 3, 6, 7, 40].map(G.levelFor),
+      /* the two properties the feature stands on */
+      empty_wallet_is_zero: new G.Game(5, 1, null, full).luck,
+      four_pieces_equal_the_best: ["DOGE", "SOL", "BTC", "USDC"]
+        .every(sym => Math.abs(held(sym) - G.MAX_LEVEL * G.LUCK_PER_LEVEL) < 1e-9),
+      mixed_bag_takes_the_better: mixed(),
+      /* earning it */
+      win_credits_what_you_held: win(["DOGE"], 60000).wins,
+      cash_finish_earns_nothing: win([], 60000).wins,
+      loss_earns_nothing: win(["DOGE"], -4000).wins,
+      unrankable_run_earns_nothing: win(["DOGE"], 600000, true).wins,
+    };
+  })(),
   stations: G.STATIONS.map(s => ({
     name: s.name, heat: s.heat, bias: s.bias,
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,

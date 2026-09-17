@@ -122,6 +122,8 @@ class Game:
     tier: int = 1
     #: one carried-over advantage, unlocked by an achievement
     perk: Optional[str] = None
+    #: earned gear, as {coin class: level}; see gear.py
+    gear: Dict[str, int] = field(default_factory=dict)
     #: what happened this run, for achievements and the end-of-run story
     stats: dict = field(default_factory=dict)
     rng: random.Random = field(init=False)
@@ -149,7 +151,8 @@ class Game:
         self.hot_hand = False
         self.rng = random.Random(self.seed)
         self.state = MarketState(self.rng)
-        self.market = generate(self.station, self.rng, self.state)
+        self.market = generate(self.station, self.rng, self.state,
+                               luck=self._luck_by_symbol())
         self._mark_stats()
         self.say(f"Day 1. You're at {self.station.name} with "
                  f"${self.player.cash:,.0f} and a ${self.player.debt:,.0f} problem.")
@@ -162,6 +165,16 @@ class Game:
         worth = self.player.net_worth(self.market)
         self.stats["peak_worth"] = max(self.stats.get("peak_worth", 0.0), worth)
         self.stats.setdefault("worth_by_day", []).append(round(worth, 2))
+
+    @property
+    def luck(self) -> float:
+        """The best gear bonus you are holding for right now, 0.0 to 0.15."""
+        from .gear import best_luck
+        return best_luck(self.gear, self.player.wallet)
+
+    def _luck_by_symbol(self) -> Dict[str, float]:
+        from .gear import luck_by_symbol
+        return luck_by_symbol(self.gear, self.player.wallet)
 
     @property
     def fare(self) -> float:
@@ -442,7 +455,8 @@ class Game:
         self.player.debt *= (1.0 + self.shark_rate)
         self.player.vault *= (1.0 + VAULT_RATE)
         self.state.drift(self.rng)          # the market moves whether you do or not
-        self.market = generate(self.station, self.rng, self.state)
+        self.market = generate(self.station, self.rng, self.state,
+                               luck=self._luck_by_symbol())
 
         messages = [f"Day {self.day}. {target.name} ({target.lines}).", target.flavor]
         if self.market.headline:

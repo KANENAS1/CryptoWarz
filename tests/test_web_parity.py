@@ -212,6 +212,57 @@ class TestProgressParity(unittest.TestCase):
 
 
 @requires_node
+class TestGearParity(unittest.TestCase):
+    """Gear changes the odds, so the two ports must agree on every number.
+
+    The behavioural half is the important half: both sides must refuse to pay
+    out on an empty wallet, must take the best piece rather than the sum, and
+    must refuse to hand gear to a run the board will not rank.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["gear"]
+
+    def test_the_class_table_matches(self):
+        from cryptowarz.gear import CLASSES
+        self.assertEqual({k: tuple(v) for k, v in self.js["classes"].items()},
+                         {k: tuple(v) for k, v in CLASSES.items()})
+
+    def test_every_piece_matches(self):
+        from cryptowarz.gear import GEAR
+        self.assertEqual([p["key"] for p in self.js["pieces"]], [p.key for p in GEAR])
+        for js, py in zip(self.js["pieces"], GEAR):
+            self.assertEqual(js["name"], py.name, py.key)
+            self.assertEqual(js["covers"], py.covers, py.key)
+            self.assertEqual(js["blurb"], py.blurb, py.key)
+
+    def test_the_numbers_match(self):
+        from cryptowarz import gear as gr
+        self.assertEqual(self.js["max_level"], gr.MAX_LEVEL)
+        self.assertEqual(self.js["wins_for_level"], list(gr.WINS_FOR_LEVEL))
+        self.assertAlmostEqual(self.js["luck_per_level"], gr.LUCK_PER_LEVEL)
+        self.assertAlmostEqual(self.js["win_at"], gr.WIN_AT)
+        self.assertEqual(self.js["levels"],
+                         [gr.level_for(w) for w in (0, 1, 2, 3, 6, 7, 40)])
+
+    def test_luck_follows_the_bag_on_both_sides(self):
+        self.assertEqual(self.js["empty_wallet_is_zero"], 0)
+
+    def test_luck_is_never_a_sum_on_either_side(self):
+        from cryptowarz.gear import LUCK_PER_LEVEL, MAX_LEVEL
+        self.assertTrue(self.js["four_pieces_equal_the_best"])
+        self.assertAlmostEqual(self.js["mixed_bag_takes_the_better"],
+                               MAX_LEVEL * LUCK_PER_LEVEL)
+
+    def test_both_ports_earn_it_the_same_way(self):
+        self.assertEqual(self.js["win_credits_what_you_held"], {"meme": 1})
+        self.assertEqual(self.js["cash_finish_earns_nothing"], {})
+        self.assertEqual(self.js["loss_earns_nothing"], {})
+        self.assertEqual(self.js["unrankable_run_earns_nothing"], {})
+
+
+@requires_node
 class TestDiceParity(unittest.TestCase):
     """Both front ends must run the dice, and gate them, identically.
 

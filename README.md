@@ -234,6 +234,49 @@ Across 40 simulated players the curve lands about right: a median of **2 goals
 after one run, 4 after two**, then a long tail — none of the 40 finished all ten
 inside thirty runs.
 
+### Gear: what winning leaves you wearing
+
+Perks are a choice you make before a run. **Gear is the opposite** — you don't
+pick it, you earn it by *winning while holding something*, and it then quietly
+favours that same kind of holding forever after.
+
+| | Gear | Covers |
+|---|---|---|
+| ●●● | Platform Rat Charm | SHIB · PEPE · DOGE |
+| ●●● | Brass Subway Token | XRP · SOL |
+| ●●● | Cold-Storage Watch | ETH · BTC |
+| ●●● | Laminated MetroCard | USDC |
+
+Finish a run above $2,000 and the class you had the most value in at the end
+banks a win. **1 / 3 / 7 wins** gets you levels 1 / 2 / 3, worth **+5% luck per
+level** while you're holding coins that piece covers. Luck does two things: it
+tilts a market shock toward a *pump* rather than a crash on what you're
+holding, and it keeps trouble away from you.
+
+That loop is the point. A perk answers "how do I want to play this run"; gear
+answers "what am I becoming". It rewards having a style rather than grinding,
+because a win only credits the one class you were actually holding at the end
+— cash out to dollars on day thirty and the memecoin charm learns nothing.
+
+**Three rules keep it from becoming the game:**
+
+*It follows the bag, not the player.* Own every piece at full level, hold
+nothing, and your luck is zero. The bonus is on the coins in your wallet right
+now.
+
+*It is never a sum.* Hold one coin from every class and you get your **best**
+piece against trouble, not the total. There is no build that stacks to
+immunity — measured, one piece at full level is worth as much as four.
+
+*It re-weights decisions that already exist* rather than adding new rolls. A
+shock was always a coin-flip between a crash and a pump; gear tilts that flip.
+Gear is written into the save, so a reloaded run carries the same luck and
+replays as it would have — the anti-savescum guarantee outranks any feature.
+
+Measured over 400 simulated runs of the same trading bot: **26.2% solvent with
+no gear, 32.0% with everything at full level** — about the weight of a perk.
+Shocks on a coin you're geared for went from 51.9% pumps to 67.2%.
+
 ### The dice on the platform
 
 Every few rides somebody is running dice. Call a number, 1 to 10 — free to
@@ -284,6 +327,7 @@ python3 -m cryptowarz --new        # start fresh, discard the save
 python3 -m cryptowarz --scores     # the board
 python3 -m cryptowarz --no-save    # touch nothing on disk
 python3 -m cryptowarz --goals      # achievements, perks and tiers
+python3 -m cryptowarz --gear       # your gear and what it's worth
 python3 -m cryptowarz --daily      # your next ranked run of the day
 python3 -m cryptowarz --tier 3 --perk fixer
 ```
@@ -295,7 +339,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 139 tests, no install needed
+python3 -m unittest discover -s tests     # 173 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

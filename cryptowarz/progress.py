@@ -37,7 +37,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-PROGRESS_VERSION = 2
+from .gear import CLASSES
+
+PROGRESS_VERSION = 3
 
 
 # --------------------------------------------------------------- achievements
@@ -239,6 +241,8 @@ class Profile:
     #: best daily total ever posted, and the day it happened
     best_daily: float = 0.0
     best_daily_day: Optional[int] = None
+    #: wins banked per coin class, which is what gear levels are made of
+    gear_wins: Dict[str, int] = field(default_factory=dict)
     updated_at: float = 0.0
 
     # ----------------------------------------------------------- derived view
@@ -247,6 +251,11 @@ class Profile:
     def unlocked_perks(self) -> List[Perk]:
         earned = set(self.achievements)
         return [p for p in PERKS if p.unlocked_by in earned]
+
+    @property
+    def gear_levels(self) -> Dict[str, int]:
+        from .gear import levels_from_wins
+        return levels_from_wins(self.gear_wins)
 
     @property
     def max_tier(self) -> int:
@@ -289,14 +298,16 @@ class Profile:
                 "best_tier_cleared": self.best_tier_cleared,
                 "daily_day": self.daily_day, "daily_runs": list(self.daily_runs),
                 "best_daily": self.best_daily, "best_daily_day": self.best_daily_day,
+                "gear_wins": dict(self.gear_wins),
                 "updated_at": self.updated_at}
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "Profile":
-        # A version 1 profile predates ranked runs. Its achievements were still
-        # earned, so it is migrated rather than thrown away - losing somebody's
-        # unlocks to a format change is the one thing a profile must not do.
-        if not isinstance(data, dict) or data.get("version") not in (1, PROGRESS_VERSION):
+        # Older profiles predate ranked runs and gear. Their achievements were
+        # still earned, so they migrate rather than being thrown away - losing
+        # somebody's unlocks to a format change is the one thing a profile must
+        # not do. Anything missing simply starts at zero.
+        if not isinstance(data, dict) or data.get("version") not in (1, 2, PROGRESS_VERSION):
             return Profile()          # a profile is a reward, never a blocker
         known = {a.key for a in ACHIEVEMENTS}
         runs = data.get("daily_runs", [])
@@ -309,6 +320,8 @@ class Profile:
             daily_runs=[r for r in runs if isinstance(r, dict)] if isinstance(runs, list) else [],
             best_daily=float(data.get("best_daily", 0.0)),
             best_daily_day=data.get("best_daily_day"),
+            gear_wins={k: int(v) for k, v in (data.get("gear_wins") or {}).items()
+                       if k in CLASSES},
             updated_at=float(data.get("updated_at", 0.0)),
         )
 

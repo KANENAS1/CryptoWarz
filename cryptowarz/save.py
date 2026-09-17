@@ -76,6 +76,8 @@ def to_dict(game) -> Dict[str, Any]:
         "seed": game.seed,
         "tier": game.tier,
         "perk": game.perk,
+        # the gear the run started with, so a reload keeps the same luck
+        "gear": dict(getattr(game, "gear", {}) or {}),
         # which ranked run of today this is, or null for practice. Added after
         # version 1 shipped and read with a default, so an in-progress save from
         # the older build still loads - it simply resumes as practice.
@@ -119,7 +121,8 @@ def from_dict(data: Dict[str, Any]):
         )
 
     game = Game(seed=data.get("seed"), tier=int(data.get("tier", 1)),
-                perk=data.get("perk"))
+                perk=data.get("perk"),
+                gear={k: int(v) for k, v in (data.get("gear") or {}).items()})
     slot = data.get("daily_slot")
     game.daily_slot = None if slot is None else int(slot)
     game.is_daily = game.daily_slot is not None

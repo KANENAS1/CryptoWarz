@@ -140,14 +140,18 @@ function stationPrice(c, level, st, rng) {
   return Math.max(c.low * 0.1, price);
 }
 
-function generate(st, rng, state, shockChance) {
+/* `luck` maps a symbol to how far the crash/pump coin-flip tilts toward a pump
+   for it. It moves the threshold on a draw that already happens rather than
+   adding one; the flip is the same flip, weighted differently. */
+function generate(st, rng, state, shockChance, luck) {
   if (shockChance === undefined) shockChance = 0.24;
   let shock = null;
   if (rng.random() < shockChance) {
     const pool = COINS.filter(c => c.symbol !== "USDC");
     const target = rng.choice(pool);
+    const crashOdds = 0.5 - ((luck || {})[target.symbol] || 0);
     let entry;
-    if (rng.random() < 0.5) entry = rng.choice(CRASHES);
+    if (rng.random() < crashOdds) entry = rng.choice(CRASHES);
     else entry = rng.choice(target.meme ? MEME_PUMPS.concat(PUMPS) : PUMPS);
     shock = { symbol: target.symbol, headline: entry[0].replace("{name}", target.name),
               factor: entry[1], crash: entry[1] < 1.0 };
@@ -176,12 +180,13 @@ const DICE_EVERY = 4, DICE_SIDES = 10, DICE_NEAR_PRIZE = 400, DICE_EXACT_PRIZE =
 const HOT_HAND = [4, 2];
 const HOT_HAND_CHANCE = 0.75, HOT_HAND_MIN = 250, HOT_HAND_MAX = 10000;
 
-function Game(seed, tier, perk) {
+function Game(seed, tier, perk, gear) {
   // kept so a save records which run this was - the RNG state is what restores
   // the dice, but the seed is what lets you tell someone else to try it
   this.seed = (seed === undefined || seed === null) ? (Math.random() * 1e9) | 0 : seed;
   this.tier = tier || 1;
   this.perk = perk || null;
+  this.gear = gear || {};                  // {coin class: level}; see gear.py
   const t = TIER_BY_LEVEL[this.tier] || TIER_BY_LEVEL[1];
   this.days = t.days;
   this.heatMult = t.heat;
@@ -199,7 +204,7 @@ function Game(seed, tier, perk) {
   this.hotHand = false;
   this.log = [];
   this.state = new MarketState(this.rng);
-  this.market = generate(this.station, this.rng, this.state);
+  this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
   this.markStats();
   this.say(`Day 1. You're at ${this.station.name} with $${Math.round(this.player.cash).toLocaleString()} and a $${Math.round(this.player.debt).toLocaleString()} problem.`);
   if (this.market.headline) this.say(this.market.headline);
@@ -213,6 +218,10 @@ Object.defineProperty(Game.prototype, "fare", {
   get() { return this.perk === "metrocard" ? 0 : SUBWAY_FARE; } });
 Object.defineProperty(Game.prototype, "sharkRate", {
   get() { return this.perk === "fixer" ? 0.085 : SHARK_RATE; } });
+/* The best gear bonus you are holding for right now, 0 to 0.15. */
+Object.defineProperty(Game.prototype, "luck", {
+  get() { return bestLuck(this.gear, this.player.wallet); } });
+Game.prototype.luckBySymbol = function () { return luckBySymbol(this.gear, this.player.wallet); };
 
 /* ------------------------------- the dice ---------------------------- */
 /* Measured from the last roll rather than off the calendar: a signal delay
@@ -406,7 +415,7 @@ Game.prototype.travel = function (index) {
   this.player.debt *= (1 + this.sharkRate);
   this.player.vault *= (1 + VAULT_RATE);
   this.state.drift(this.rng);
-  this.market = generate(this.station, this.rng, this.state);
+  this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
   const messages = [`Day ${this.day}. ${target.name}.`, target.flavor];
   if (this.market.headline) messages.push(this.market.headline);
   if (this.hotHand) for (const m of this.streakGift()) messages.push(m);
@@ -516,8 +525,91 @@ function rollEvent(game) {
   const heat = Math.min(1, game.station.heat * (game.heatMult || 1));
   let shelter = 1.0 - Math.min(0.66, 0.22 * game.player.vpn);
   if (game.perk === "burner") shelter *= 0.66;
+  // gear you are currently holding for; the best piece, never the sum
+  shelter *= 1 - game.luck;
   const weights = EVENTS.map(([, w, scales]) => (scales ? w * (0.35 + 1.4 * heat) * shelter : w));
   return game.rng.choices(EVENTS.map(e => e[0]), weights)(game);
+}
+
+/* ------------------------------- gear.py ------------------------------ */
+/* Perks are a choice you make before a run. Gear is the opposite: you earn it
+   by WINNING while holding something, and it then quietly favours that same
+   kind of holding forever after. It rewards having a style, not grinding - a
+   win credits only the class you were actually holding at the end.
+
+   Luck is deliberately small (15% at full level, only on coins in the wallet
+   right now), never a sum (your best piece, not all of them), and it re-weights
+   decisions that already exist rather than adding new rolls. Gear is written
+   into the save, so a reloaded run carries the same luck and replays as it
+   would have. */
+const CLASSES = {
+  meme:   ["SHIB", "PEPE", "DOGE"],
+  alt:    ["XRP", "SOL"],
+  major:  ["ETH", "BTC"],
+  stable: ["USDC"],
+};
+const CLASS_OF = {};
+for (const [cls, syms] of Object.entries(CLASSES)) for (const s of syms) CLASS_OF[s] = cls;
+
+const GEAR = [
+  { key: "meme",   name: "Platform Rat Charm",
+    blurb: "Found on the roadbed at Canal St. The jokes go your way.",
+    covers: "SHIB · PEPE · DOGE" },
+  { key: "alt",    name: "Brass Subway Token",
+    blurb: "Minted before the turnstiles took cards. Older money, better odds.",
+    covers: "XRP · SOL" },
+  { key: "major",  name: "Cold-Storage Watch",
+    blurb: "Heavy, unfashionable, and it has never lost a key.",
+    covers: "ETH · BTC" },
+  { key: "stable", name: "Laminated MetroCard",
+    blurb: "Nothing much happens to somebody holding dollars.",
+    covers: "USDC" },
+];
+const GEAR_BY_KEY = Object.fromEntries(GEAR.map(g => [g.key, g]));
+const MAX_LEVEL = 3, WINS_FOR_LEVEL = [1, 3, 7], LUCK_PER_LEVEL = 0.05, WIN_AT = 2000;
+
+function levelFor(wins) { return WINS_FOR_LEVEL.filter(n => wins >= n).length; }
+function levelsFromWins(wins) {
+  const out = {};
+  for (const key of Object.keys(CLASSES)) if (wins && wins[key]) out[key] = levelFor(wins[key]);
+  return out;
+}
+function luckOf(levels, cls) {
+  return LUCK_PER_LEVEL * Math.min(MAX_LEVEL, (levels && levels[cls]) || 0);
+}
+/* Gear you own but are not holding for does nothing: the bonus follows the bag. */
+function luckBySymbol(levels, wallet) {
+  const out = {};
+  for (const [sym, h] of Object.entries(wallet || {})) {
+    const cls = CLASS_OF[sym];
+    if (h.qty > 0 && cls) { const l = luckOf(levels, cls); if (l > 0) out[sym] = l; }
+  }
+  return out;
+}
+function bestLuck(levels, wallet) {
+  const vals = Object.values(luckBySymbol(levels, wallet));
+  return vals.length ? Math.max(...vals) : 0;
+}
+/* None when they finished holding nothing - gear is earned by HOLDING through
+   the finish, so cashing out entirely earns nothing. */
+function winningClass(g) {
+  const totals = {};
+  for (const [sym, h] of Object.entries(g.player.wallet)) {
+    if (h.qty <= 0 || !CLASS_OF[sym]) continue;
+    totals[CLASS_OF[sym]] = (totals[CLASS_OF[sym]] || 0) + h.qty * g.market.prices[sym];
+  }
+  const best = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
+}
+/* Returns [piece, levelBefore, levelAfter] or null. */
+function creditWin(profile, g) {
+  if (!countsForProgress(g) || g.finalScore() <= WIN_AT) return null;
+  const cls = winningClass(g);
+  if (cls === null) return null;
+  if (!profile.gear_wins) profile.gear_wins = {};
+  const before = levelFor(profile.gear_wins[cls] || 0);
+  profile.gear_wins[cls] = (profile.gear_wins[cls] || 0) + 1;
+  return [GEAR_BY_KEY[cls], before, levelFor(profile.gear_wins[cls])];
 }
 
 /* ---------------------------- progress.py ----------------------------- */
@@ -568,7 +660,7 @@ const TIERS = [
 const TIER_BY_LEVEL = Object.fromEntries(TIERS.map(t => [t.level, t]));
 const PERK_BY_KEY = Object.fromEntries(PERKS.map(p => [p.key, p]));
 const PROGRESS_KEY = "cryptowarz.progress.v1";
-const PROGRESS_VERSION = 2;
+const PROGRESS_VERSION = 3;
 
 /* ---------------------------- grading -------------------------------- */
 /* Three ranked runs a day, each a full thirty-day market, each graded on what
@@ -608,17 +700,18 @@ function dailySeeds(when) {
 function blankProfile() {
   return { version: PROGRESS_VERSION, runs: 0, achievements: [], best_net: 0,
            best_tier_cleared: 0, daily_day: null, daily_runs: [],
-           best_daily: 0, best_daily_day: null, updated_at: 0 };
+           best_daily: 0, best_daily_day: null, gear_wins: {}, updated_at: 0 };
 }
 function readProfile() {
   try {
     const raw = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "null");
     // a version 1 profile predates ranked runs; its achievements were still
     // earned, so it migrates rather than being thrown away
-    if (!raw || (raw.version !== PROGRESS_VERSION && raw.version !== 1)) return blankProfile();
+    if (!raw || ![1, 2, PROGRESS_VERSION].includes(raw.version)) return blankProfile();
     const known = new Set(ACHIEVEMENTS.map(a => a.key));
     raw.achievements = (raw.achievements || []).filter(k => known.has(k));
     if (!Array.isArray(raw.daily_runs)) raw.daily_runs = [];
+    if (!raw.gear_wins || typeof raw.gear_wins !== "object") raw.gear_wins = {};
     delete raw.daily_seed; delete raw.daily_net;
     return Object.assign(blankProfile(), raw, { version: PROGRESS_VERSION });
   } catch (e) { return blankProfile(); }   // a profile is a reward, never a blocker
@@ -717,6 +810,8 @@ function saveToDict(g) {
     seed: g.seed,
     tier: g.tier,
     perk: g.perk,
+    /* the gear the run started with, so a reload keeps the same luck */
+    gear: Object.assign({}, g.gear || {}),
     /* which ranked run of today this is, or null for practice. Added after
        version 1 shipped and read with a default, so an in-progress save from
        the older build still loads - it simply resumes as practice. */
@@ -743,7 +838,8 @@ function saveFromDict(data) {
   if (!data || data.save_version !== SAVE_VERSION) {
     throw new Error("that save is from a different version of the game");
   }
-  const g = new Game(data.seed === undefined ? 0 : data.seed, data.tier || 1, data.perk || null);
+  const g = new Game(data.seed === undefined ? 0 : data.seed, data.tier || 1,
+                     data.perk || null, data.gear || {});
   g.rng.setState(data.rng);
   g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
   g.isDaily = g.dailySlot !== null;
@@ -827,7 +923,10 @@ if (typeof module !== "undefined") {
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
-                     PROGRESS_VERSION, DICE_EVERY, DICE_SIDES, DICE_NEAR_PRIZE,
+                     PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,
+                     WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
+                     luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
+                     DICE_EVERY, DICE_SIDES, DICE_NEAR_PRIZE,
                      DICE_EXACT_PRIZE, HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
                      HOT_HAND_MAX, UNRANKED_GRADE,
                      countsForProgress, runGrade };

@@ -11,6 +11,7 @@ import random
 import sys
 from typing import List, Optional
 
+from . import gear as gear_module
 from . import progress as progress_module
 from . import save as save_module
 from . import ui
@@ -88,6 +89,8 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("look", "l", ""):
         return []
+    if cmd in ("gear", "kit"):
+        return [ui.gear_board(progress_module.read_profile(), game)]
     if cmd in ("goals", "trophies", "achievements"):
         return [ui.goals_board(progress_module.read_profile())]
     if cmd in ("scores", "score", "hof"):
@@ -122,7 +125,7 @@ def new_game(args) -> Game:
             seed = progress_module.daily_seeds()[slot]
             print(ui.c(f"  Ranked run {slot + 1} of {progress_module.RUNS_PER_DAY}. "
                        f"Everyone plays this same market today.", ui.CYAN))
-    game = Game(seed=seed, tier=tier, perk=perk)
+    game = Game(seed=seed, tier=tier, perk=perk, gear=profile.gear_levels)
     game.is_daily = slot is not None
     game.daily_slot = slot
     return game
@@ -132,7 +135,7 @@ def resume_or_new(seed: Optional[int], force_new: bool) -> Game:
     """Offer to pick up an interrupted run, unless told to start fresh."""
     if force_new or not save_module.has_save():
         save_module.clear_save()
-        return Game(seed=seed)
+        return Game(seed=seed, gear=progress_module.read_profile().gear_levels)
     try:
         saved = save_module.read_save()
     except save_module.SaveError as exc:
@@ -243,6 +246,15 @@ def play(args) -> int:
                                   f"{len(profile.runs_today())} ranked run(s)"
                                   + (f" · {left} left" if left else " · that's the slate"),
                                   ui.CYAN))
+            levelled = gear_module.credit_win(profile, game)
+            progress_module.write_profile(profile)
+            if levelled and levelled[2] > levelled[1]:
+                piece, _, after = levelled
+                print()
+                print("  " + ui.c(f"◆ {piece.name} — level {after}", ui.CYAN, True))
+                print("  " + ui.c(f"    {piece.blurb}", ui.GREY))
+                print("  " + ui.c(f"    +{after * gear_module.LUCK_PER_LEVEL:.0%} luck while "
+                                  f"you're holding {piece.covers}", ui.GREY))
             if earned:
                 print()
                 for a in earned:
@@ -275,6 +287,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--tier", type=int, default=1, help="difficulty 1-5; higher ones unlock as you clear them")
     p.add_argument("--perk", default=None, help="carry an unlocked perk (see 'goals')")
     p.add_argument("--daily", action="store_true", help="a ranked run - three a day, same markets for everyone")
+    p.add_argument("--gear", action="store_true", help="show your gear and exit")
     p.add_argument("--goals", action="store_true", help="show achievements and unlocks, then exit")
     p.add_argument("--new", action="store_true", help="start fresh, discarding any saved run")
     p.add_argument("--no-save", action="store_true", help="do not read or write save files")
@@ -286,6 +299,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.scores:
         ui.enable_color()
         print(ui.scoreboard(save_module.read_scores()))
+        return 0
+    if args.gear:
+        print(ui.gear_board(progress_module.read_profile()))
         return 0
     if args.goals:
         ui.enable_color()

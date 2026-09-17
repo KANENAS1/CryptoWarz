@@ -121,15 +121,22 @@ def _station_price(coin: Coin, level: float, station: Station, rng: random.Rando
 
 
 def generate(station: Station, rng: random.Random, state: Optional[MarketState] = None,
-             shock_chance: float = 0.24) -> Market:
-    """Prices at one station. Pass a MarketState to get a market with memory."""
+             shock_chance: float = 0.24, luck: Optional[Dict[str, float]] = None) -> Market:
+    """Prices at one station. Pass a MarketState to get a market with memory.
+
+    ``luck`` maps a symbol to how far the crash/pump coin-flip tilts toward a
+    pump for it - gear the player is holding for. It moves the threshold on a
+    draw that already happens rather than adding one; the flip is the same
+    flip, weighted differently.
+    """
     if state is None:
         state = MarketState(rng)
 
     shock: Optional[Shock] = None
     if rng.random() < shock_chance:
         target = rng.choice([c for c in COINS if c.symbol != "USDC"])
-        if rng.random() < 0.5:
+        crash_odds = 0.5 - (luck or {}).get(target.symbol, 0.0)
+        if rng.random() < crash_odds:
             template, factor = rng.choice(CRASHES)
         else:
             template, factor = rng.choice(MEME_PUMPS + PUMPS if target.meme else PUMPS)

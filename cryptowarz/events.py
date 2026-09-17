@@ -172,6 +172,9 @@ def roll_event(game: "Game") -> List[str]:
     shelter = 1.0 - min(0.66, 0.22 * game.player.vpn)
     if getattr(game, "perk", None) == "burner":
         shelter *= 0.66
+    # gear you are currently holding for; the best piece, never the sum, so no
+    # build stacks its way to immunity
+    shelter *= 1.0 - game.luck
     weights = []
     for _fn, weight, scales in EVENTS:
         w = weight
