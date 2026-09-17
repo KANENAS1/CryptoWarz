@@ -84,6 +84,64 @@ LUCK_PER_LEVEL = 0.05
 WIN_AT = 2_000.0
 
 
+#: Moving a banked win to another piece costs two to give one. Free respec
+#: would make the four pieces one piece with a dropdown; a punitive rate would
+#: mean nobody ever touches it. Two-for-one is enough to hurt and cheap enough
+#: to use when a player's style actually changes.
+RETUNE_COST = 2
+#: A custom name is yours; the length cap is the UI's, not a rule.
+MAX_NAME = 22
+
+
+def display_name(profile, piece: "GearPiece") -> str:
+    """What to call a piece - the player's name for it, if they gave it one."""
+    custom = (getattr(profile, "gear_names", None) or {}).get(piece.key)
+    return custom if custom else piece.name
+
+
+def clean_name(name: str) -> str:
+    return " ".join(str(name).split())[:MAX_NAME]
+
+
+def rename(profile, key: str, name: str) -> str:
+    """Name a piece you have actually earned."""
+    if key not in GEAR_BY_KEY:
+        raise ValueError(f"no such gear {key!r}; try {', '.join(GEAR_BY_KEY)}")
+    if level_for(int(profile.gear_wins.get(key, 0))) < 1:
+        raise ValueError(f"you haven't earned the {GEAR_BY_KEY[key].name} yet")
+    cleaned = clean_name(name)
+    if not cleaned:
+        profile.gear_names.pop(key, None)
+        return f"Back to {GEAR_BY_KEY[key].name}."
+    profile.gear_names[key] = cleaned
+    return f"{GEAR_BY_KEY[key].name} is now {cleaned}."
+
+
+def retune(profile, source: str, target: str) -> str:
+    """Move a banked win from one piece to another, at two for one.
+
+    This is how gear gets customised rather than merely accumulated: a player
+    whose style has moved from memecoins to majors can carry some of what they
+    earned across instead of starting that piece from nothing.
+    """
+    for key in (source, target):
+        if key not in GEAR_BY_KEY:
+            raise ValueError(f"no such gear {key!r}; try {', '.join(GEAR_BY_KEY)}")
+    if source == target:
+        raise ValueError("that is where it already is")
+    have = int(profile.gear_wins.get(source, 0))
+    if have < RETUNE_COST:
+        raise ValueError(f"{GEAR_BY_KEY[source].name} has {have} win(s); "
+                         f"moving one costs {RETUNE_COST}")
+    profile.gear_wins[source] = have - RETUNE_COST
+    profile.gear_wins[target] = int(profile.gear_wins.get(target, 0)) + 1
+    if profile.gear_wins[source] <= 0:
+        profile.gear_wins.pop(source)
+        profile.gear_names.pop(source, None)      # an unearned piece keeps no name
+    return (f"Moved a win from {GEAR_BY_KEY[source].name} to "
+            f"{GEAR_BY_KEY[target].name}. It cost {RETUNE_COST}.")
+
+
 def level_for(wins: int) -> int:
     """How many levels that many wins is worth."""
     return sum(1 for needed in WINS_FOR_LEVEL if wins >= needed)

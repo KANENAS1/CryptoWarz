@@ -258,6 +258,15 @@ answers "what am I becoming". It rewards having a style rather than grinding,
 because a win only credits the one class you were actually holding at the end
 — cash out to dollars on day thirty and the memecoin charm learns nothing.
 
+**Customising it.** Gear is shaped, not just accumulated. Any piece you've
+earned can be **renamed** (`gear name meme Ratty`, or tap it on the goals
+screen), and you can **move a banked win** to another piece at **two for one**
+(`gear move meme major`). Free respec would make four pieces one piece with a
+dropdown; a punitive rate means nobody ever touches it. Two-for-one is enough
+to hurt and cheap enough to use when your style actually changes.
+
+Gear **applies in ranked runs**, like perks do.
+
 **Three rules keep it from becoming the game:**
 
 *It follows the bag, not the player.* Own every piece at full level, hold
@@ -276,6 +285,57 @@ replays as it would have — the anti-savescum guarantee outranks any feature.
 Measured over 400 simulated runs of the same trading bot: **26.2% solvent with
 no gear, 32.0% with everything at full level** — about the weight of a perk.
 Shocks on a coin you're geared for went from 51.9% pumps to 67.2%.
+
+### The skim: gambling on a dip
+
+Bet cash on where a coin goes by the next stop. `skim DOGE 500 dip` — or
+`pump`. It settles the moment you ride, against the coin's **real market move**
+rather than a station's take on it, because betting on the station price would
+just be betting on which stop you rode to.
+
+It costs you attention. A position is somebody else's coin moving on your
+say-so, and while one is open the exchange is watching: trouble is up to 40%
+likelier, **scaled by how much of everything you own is riding**. That's the
+only reason a maximum bet is a decision at all.
+
+**It pays fixed odds — win and you get your stake back plus 0.6×, lose and it's
+gone, and a move under 1% is a push.** That flatness is the entire balance of
+the feature, and it is the second thing in this repo that had to be rebuilt
+after being measured.
+
+<details>
+<summary>The first version was a printing press. The numbers.</summary>
+
+It paid in proportion to how far the coin moved, at 2× leverage. That reads
+like a gamble, and it was arithmetic: the market pulls a stretched coin back
+toward its middle, a player can read exactly how stretched a coin is straight
+off the price, and a payout that scales with the move turns that read into
+compound interest over thirty days.
+
+| strategy | solvent | best run |
+|---|---|---|
+| no skimming | 26.2% | $165k |
+| bet against the stretch, 50% of cash | **62.0%** | **$39.8M** |
+
+Fixed odds severs the payout from the size of the move. The multiple is set so
+that the *best read available* is worth about two percent a ride — a coin at
+the top of its range drifts down ~11% against noise of ~30%, so calling the dip
+on it is right roughly 64% of the time, and 0.6× turns that into almost
+nothing. Anything repeatable and positive compounds, so "barely worth it when
+you're right" is the target, not "fair".
+
+| strategy | solvent | median | best run |
+|---|---|---|---|
+| never skims | 26.2% | −$7,986 | $165k |
+| best read, 25% of cash | **33.2%** | −$12,144 | $329k |
+| best read, 50% | 31.5% | −$13,369 | $2.5M |
+| best read, all in | **0.5%** | −$6,655 | $2.8k |
+| careless, 50% | 8.8% | **−$41,549** | $94k |
+
+Skill pays a little. Carelessness costs a lot. Greed is fatal — going all in
+repeatedly draws the heat that kills the run. That's a gamble; the first one
+was a salary.
+</details>
 
 ### The dice on the platform
 
@@ -328,6 +388,7 @@ python3 -m cryptowarz --scores     # the board
 python3 -m cryptowarz --no-save    # touch nothing on disk
 python3 -m cryptowarz --goals      # achievements, perks and tiers
 python3 -m cryptowarz --gear       # your gear and what it's worth
+#   in-game: skim <coin> <amt> dip|pump · gear name · gear move
 python3 -m cryptowarz --daily      # your next ranked run of the day
 python3 -m cryptowarz --tier 3 --perk fixer
 ```
@@ -339,7 +400,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 173 tests, no install needed
+python3 -m unittest discover -s tests     # 207 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

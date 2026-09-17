@@ -243,6 +243,8 @@ class Profile:
     best_daily_day: Optional[int] = None
     #: wins banked per coin class, which is what gear levels are made of
     gear_wins: Dict[str, int] = field(default_factory=dict)
+    #: what the player calls each piece, if they have renamed it
+    gear_names: Dict[str, str] = field(default_factory=dict)
     updated_at: float = 0.0
 
     # ----------------------------------------------------------- derived view
@@ -299,6 +301,7 @@ class Profile:
                 "daily_day": self.daily_day, "daily_runs": list(self.daily_runs),
                 "best_daily": self.best_daily, "best_daily_day": self.best_daily_day,
                 "gear_wins": dict(self.gear_wins),
+                "gear_names": dict(self.gear_names),
                 "updated_at": self.updated_at}
 
     @staticmethod
@@ -322,6 +325,8 @@ class Profile:
             best_daily_day=data.get("best_daily_day"),
             gear_wins={k: int(v) for k, v in (data.get("gear_wins") or {}).items()
                        if k in CLASSES},
+            gear_names={k: str(v)[:22] for k, v in (data.get("gear_names") or {}).items()
+                        if k in CLASSES and str(v).strip()},
             updated_at=float(data.get("updated_at", 0.0)),
         )
 

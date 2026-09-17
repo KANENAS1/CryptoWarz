@@ -116,6 +116,15 @@ def wallet_panel(game: Game) -> str:
         f"  {c('wallet', GREY)}   {bar} {money(used)} / {money(cap)}",
         f"  {c('vpn', GREY)}      level {p.vpn}",
     ]
+    if game.luck > 0:
+        lines.append(f"  {c('luck', GREY)}     {c(f'+{game.luck:.0%}', GREEN)}"
+                     f"{c(' on what you are holding', GREY)}")
+    bet = game.skim
+    if bet:
+        stake = money(float(bet["stake"]))
+        riding = f'{stake} on {bet["symbol"]} to {bet["side"]}'
+        lines.append(f"  {c('riding', GREY)}   {c(riding, YELL, True)}"
+                     + c(" · settles when you move · they're watching", GREY))
     return "\n".join(lines)
 
 
@@ -184,7 +193,8 @@ def goals_board(profile) -> str:
 
 def gear_board(profile, game=None) -> str:
     """What you have earned by winning, and what it is doing for you."""
-    from .gear import GEAR, LUCK_PER_LEVEL, MAX_LEVEL, WINS_FOR_LEVEL, level_for
+    from .gear import (GEAR, LUCK_PER_LEVEL, MAX_LEVEL, RETUNE_COST, WINS_FOR_LEVEL,
+                       display_name, level_for)
 
     levels = profile.gear_levels
     rows = ["  " + c("GEAR", MAG, True), ""]
@@ -192,7 +202,8 @@ def gear_board(profile, game=None) -> str:
         wins = int(profile.gear_wins.get(piece.key, 0))
         level = level_for(wins)
         pips = c("●" * level, YELL) + c("○" * (MAX_LEVEL - level), GREY)
-        name = c(f"{piece.name:<22}", WHITE if level else GREY)
+        shown = display_name(profile, piece)
+        name = c(f"{shown:<22}", WHITE if level else GREY)
         rows.append(f"  {pips}  {name}{c(piece.covers, GREY)}")
         if level:
             rows.append(f"        {c(f'+{level * LUCK_PER_LEVEL:.0%} luck while holding', GREEN)}"
@@ -208,7 +219,10 @@ def gear_board(profile, game=None) -> str:
                               else "holding right now: nothing your gear covers", CYAN)]
     rows += ["", "  " + c("Luck tilts a shock toward a pump on what you hold, and keeps "
                           "trouble away.", GREY),
-             "  " + c("It is never a sum - you get your best piece, not all of them.", GREY)]
+             "  " + c("It is never a sum - you get your best piece, not all of them.", GREY),
+             "", "  " + c(f"gear name <piece> <your name>   ·   "
+                          f"gear move <from> <to>  ({RETUNE_COST} wins for 1)", CYAN),
+             "  " + c("pieces: " + ", ".join(p.key for p in GEAR), GREY)]
     return "\n".join(rows)
 
 
@@ -241,6 +255,11 @@ HELP = f"""
   {c('TRADE', MAG, True)}
     buy  <coin> <qty|max>     {c('b BTC 0.1   ·   buy DOGE max', GREY)}
     sell <coin> <qty|all>     {c('s DOGE all  ·   sell SOL 12', GREY)}
+
+  {c('GAMBLE', MAG, True)}
+    skim <coin> <amt> dip     {c('bet a coin falls by the next stop', GREY)}
+    skim <coin> <amt> pump    {c('or that it climbs - settles when you move', GREY)}
+    gear                      {c('what you have earned · gear name · gear move', GREY)}
 
   {c('MOVE', MAG, True)}
     go <number>               {c('ride to a station - costs one day', GREY)}

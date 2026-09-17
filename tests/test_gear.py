@@ -175,6 +175,57 @@ class TestItActuallyChangesTheGame(unittest.TestCase):
                                bare_p / (bare_p + bare_c), delta=0.001)
 
 
+class TestCustomisingIt(unittest.TestCase):
+    """Gear you can shape, not just accumulate."""
+
+    def test_you_can_name_a_piece_you_have_earned(self):
+        profile = P.Profile(gear_wins={"meme": 1})
+        G.rename(profile, "meme", "Ratty")
+        self.assertEqual(G.display_name(profile, G.GEAR_BY_KEY["meme"]), "Ratty")
+
+    def test_an_empty_name_puts_the_original_back(self):
+        profile = P.Profile(gear_wins={"meme": 1}, gear_names={"meme": "Ratty"})
+        G.rename(profile, "meme", "   ")
+        self.assertEqual(G.display_name(profile, G.GEAR_BY_KEY["meme"]),
+                         G.GEAR_BY_KEY["meme"].name)
+
+    def test_a_name_is_tidied_and_capped(self):
+        profile = P.Profile(gear_wins={"meme": 1})
+        G.rename(profile, "meme", "  a   very    long name that runs off the screen  ")
+        shown = G.display_name(profile, G.GEAR_BY_KEY["meme"])
+        self.assertLessEqual(len(shown), G.MAX_NAME)
+        self.assertNotIn("  ", shown)
+
+    def test_you_cannot_name_gear_you_have_not_earned(self):
+        with self.assertRaises(ValueError):
+            G.rename(P.Profile(), "meme", "Ratty")
+
+    def test_moving_a_win_costs_more_than_it_gives(self):
+        profile = P.Profile(gear_wins={"meme": 4})
+        G.retune(profile, "meme", "major")
+        self.assertEqual(profile.gear_wins, {"meme": 4 - G.RETUNE_COST, "major": 1})
+
+    def test_moving_a_win_you_do_not_have_is_refused(self):
+        profile = P.Profile(gear_wins={"meme": 1})
+        with self.assertRaises(ValueError):
+            G.retune(profile, "meme", "major")
+        self.assertEqual(profile.gear_wins, {"meme": 1}, "a refused move must change nothing")
+
+    def test_moving_a_win_to_where_it_already_is_is_refused(self):
+        with self.assertRaises(ValueError):
+            G.retune(P.Profile(gear_wins={"meme": 4}), "meme", "meme")
+
+    def test_a_piece_you_move_away_from_entirely_loses_its_name(self):
+        profile = P.Profile(gear_wins={"meme": 2}, gear_names={"meme": "Ratty"})
+        G.retune(profile, "meme", "alt")
+        self.assertEqual(profile.gear_wins, {"alt": 1})
+        self.assertEqual(profile.gear_names, {}, "an unearned piece kept a custom name")
+
+    def test_names_survive_a_save(self):
+        profile = P.Profile(gear_wins={"meme": 1}, gear_names={"meme": "Ratty"})
+        self.assertEqual(P.Profile.from_dict(profile.to_dict()).gear_names, {"meme": "Ratty"})
+
+
 class TestItSurvivesAReload(unittest.TestCase):
     def test_a_saved_run_keeps_its_gear(self):
         game = Game(seed=5, gear={"meme": 2})

@@ -180,6 +180,29 @@ const DICE_EVERY = 4, DICE_SIDES = 10, DICE_NEAR_PRIZE = 400, DICE_EXACT_PRIZE =
 const HOT_HAND = [4, 2];
 const HOT_HAND_CHANCE = 0.75, HOT_HAND_MIN = 250, HOT_HAND_MAX = 10000;
 
+/* ------------------------------- the skim -------------------------------
+   A bet on where a coin goes next, settled on your next ride. Not a trade: you
+   put up cash and take cash, so it ignores wallet capacity - which is exactly
+   why it has to cost something else.
+
+   What it costs is attention. A position is somebody else's coin moving on
+   your say-so, and while one is open the exchange is looking at you: trouble is
+   SKIM_HEAT times likelier on the ride that settles it. Without that, this is
+   free optionality bolted onto a game about carrying risk around on a train,
+   and the correct play would be to skim on every ride forever. */
+/* FIXED ODDS, and that is the whole balance of it. The first version paid out
+   in proportion to how far the coin moved, at 2x leverage - it looked like a
+   gamble and was a printing press, because the market pulls a stretched coin
+   back toward its middle, a player can read how stretched a coin is straight
+   off the price, and a payout that scales with the move turns that read into
+   compound interest. Measured, it took a trading bot from 26% solvent to 62%
+   with a best run of $39.8 million. A flat multiple severs the payout from the
+   size of the move, which is what removes the blow-up. The multiple is set so
+   the best read available is worth about two percent a ride and careless
+   betting is a clear loss. */
+const SKIM_MIN = 100, SKIM_PAYS = 0.6, SKIM_DEADBAND = 0.01, SKIM_HEAT = 1.4;
+const SKIM_SIDES = ["dip", "pump"];
+
 function Game(seed, tier, perk, gear) {
   // kept so a save records which run this was - the RNG state is what restores
   // the dice, but the seed is what lets you tell someone else to try it
@@ -202,6 +225,7 @@ function Game(seed, tier, perk, gear) {
                  best_multiple: 0, worth_by_day: [],
                  dice_picks: [], dice_days: [], hot_hand: false };
   this.hotHand = false;
+  this.skim = null;                        // an open bet; see openSkim
   this.log = [];
   this.state = new MarketState(this.rng);
   this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
@@ -222,6 +246,71 @@ Object.defineProperty(Game.prototype, "sharkRate", {
 Object.defineProperty(Game.prototype, "luck", {
   get() { return bestLuck(this.gear, this.player.wallet); } });
 Game.prototype.luckBySymbol = function () { return luckBySymbol(this.gear, this.player.wallet); };
+
+/* ------------------------------- the skim ---------------------------- */
+Object.defineProperty(Game.prototype, "skimOpen", { get() { return this.skim !== null; } });
+/* How much of everything you have is riding, 0 to 1. Trouble scales with this
+   rather than switching on, so shoving the whole roll onto one call is a louder
+   thing to do - the only reason a maximum bet is a decision at all. */
+Object.defineProperty(Game.prototype, "skimExposure", {
+  get() {
+    if (this.skim === null) return 0;
+    // the stake counts toward what you have: it is money you still own, it is
+    // just not in your pocket while the bet is open
+    const stake = this.skim.stake;
+    const rest = Math.max(0, this.player.cash + this.player.vault + this.portfolioValue());
+    return Math.max(0, Math.min(1, stake / (stake + rest)));
+  } });
+/* The fare is never part of the stake. */
+Game.prototype.maxSkim = function () {
+  return Math.max(0, this.player.cash - this.fare - FARE_BUFFER);
+};
+/* One at a time, deliberately: a player who could stack a bet on every coin
+   would have bought the market rather than made a call. */
+Game.prototype.openSkim = function (sym, amount, side) {
+  sym = String(sym).toUpperCase();
+  side = String(side).toLowerCase();
+  if (!SKIM_SIDES.includes(side)) throw new Error("bet the dip or the pump");
+  if (!COIN[sym]) throw new Error(`nobody here trades ${sym}`);
+  if (sym === "USDC") throw new Error("a dollar is not going anywhere. Pick something with a pulse");
+  if (this.skim !== null) throw new Error("you already have something riding. One at a time");
+  amount = Number(amount);
+  if (!(amount >= SKIM_MIN)) throw new Error(`$${SKIM_MIN} is the smallest they'll take`);
+  if (amount > this.maxSkim() + 1e-9) {
+    throw new Error(`you can stake $${this.maxSkim().toFixed(2)} and still make the fare`);
+  }
+  this.player.cash -= amount;
+  this.skim = { symbol: sym, stake: amount, side: side, level: this.state.levels[sym] };
+  this.stats.skims = (this.stats.skims || 0) + 1;
+  return `$${amount.toFixed(2)} on ${sym} to ${side}. Settles when you move. Somebody is watching you now.`;
+};
+/* Settled against the coin's real move, not a station's take: betting on the
+   station price would just be betting on which stop you rode to, which the
+   player already decides with their wallet. */
+Game.prototype.settleSkim = function () {
+  if (this.skim === null) return [];
+  const bet = this.skim;
+  this.skim = null;
+  const opened = bet.level, now = this.state.levels[bet.symbol];
+  const move = opened > 0 ? now / opened - 1 : 0;
+  const toward = bet.side === "pump" ? move : -move;
+  const pct = (move >= 0 ? "+" : "") + (move * 100).toFixed(1) + "%";
+  if (Math.abs(move) < SKIM_DEADBAND) {
+    this.player.cash += bet.stake;
+    return [`${bet.symbol} barely moved (${pct}). Nobody wins. `
+            + `You get your $${bet.stake.toFixed(2)} back.`];
+  }
+  if (toward > 0) {
+    const payout = bet.stake * (1 + SKIM_PAYS);
+    this.player.cash += payout;
+    this.stats.skims_won = (this.stats.skims_won || 0) + 1;
+    this.stats.best_skim = Math.max(this.stats.best_skim || 0, payout - bet.stake);
+    return [`The ${bet.side} came in on ${bet.symbol} (${pct}). `
+            + `You take $${payout.toFixed(2)} - up $${(payout - bet.stake).toFixed(2)}.`];
+  }
+  return [`${bet.symbol} went ${pct}. The $${bet.stake.toFixed(2)} is gone. `
+          + `That is what the word gamble means.`];
+};
 
 /* ------------------------------- the dice ---------------------------- */
 /* Measured from the last roll rather than off the calendar: a signal delay
@@ -420,6 +509,9 @@ Game.prototype.travel = function (index) {
   if (this.market.headline) messages.push(this.market.headline);
   if (this.hotHand) for (const m of this.streakGift()) messages.push(m);
   for (const m of rollEvent(this)) messages.push(m);
+  // settled after the events, so the heat a position attracts lands on the ride
+  // you were actually exposed on
+  for (const m of this.settleSkim()) messages.push(m);
   if (this.diceReady && !wasReady) messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
   this.markStats();
   messages.forEach(m => this.say(m));
@@ -527,6 +619,8 @@ function rollEvent(game) {
   if (game.perk === "burner") shelter *= 0.66;
   // gear you are currently holding for; the best piece, never the sum
   shelter *= 1 - game.luck;
+  // an open bet is somebody else's coin moving on your say-so
+  if (game.skim) shelter *= 1 + (SKIM_HEAT - 1) * game.skimExposure;
   const weights = EVENTS.map(([, w, scales]) => (scales ? w * (0.35 + 1.4 * heat) * shelter : w));
   return game.rng.choices(EVENTS.map(e => e[0]), weights)(game);
 }
@@ -567,6 +661,47 @@ const GEAR = [
 ];
 const GEAR_BY_KEY = Object.fromEntries(GEAR.map(g => [g.key, g]));
 const MAX_LEVEL = 3, WINS_FOR_LEVEL = [1, 3, 7], LUCK_PER_LEVEL = 0.05, WIN_AT = 2000;
+
+/* Moving a banked win costs two to give one: free respec would make four
+   pieces one piece with a dropdown, and a punitive rate means nobody uses it. */
+const RETUNE_COST = 2, MAX_NAME = 22;
+
+function displayName(profile, piece) {
+  const custom = (profile && profile.gear_names || {})[piece.key];
+  return custom ? custom : piece.name;
+}
+function cleanName(name) { return String(name).split(/\s+/).filter(Boolean).join(" ").slice(0, MAX_NAME); }
+function renameGear(profile, key, name) {
+  if (!GEAR_BY_KEY[key]) throw new Error(`no such gear ${key}`);
+  if (!profile.gear_names) profile.gear_names = {};
+  if (levelFor((profile.gear_wins || {})[key] || 0) < 1) {
+    throw new Error(`you haven't earned the ${GEAR_BY_KEY[key].name} yet`);
+  }
+  const cleaned = cleanName(name);
+  if (!cleaned) { delete profile.gear_names[key]; return `Back to ${GEAR_BY_KEY[key].name}.`; }
+  profile.gear_names[key] = cleaned;
+  return `${GEAR_BY_KEY[key].name} is now ${cleaned}.`;
+}
+/* How gear gets customised rather than merely accumulated: a player whose style
+   moved from memecoins to majors carries some of what they earned across. */
+function retuneGear(profile, source, target) {
+  for (const key of [source, target]) if (!GEAR_BY_KEY[key]) throw new Error(`no such gear ${key}`);
+  if (source === target) throw new Error("that is where it already is");
+  if (!profile.gear_wins) profile.gear_wins = {};
+  if (!profile.gear_names) profile.gear_names = {};
+  const have = profile.gear_wins[source] || 0;
+  if (have < RETUNE_COST) {
+    throw new Error(`${GEAR_BY_KEY[source].name} has ${have} win(s); moving one costs ${RETUNE_COST}`);
+  }
+  profile.gear_wins[source] = have - RETUNE_COST;
+  profile.gear_wins[target] = (profile.gear_wins[target] || 0) + 1;
+  if (profile.gear_wins[source] <= 0) {
+    delete profile.gear_wins[source];
+    delete profile.gear_names[source];        // an unearned piece keeps no name
+  }
+  return `Moved a win from ${GEAR_BY_KEY[source].name} to ${GEAR_BY_KEY[target].name}. `
+       + `It cost ${RETUNE_COST}.`;
+}
 
 function levelFor(wins) { return WINS_FOR_LEVEL.filter(n => wins >= n).length; }
 function levelsFromWins(wins) {
@@ -700,7 +835,8 @@ function dailySeeds(when) {
 function blankProfile() {
   return { version: PROGRESS_VERSION, runs: 0, achievements: [], best_net: 0,
            best_tier_cleared: 0, daily_day: null, daily_runs: [],
-           best_daily: 0, best_daily_day: null, gear_wins: {}, updated_at: 0 };
+           best_daily: 0, best_daily_day: null, gear_wins: {}, gear_names: {},
+           updated_at: 0 };
 }
 function readProfile() {
   try {
@@ -712,6 +848,7 @@ function readProfile() {
     raw.achievements = (raw.achievements || []).filter(k => known.has(k));
     if (!Array.isArray(raw.daily_runs)) raw.daily_runs = [];
     if (!raw.gear_wins || typeof raw.gear_wins !== "object") raw.gear_wins = {};
+    if (!raw.gear_names || typeof raw.gear_names !== "object") raw.gear_names = {};
     delete raw.daily_seed; delete raw.daily_net;
     return Object.assign(blankProfile(), raw, { version: PROGRESS_VERSION });
   } catch (e) { return blankProfile(); }   // a profile is a reward, never a blocker
@@ -812,6 +949,10 @@ function saveToDict(g) {
     perk: g.perk,
     /* the gear the run started with, so a reload keeps the same luck */
     gear: Object.assign({}, g.gear || {}),
+    /* an open bet rides with the save. Losing it on a reload would make closing
+       the tab a free way out of a bet going the wrong way - the same savescum
+       the RNG state exists to prevent */
+    skim: g.skim ? Object.assign({}, g.skim) : null,
     /* which ranked run of today this is, or null for practice. Added after
        version 1 shipped and read with a default, so an in-progress save from
        the older build still loads - it simply resumes as practice. */
@@ -846,6 +987,7 @@ function saveFromDict(data) {
   if (data.stats) g.stats = data.stats;
   // carried in stats, so it reloads with the run and a reload cannot shake it
   g.hotHand = !!(g.stats && g.stats.hot_hand);
+  g.skim = data.skim ? Object.assign({}, data.skim) : null;
   g.day = data.day;
   g.finished = !!data.finished;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
@@ -926,6 +1068,8 @@ if (typeof module !== "undefined") {
                      PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,
                      WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
                      luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
+                     RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
+                     SKIM_MIN, SKIM_PAYS, SKIM_DEADBAND, SKIM_HEAT, SKIM_SIDES,
                      DICE_EVERY, DICE_SIDES, DICE_NEAR_PRIZE,
                      DICE_EXACT_PRIZE, HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
                      HOT_HAND_MAX, UNRANKED_GRADE,

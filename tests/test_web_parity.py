@@ -263,6 +263,78 @@ class TestGearParity(unittest.TestCase):
 
 
 @requires_node
+class TestSkimParity(unittest.TestCase):
+    """Fixed odds is what the parity suite is here to protect.
+
+    A port that quietly went back to paying by the size of the move would keep
+    passing every other test while printing money into a shared leaderboard.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["skim"]
+
+    def test_the_numbers_match(self):
+        from cryptowarz import game as gm
+        self.assertAlmostEqual(self.js["min"], gm.SKIM_MIN)
+        self.assertAlmostEqual(self.js["pays"], gm.SKIM_PAYS)
+        self.assertAlmostEqual(self.js["deadband"], gm.SKIM_DEADBAND)
+        self.assertAlmostEqual(self.js["heat"], gm.SKIM_HEAT)
+        self.assertEqual(self.js["sides"], list(gm.SKIM_SIDES))
+
+    def test_the_port_pays_a_flat_multiple_too(self):
+        from cryptowarz.game import SKIM_PAYS
+        self.assertAlmostEqual(self.js["win_small_move"], self.js["win_huge_move"])
+        self.assertAlmostEqual(self.js["win_small_move"], 1_000.0 * (1.0 + SKIM_PAYS))
+
+    def test_the_port_loses_the_stake_and_pushes_the_same_way(self):
+        self.assertAlmostEqual(self.js["loss"], 0.0)
+        self.assertAlmostEqual(self.js["push"], 1_000.0)
+        self.assertTrue(self.js["dip_mirrors_pump"])
+
+    def test_the_port_measures_exposure_the_same_way(self):
+        from cryptowarz.game import Game
+        game = Game(seed=5)
+        game.player.cash = 10_000.0
+        game.open_skim("DOGE", 2_500.0, "dip")
+        self.assertAlmostEqual(self.js["exposure_quarter"], game.skim_exposure)
+
+    def test_the_port_carries_a_bet_through_a_reload(self):
+        self.assertTrue(self.js["survives_reload"])
+
+
+@requires_node
+class TestGearCustomisationParity(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["custom"]
+
+    def test_the_cost_of_moving_a_win_matches(self):
+        from cryptowarz import gear as gr
+        self.assertEqual(self.js["retune_cost"], gr.RETUNE_COST)
+        self.assertEqual(self.js["max_name"], gr.MAX_NAME)
+
+    def test_both_sides_tidy_a_name_the_same_way(self):
+        from cryptowarz import gear as gr
+        from cryptowarz.progress import Profile
+        profile = Profile(gear_wins={"meme": 4})
+        gr.rename(profile, "meme", "  Lucky   Rat  ")
+        self.assertEqual(self.js["cleaned"], gr.display_name(profile, gr.GEAR_BY_KEY["meme"]))
+
+    def test_both_sides_charge_the_same_to_move_a_win(self):
+        from cryptowarz import gear as gr
+        from cryptowarz.progress import Profile
+        profile = Profile(gear_wins={"meme": 4})
+        gr.retune(profile, "meme", "major")
+        self.assertEqual(self.js["wins_after_move"], profile.gear_wins)
+
+    def test_both_sides_refuse_the_same_things(self):
+        self.assertTrue(self.js["refused_unearned_rename"])
+        self.assertTrue(self.js["refused_broke_retune"])
+        self.assertTrue(self.js["drops_the_name_when_the_piece_is_gone"])
+
+
+@requires_node
 class TestDiceParity(unittest.TestCase):
     """Both front ends must run the dice, and gate them, identically.
 

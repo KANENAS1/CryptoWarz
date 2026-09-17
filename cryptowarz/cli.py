@@ -89,8 +89,23 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("look", "l", ""):
         return []
+    if cmd in ("skim", "bet"):
+        if len(args) < 3:
+            return ["skim <coin> <amount|max> <dip|pump>   e.g. skim DOGE 500 dip"]
+        amount = (game.max_skim() if args[1] in ("max", "all")
+                  else float(args[1].replace(",", "").replace("$", "")))
+        return [game.open_skim(args[0], amount, args[2])]
     if cmd in ("gear", "kit"):
-        return [ui.gear_board(progress_module.read_profile(), game)]
+        profile = progress_module.read_profile()
+        if args and args[0] == "name" and len(args) >= 2:
+            message = gear_module.rename(profile, args[1], " ".join(args[2:]))
+            progress_module.write_profile(profile)
+            return [message]
+        if args and args[0] in ("move", "retune") and len(args) >= 3:
+            message = gear_module.retune(profile, args[1], args[2])
+            progress_module.write_profile(profile)
+            return [message]
+        return [ui.gear_board(profile, game)]
     if cmd in ("goals", "trophies", "achievements"):
         return [ui.goals_board(progress_module.read_profile())]
     if cmd in ("scores", "score", "hof"):

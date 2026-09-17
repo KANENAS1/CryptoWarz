@@ -175,6 +175,11 @@ def roll_event(game: "Game") -> List[str]:
     # gear you are currently holding for; the best piece, never the sum, so no
     # build stacks its way to immunity
     shelter *= 1.0 - game.luck
+    # an open bet is somebody else's coin moving on your say-so, and the
+    # exchange is looking at you while it does
+    if getattr(game, "skim", None):
+        from .game import SKIM_HEAT
+        shelter *= 1.0 + (SKIM_HEAT - 1.0) * game.skim_exposure
     weights = []
     for _fn, weight, scales in EVENTS:
         w = weight

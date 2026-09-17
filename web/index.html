@@ -155,6 +155,17 @@
   .pill.tier{border-color:var(--purple);color:#e07ad8}
   .pill.perk{border-color:var(--yellow);color:var(--yellow)}
   .pill.luck{border-color:var(--green);color:var(--green)}
+  .pill.skim{border-color:var(--orange);color:var(--orange)}
+  .skimbox{border:2px solid var(--orange);border-radius:4px;padding:11px 12px;margin-bottom:12px}
+  .skimbox .t{color:var(--orange);font-weight:700;letter-spacing:.14em;font-size:11px}
+  .skimbox .open{color:var(--paper);font-size:14px;font-weight:700;margin-top:6px}
+  .skimgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px}
+  .skimgrid button{padding:9px 0;font-size:11px}
+  .skimgrid button.on{background:var(--orange);border-color:var(--orange);color:#000}
+  .skimgo{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+  .skimgo button.dip{background:var(--red);border-color:var(--red);color:#fff}
+  .skimgo button.pump{background:var(--green);border-color:var(--green);color:#fff}
+  .gearrow{cursor:pointer}
   .gearrow{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start;
            padding:11px 2px;border-bottom:1px solid var(--rule)}
   .pips{letter-spacing:2px;font-size:13px;color:var(--faint);white-space:nowrap}
@@ -201,6 +212,7 @@
       <span class="day" id="day">DAY 1 OF 30</span>
       <span class="pill tier" id="tierpill" hidden>OFF PEAK</span>
       <span class="pill luck" id="luckpill" hidden>+5% LUCK</span>
+      <span class="pill skim" id="skimpill" hidden>RIDING</span>
       <div class="cap" aria-label="wallet capacity used"><i id="capbar" style="width:0%"></i></div>
       <span class="day num" id="capnum" style="color:var(--dim)">$0 / $25,000</span>
     </div>
@@ -219,6 +231,12 @@
 
   <main id="main">
     <div id="alerts"></div>
+    <div class="skimbox" id="skimwrap">
+      <div class="t">THE SKIM</div>
+      <div class="note">Bet cash on where a coin goes by the next stop. Settles when you
+        ride. While it's open, the exchange is watching - trouble finds you more often.</div>
+      <div id="skimbody"></div>
+    </div>
     <div class="dicebox" id="dicewrap" hidden>
       <div class="t">DICE ON THE PLATFORM</div>
       <div class="note">Call a number, 1 to 10. Free to play - the worst that happens is nothing.</div>
@@ -340,6 +358,8 @@ function render(){
   $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
   const tierInfo = TIER_BY_LEVEL[g.tier];
   const pill = $("tierpill");
+  $("skimpill").hidden = !g.skim;
+  if (g.skim) $("skimpill").textContent = `${fmtMoney(g.skim.stake)} ${g.skim.side.toUpperCase()}`;
   $("luckpill").hidden = g.luck <= 0;
   $("luckpill").textContent = `+${Math.round(g.luck * 100)}% LUCK`;
   pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.hotHand;
@@ -423,6 +443,7 @@ function render(){
     svc.push(`<button data-act="capacity">+$25K WALLET · ${fmtMoney(g.upgradeCost())}</button>`);
     if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
   }
+  renderSkim();
   $("dicewrap").hidden = !g.diceReady;
   if (g.diceReady && !$("dice").firstChild) {
     $("dice").innerHTML = Array.from({ length: DICE_SIDES },
@@ -434,6 +455,41 @@ function render(){
 
   $("log").innerHTML = g.log.slice(-7).reverse()
     .map(l => `<div class="logline">${l}</div>`).join("");
+}
+
+/* ------------------------------- the skim ----------------------------- */
+/* A coin and a stake are picked first, then the direction commits it - so the
+   irreversible tap is always the last one, and never the one you meant to use
+   to change your mind. */
+let skimCoin = null, skimFrac = 0.25;
+
+function renderSkim(){
+  const g = game, box = $("skimbody");
+  if (g.skim) {
+    box.innerHTML = `<div class="open">${fmtMoney(g.skim.stake)} on ${esc(g.skim.symbol)}
+      to ${esc(g.skim.side)}</div>
+      <div class="note">Settles the moment you ride. They're watching until it does.</div>`;
+    return;
+  }
+  const most = g.maxSkim();
+  if (most < SKIM_MIN) {
+    box.innerHTML = `<div class="note">You need ${fmtMoney(SKIM_MIN)} spare to place one.</div>`;
+    return;
+  }
+  const coins = COINS.filter(c => c.symbol !== "USDC");
+  if (!coins.some(c => c.symbol === skimCoin)) skimCoin = null;
+  const stake = Math.max(SKIM_MIN, Math.min(most, most * skimFrac));
+  box.innerHTML = `<div class="skimgrid">${coins.map(c =>
+      `<button data-skimcoin="${c.symbol}" class="${c.symbol === skimCoin ? "on" : ""}">${c.symbol}</button>`
+    ).join("")}</div>
+    <div class="skimgrid">${[0.25, 0.5, 1].map(f =>
+      `<button data-skimfrac="${f}" class="${f === skimFrac ? "on" : ""}">${
+        f === 1 ? "ALL" : Math.round(f * 100) + "%"}</button>`).join("")}
+      <button disabled style="opacity:1">${fmtMoney(stake)}</button></div>
+    <div class="skimgo">
+      <button class="dip" data-skimside="dip" ${skimCoin ? "" : "disabled"}>BET THE DIP</button>
+      <button class="pump" data-skimside="pump" ${skimCoin ? "" : "disabled"}>BET THE PUMP</button>
+    </div>`;
 }
 
 function flash(msg, good){
@@ -459,6 +515,13 @@ $("main").addEventListener("click", e => {
   }
   const b = e.target.closest("button");
   if (!b) return;
+  if (b.dataset.skimcoin) { skimCoin = b.dataset.skimcoin; return renderSkim(); }
+  if (b.dataset.skimfrac) { skimFrac = parseFloat(b.dataset.skimfrac); return renderSkim(); }
+  if (b.dataset.skimside) {
+    const most = game.maxSkim();
+    const stake = Math.max(SKIM_MIN, Math.min(most, most * skimFrac));
+    return act(() => ({ text: game.openSkim(skimCoin, stake, b.dataset.skimside), good: true }));
+  }
   if (b.dataset.dice) {
     // rollDice logs its own lines, so this flashes them rather than re-saying them
     try { flash(game.rollDice(+b.dataset.dice).filter(Boolean).join(" "), true); }
@@ -802,9 +865,10 @@ function gearList(){
       const level = levelFor(wins);
       const next = WINS_FOR_LEVEL.find(n => n > wins);
       const active = Object.keys(held).some(sym => CLASS_OF[sym] === piece.key);
-      return `<div class="gearrow${level ? " on" : ""}">
+      return `<div class="gearrow${level ? " on" : ""}" data-gear="${piece.key}">
         <div class="pips"><b>${"●".repeat(level)}</b>${"○".repeat(MAX_LEVEL - level)}</div>
-        <div><div class="t">${esc(piece.name)}</div>
+        <div><div class="t">${esc(displayName(profile, piece))}${
+          level ? ` <span class="heat">TAP TO CUSTOMISE</span>` : ""}</div>
           <div class="d">${esc(piece.covers)} · ${esc(piece.blurb)}</div>
           ${level ? `<div class="u">+${Math.round(level * LUCK_PER_LEVEL * 100)}% luck while holding${
             active ? " · ACTIVE RIGHT NOW" : ""}</div>` : ""}
@@ -813,6 +877,34 @@ function gearList(){
             : `${wins} wins · fully levelled`}</div></div></div>`;
     }).join("");
 }
+
+/* Customising is a deliberate detour, not something you can fat-finger from the
+   list: a tap opens the choice, and moving wins names its price before it asks. */
+$("goallist").addEventListener("click", e => {
+  const row = e.target.closest("[data-gear]");
+  if (!row) return;
+  const key = row.dataset.gear, piece = GEAR_BY_KEY[key];
+  profile = readProfile();
+  if (levelFor((profile.gear_wins || {})[key] || 0) < 1) {
+    return flash(`Win a run holding ${piece.covers} to earn it first.`, false);
+  }
+  const wanted = prompt(
+    `Name your ${piece.name}.\n\nLeave it empty to go back to the original.\n\n`
+    + `To move a win to another piece instead, type: move <${Object.keys(CLASSES).join("|")}>`
+    + `\n(it costs ${RETUNE_COST} wins to give 1)`,
+    displayName(profile, piece));
+  if (wanted === null) return;
+  try {
+    const move = wanted.trim().match(/^move\s+(\w+)$/i);
+    const said = move ? retuneGear(profile, key, move[1].toLowerCase())
+                      : renameGear(profile, key, wanted);
+    writeProfile(profile);
+    if (game && !game.finished) game.gear = levelsFromWins(profile.gear_wins);
+    flash(said, true);
+    showGoals();
+    render();
+  } catch (err) { flash(err.message, false); }
+});
 
 $("trophies").addEventListener("click", showGoals);
 $("closegoals").addEventListener("click", closeSheets);

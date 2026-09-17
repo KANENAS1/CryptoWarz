@@ -124,6 +124,56 @@ const out = {
       unrankable_run_earns_nothing: win(["DOGE"], 600000, true).wins,
     };
   })(),
+  skim: (() => {
+    /* Fixed odds is the property the parity suite exists to protect: a port
+       that quietly went back to paying by the size of the move would keep
+       passing everything else while printing money. */
+    const settle = (side, move, stake) => {
+      const g = new G.Game(5); g.player.cash = 50000;
+      g.openSkim("DOGE", stake, side);
+      const before = g.player.cash;
+      g.state.levels.DOGE = g.skim.level * (1 + move);
+      g.settleSkim();
+      return Math.round((g.player.cash - before) * 1e6) / 1e6;
+    };
+    const exposure = (cash, stake) => {
+      const g = new G.Game(5); g.player.cash = cash; g.openSkim("DOGE", stake, "dip");
+      return g.skimExposure;
+    };
+    return {
+      min: G.SKIM_MIN, pays: G.SKIM_PAYS, deadband: G.SKIM_DEADBAND,
+      heat: G.SKIM_HEAT, sides: G.SKIM_SIDES,
+      win_small_move: settle("pump", 0.03, 1000),
+      win_huge_move: settle("pump", 4.00, 1000),
+      loss: settle("pump", -0.40, 1000),
+      push: settle("pump", G.SKIM_DEADBAND / 2, 1000),
+      dip_mirrors_pump: settle("dip", -0.20, 1000) === settle("pump", 0.20, 1000),
+      exposure_quarter: exposure(10000, 2500),
+      survives_reload: (() => {
+        const g = new G.Game(5); g.openSkim("SOL", 400, "dip");
+        return JSON.stringify(G.saveFromDict(G.saveToDict(g)).skim) === JSON.stringify(g.skim);
+      })(),
+    };
+  })(),
+  custom: (() => {
+    const p = G.blankProfile(); p.gear_wins = { meme: 4 };
+    const named = G.renameGear(p, "meme", "  Lucky   Rat  ");
+    const shown = G.displayName(p, G.GEAR_BY_KEY.meme);
+    const moved = G.retuneGear(p, "meme", "major");
+    let refusedUnearned = false, refusedBroke = false;
+    try { G.renameGear(G.blankProfile(), "alt", "x"); } catch (e) { refusedUnearned = true; }
+    try { G.retuneGear(G.blankProfile(), "alt", "meme"); } catch (e) { refusedBroke = true; }
+    return {
+      retune_cost: G.RETUNE_COST, max_name: G.MAX_NAME,
+      cleaned: shown, wins_after_move: p.gear_wins,
+      refused_unearned_rename: refusedUnearned, refused_broke_retune: refusedBroke,
+      drops_the_name_when_the_piece_is_gone: (() => {
+        const q = G.blankProfile(); q.gear_wins = { meme: 2 };
+        G.renameGear(q, "meme", "Ratty"); G.retuneGear(q, "meme", "alt");
+        return !q.gear_names.meme;
+      })(),
+    };
+  })(),
   stations: G.STATIONS.map(s => ({
     name: s.name, heat: s.heat, bias: s.bias,
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,
