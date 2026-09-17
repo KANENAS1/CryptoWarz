@@ -359,6 +359,31 @@ No streak counter that punishes a missed day, and no lockout: when the three
 ranked runs are spent, practice is still there, unlimited, with the same rules.
 The daily slate exists to make scores comparable, not to ration the game.
 
+## When the run has nowhere left to go
+
+The game can genuinely corner you. A raid takes the bags, a gas spike takes the
+cash, and you're standing on a platform with no Shark and no vault and $1.40 in
+your pocket. Every other loss here is a decision that went wrong; this one is a
+wall — and a wall the player can't see is just a frozen screen with a working
+button bar.
+
+So the game says so, and offers two honest exits:
+
+- **END THE RUN** (`giveup`) — finishes it and scores it for what it is. Walking
+  away from a bad position is allowed.
+- **START OVER** — throws it away and deals a new one.
+
+The dead end is only shown when it's real. Anything that could still raise the
+fare — a bag to sell, a Shark at this stop who'll still lend, your own vault
+when you're standing at one, or the MetroCard perk making the fare free — means
+you aren't stranded, and the panel stays away. A *false* dead end is worse than
+none: it tells a player to abandon a run they could have saved.
+
+**One rule attached to it.** On a ranked run you've actually played (past day
+one), starting over still spends the slot. The daily markets are the same three
+for everybody, so a free retry against a market you've already seen would make
+the leaderboard meaningless. Backing out on day one costs nothing.
+
 ## Saving, and why you can't scum it
 
 Quit whenever. The terminal game writes to `~/.cryptowarz/save.json` after
@@ -400,7 +425,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 207 tests, no install needed
+python3 -m unittest discover -s tests     # 225 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

@@ -156,6 +156,11 @@
   .pill.perk{border-color:var(--yellow);color:var(--yellow)}
   .pill.luck{border-color:var(--green);color:var(--green)}
   .pill.skim{border-color:var(--orange);color:var(--orange)}
+  .deadend{border:2px solid var(--red);border-radius:4px;padding:13px 12px;margin-bottom:12px}
+  .deadend .t{color:var(--red);font-weight:700;letter-spacing:.14em;font-size:12px}
+  .deadend .d{color:var(--paper);font-size:12.5px;margin-top:6px;line-height:1.45}
+  .deadend .btns{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:11px}
+  .deadend button.end{background:var(--red);border-color:var(--red);color:#fff}
   .skimbox{border:2px solid var(--orange);border-radius:4px;padding:11px 12px;margin-bottom:12px}
   .skimbox .t{color:var(--orange);font-weight:700;letter-spacing:.14em;font-size:11px}
   .skimbox .open{color:var(--paper);font-size:14px;font-weight:700;margin-top:6px}
@@ -231,6 +236,15 @@
 
   <main id="main">
     <div id="alerts"></div>
+    <div class="deadend" id="deadend" hidden>
+      <div class="t">STRANDED</div>
+      <div class="d" id="deadendwhy"></div>
+      <div class="btns">
+        <button class="end" id="giveup">END THE RUN</button>
+        <button id="startover">START OVER</button>
+      </div>
+      <div class="note" id="deadendnote"></div>
+    </div>
     <div class="skimbox" id="skimwrap">
       <div class="t">THE SKIM</div>
       <div class="note">Bet cash on where a coin goes by the next stop. Settles when you
@@ -443,6 +457,7 @@ function render(){
     svc.push(`<button data-act="capacity">+$25K WALLET · ${fmtMoney(g.upgradeCost())}</button>`);
     if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
   }
+  renderDeadEnd();
   renderSkim();
   $("dicewrap").hidden = !g.diceReady;
   if (g.diceReady && !$("dice").firstChild) {
@@ -456,6 +471,48 @@ function render(){
   $("log").innerHTML = g.log.slice(-7).reverse()
     .map(l => `<div class="logline">${l}</div>`).join("");
 }
+
+/* ------------------------------- dead end ----------------------------- */
+/* Two honest exits, never a quiet third one. Ending the run scores it for what
+   it is; starting over throws it away - and on a ranked run you have actually
+   played, throwing it away still spends the slot, because the daily markets are
+   the same three for everybody and a free retry with foreknowledge would make
+   the leaderboard meaningless. Backing out on day one costs nothing. */
+function rankedAndPlayed(g){
+  return g && !g.hotHand && g.dailySlot !== null && g.dailySlot !== undefined && g.day > 1;
+}
+
+function renderDeadEnd(){
+  const g = game, on = g.stranded;
+  $("deadend").hidden = !on;
+  if (!on) return;
+  $("deadendwhy").textContent =
+    `${fmtMoney(g.player.cash)} in your pocket, nothing left to sell, and no way to `
+    + `raise the ${fmtMoney(g.fare)} fare at ${g.station.name}. The run can't go on.`;
+  $("deadendnote").textContent = rankedAndPlayed(g)
+    ? `This is ranked run ${g.dailySlot + 1}. Either way it's spent - you've played it.`
+    : "Starting over costs you nothing here.";
+}
+
+$("giveup").addEventListener("click", () => {
+  game.giveUp();
+  render();
+  showFinal();
+});
+
+$("startover").addEventListener("click", () => {
+  // a played ranked run is recorded even when it is thrown away, so the slot
+  // cannot be re-rolled against a market the player has already seen
+  if (rankedAndPlayed(game)) {
+    game.finalise();
+    profile = readProfile();
+    recordDaily(profile, game, game.dailySlot);
+    writeProfile(profile);
+    postDaily(profile);
+  }
+  clearSave();
+  openSetup();
+});
 
 /* ------------------------------- the skim ----------------------------- */
 /* A coin and a stake are picked first, then the direction commits it - so the

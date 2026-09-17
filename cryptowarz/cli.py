@@ -28,6 +28,9 @@ def draw(game: Game) -> None:
     print()
     print(ui.wallet_panel(game))
     print(ui.services(game))
+    stuck = ui.dead_end(game)
+    if stuck:
+        print(stuck)
     print()
 
 
@@ -89,6 +92,8 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("look", "l", ""):
         return []
+    if cmd in ("giveup", "give", "abandon"):
+        return game.give_up()
     if cmd in ("skim", "bet"):
         if len(args) < 3:
             return ["skim <coin> <amount|max> <dip|pump>   e.g. skim DOGE 500 dip"]

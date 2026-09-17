@@ -174,6 +174,40 @@ const out = {
       })(),
     };
   })(),
+  stranded: (() => {
+    const BARE = G.STATIONS.find(s => !s.shark && !s.vault);
+    const SHARK = G.STATIONS.find(s => s.shark);
+    const VAULT = G.STATIONS.find(s => s.vault);
+    const cornered = station => {
+      const g = new G.Game(5);
+      g.player.cash = 1.40; g.player.wallet = {}; g.player.vault = 0;
+      g.station = station || BARE;
+      return g;
+    };
+    const withSomethingToSell = () => { const g = cornered(); g.holding("DOGE").qty = 1000; return g; };
+    const maxedShark = () => { const g = cornered(SHARK); g.player.debt = g.borrowLimit() * 2; return g; };
+    const vaultCash = station => { const g = cornered(station); g.player.vault = 500; return g; };
+    const freeRide = () => {
+      const g = new G.Game(5, 1, "metrocard");
+      g.player.cash = 0; g.player.wallet = {}; g.station = BARE;
+      return g;
+    };
+    const gave = cornered();
+    const said = gave.giveUp();
+    return {
+      fresh: new G.Game(5).stranded,
+      bare_stop: cornered().stranded,
+      something_to_sell: withSomethingToSell().stranded,
+      at_the_shark: cornered(SHARK).stranded,
+      maxed_out_shark: maxedShark().stranded,
+      vault_at_a_vault: vaultCash(VAULT).stranded,
+      vault_elsewhere: vaultCash(BARE).stranded,
+      free_ride: freeRide().stranded,
+      give_up_finishes: gave.finished,
+      give_up_says_so: /give up/i.test(said.join(" ")),
+      give_up_twice_is_harmless: gave.giveUp().length === 0,
+    };
+  })(),
   stations: G.STATIONS.map(s => ({
     name: s.name, heat: s.heat, bias: s.bias,
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,

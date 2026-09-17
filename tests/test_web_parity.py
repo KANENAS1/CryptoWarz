@@ -263,6 +263,38 @@ class TestGearParity(unittest.TestCase):
 
 
 @requires_node
+class TestStrandedParity(unittest.TestCase):
+    """A false dead end is worse than none.
+
+    If one port says "stranded" where the other still has a Shark to borrow
+    from, it is telling that player to abandon a run they could have saved.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["stranded"]
+
+    def test_both_ports_agree_on_when_you_are_stuck(self):
+        self.assertFalse(self.js["fresh"])
+        self.assertTrue(self.js["bare_stop"])
+
+    def test_both_ports_agree_on_every_way_out(self):
+        self.assertFalse(self.js["something_to_sell"], "a bag to sell is a way out")
+        self.assertFalse(self.js["at_the_shark"], "the Shark is a way out")
+        self.assertFalse(self.js["vault_at_a_vault"], "your own vault is a way out")
+        self.assertFalse(self.js["free_ride"], "a free fare is never stranded")
+
+    def test_both_ports_agree_on_what_is_not_a_way_out(self):
+        self.assertTrue(self.js["maxed_out_shark"], "he won't lend and there is nothing else")
+        self.assertTrue(self.js["vault_elsewhere"], "you cannot reach the vault from here")
+
+    def test_giving_up_works_the_same_way(self):
+        self.assertTrue(self.js["give_up_finishes"])
+        self.assertTrue(self.js["give_up_says_so"])
+        self.assertTrue(self.js["give_up_twice_is_harmless"])
+
+
+@requires_node
 class TestSkimParity(unittest.TestCase):
     """Fixed odds is what the parity suite is here to protect.
 

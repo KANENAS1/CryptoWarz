@@ -284,6 +284,43 @@ class Game:
         return (f"Sold {qty:,.6f} {symbol} at ${price:,.6f} for ${proceeds:,.2f} "
                 f"({verb} ${abs(profit):,.2f})")
 
+    # ------------------------------------------------------------- dead end
+
+    @property
+    def stranded(self) -> bool:
+        """No fare, nothing to sell, and no way to raise it at this stop.
+
+        The game can genuinely corner you: an SEC raid takes the bags, a gas
+        spike takes the cash, and you are standing on a platform that has no
+        Shark and no vault with $1.40 in your pocket. Every other loss in this
+        game is a decision that went wrong. This one is a wall, and a wall the
+        player cannot see is just a frozen screen with a working button bar.
+        """
+        if self.finished or self.player.cash + 1e-9 >= self.fare:
+            return False
+        if any(h.qty > 0 for h in self.player.wallet.values()):
+            return False                       # something to sell is a way out
+        if self.station.has_vault and self.player.vault > 0:
+            return False
+        if self.station.has_shark and self.borrowable() > 0:
+            return False
+        return True
+
+    def give_up(self) -> List[str]:
+        """End the run here and let it be scored for what it is.
+
+        Deliberately not a way to erase the run: it finishes, so it is graded,
+        recorded and - if it was ranked - it spends the slot. Walking away from
+        a bad position is allowed. Pretending it never happened is not.
+        """
+        if self.finished:
+            return []
+        self.finished = True
+        message = ("You give up the run at "
+                   f"{self.station.name} on day {self.day}. That's it.")
+        self.say(message)
+        return [message]
+
     # ----------------------------------------------------------------- skim
 
     @property

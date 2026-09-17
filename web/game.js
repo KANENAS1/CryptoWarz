@@ -247,6 +247,31 @@ Object.defineProperty(Game.prototype, "luck", {
   get() { return bestLuck(this.gear, this.player.wallet); } });
 Game.prototype.luckBySymbol = function () { return luckBySymbol(this.gear, this.player.wallet); };
 
+/* ------------------------------- dead end ---------------------------- */
+/* The game can genuinely corner you: a raid takes the bags, a gas spike takes
+   the cash, and you are standing on a platform with no Shark and no vault and
+   $1.40 in your pocket. Every other loss here is a decision that went wrong.
+   This one is a wall, and a wall the player cannot see is just a frozen screen
+   with a working button bar. */
+Object.defineProperty(Game.prototype, "stranded", {
+  get() {
+    if (this.finished || this.player.cash + 1e-9 >= this.fare) return false;
+    if (Object.values(this.player.wallet).some(h => h.qty > 0)) return false;
+    if (this.station.vault && this.player.vault > 0) return false;
+    if (this.station.shark && this.borrowable() > 0) return false;
+    return true;
+  } });
+/* Deliberately not a way to erase the run: it finishes, so it is graded,
+   recorded, and if it was ranked it spends the slot. Walking away from a bad
+   position is allowed. Pretending it never happened is not. */
+Game.prototype.giveUp = function () {
+  if (this.finished) return [];
+  this.finished = true;
+  const message = `You give up the run at ${this.station.name} on day ${this.day}. That's it.`;
+  this.say(message);
+  return [message];
+};
+
 /* ------------------------------- the skim ---------------------------- */
 Object.defineProperty(Game.prototype, "skimOpen", { get() { return this.skim !== null; } });
 /* How much of everything you have is riding, 0 to 1. Trouble scales with this

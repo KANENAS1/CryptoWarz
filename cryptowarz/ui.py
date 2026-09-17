@@ -128,6 +128,21 @@ def wallet_panel(game: Game) -> str:
     return "\n".join(lines)
 
 
+def dead_end(game: Game) -> str:
+    """Say so, loudly, when the run genuinely cannot continue."""
+    if not game.stranded:
+        return ""
+    return "\n".join([
+        "",
+        "  " + c("─── STRANDED " + "─" * 31, RED, True),
+        "  " + c(f"{money(game.player.cash)} in your pocket, nothing left to sell, and no "
+                 f"way to raise", WHITE),
+        "  " + c(f"the {money(game.fare)} fare at {game.station.name}. The run can't go on.",
+                 WHITE),
+        "  " + c("type 'giveup' to end it and be scored, or 'quit' to walk away", YELL),
+    ])
+
+
 def services(game: Game) -> str:
     s = game.station
     have = []
@@ -260,6 +275,7 @@ HELP = f"""
     skim <coin> <amt> dip     {c('bet a coin falls by the next stop', GREY)}
     skim <coin> <amt> pump    {c('or that it climbs - settles when you move', GREY)}
     gear                      {c('what you have earned · gear name · gear move', GREY)}
+    giveup                    {c('end a run that has nowhere left to go', GREY)}
 
   {c('MOVE', MAG, True)}
     go <number>               {c('ride to a station - costs one day', GREY)}
