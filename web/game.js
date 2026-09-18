@@ -173,7 +173,28 @@ const FARE_BUFFER = 0.01;
    Somebody runs dice on the platform every few rides. There is no stake: the
    worst outcome is nothing, so this is a flourish rather than a decision, and
    deliberately not a way to gamble out of a bad run. */
-const DICE_EVERY = 4, DICE_SIDES = 10, DICE_NEAR_PRIZE = 400, DICE_EXACT_PRIZE = 3000;
+const DICE_EVERY = 4, DICE_SIDES = 10, DICE_TOP_PRIZE = 2200;
+/* How close you got, and what share of the top prize that is worth. Binary
+   hit-or-miss made nine calls in ten pay nothing, which is a slot machine
+   rather than a call. Graded by distance, most calls pay something and the
+   number you say out loud starts to matter.
+
+   Tuned so the worst call is worth roughly what the old version averaged and
+   the best about 40% more. A quiet consequence worth leaving in: middle numbers
+   beat 1 and 10, because a call at the edge has nowhere to be close on one
+   side - $541 an offer against $381. Exact arithmetic, and small enough that it
+   is a detail to notice rather than a headline. */
+const DICE_LADDER = [
+  [0, "DEAD ON", 1.00],
+  [1, "ONE OFF", 0.40],
+  [2, "CLOSE",   0.20],
+  [3, "WARM",    0.09],
+  [4, "COLD",    0.04],
+];
+function diceTier(distance) {
+  const hit = DICE_LADDER.find(([reach]) => distance <= reach);
+  return hit ? { label: hit[1], share: hit[2] } : { label: "", share: 0 };
+}
 /* Opening calls that put a player on a streak, and what a streak pays. Not
    every ride and not the same amount: a fixed payment on a metronome stopped
    being a windfall by the third station and started being a salary. */
@@ -379,10 +400,19 @@ Game.prototype.rollDice = function (pick) {
   const picks = (this.stats.dice_picks = this.stats.dice_picks || []);
   picks.push(pick);
   const rolled = 1 + Math.floor(this.rng.random() * DICE_SIDES);
+  const distance = Math.abs(rolled - pick);
+  const tier = diceTier(distance);
   const messages = [`You call ${pick}. The dice come up ${rolled}.`];
-  if (rolled === pick) messages.push(...this.gift(DICE_EXACT_PRIZE, "Dead on"));
-  else if (Math.abs(rolled - pick) === 1) messages.push(...this.gift(DICE_NEAR_PRIZE, "One off, and he's feeling generous"));
-  else messages.push("Nothing. It was free to play.");
+  if (tier.share > 0) {
+    // gear pays out here too: a bag you are geared for is what makes the
+    // platform friendlier, and the dice are on the platform
+    const value = DICE_TOP_PRIZE * tier.share * (1 + this.luck);
+    const bonus = this.luck > 0 ? ` (+${Math.round(this.luck * 100)}% on your gear)` : "";
+    messages.push(...this.gift(value,
+      `${tier.label} - ${Math.round(tier.share * 100)}% of the pot${bonus}`));
+  } else {
+    messages.push(`Off by ${distance}. Nothing, and it was free to play.`);
+  }
   messages.push(...this.checkStreak(picks));
   messages.forEach(m => this.say(m));
   return messages;
@@ -1095,8 +1125,8 @@ if (typeof module !== "undefined") {
                      luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
                      RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
                      SKIM_MIN, SKIM_PAYS, SKIM_DEADBAND, SKIM_HEAT, SKIM_SIDES,
-                     DICE_EVERY, DICE_SIDES, DICE_NEAR_PRIZE,
-                     DICE_EXACT_PRIZE, HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
+                     DICE_EVERY, DICE_SIDES, DICE_TOP_PRIZE, DICE_LADDER, diceTier,
+                     HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
                      HOT_HAND_MAX, UNRANKED_GRADE,
                      countsForProgress, runGrade };
 }

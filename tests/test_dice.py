@@ -12,8 +12,9 @@ import unittest
 
 from cryptowarz import progress as P
 from cryptowarz import save as S
-from cryptowarz.game import (DICE_EVERY, DICE_SIDES, HOT_HAND, HOT_HAND_CHANCE,
-                             HOT_HAND_MAX, HOT_HAND_MIN, Game)
+from cryptowarz.game import (DICE_EVERY, DICE_LADDER, DICE_SIDES, DICE_TOP_PRIZE,
+                             HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MAX,
+                             HOT_HAND_MIN, Game, dice_tier)
 from cryptowarz.stations import STATIONS
 
 
@@ -99,24 +100,56 @@ class TestTheGift(unittest.TestCase):
         game.player.capacity = 0.0
         self.assertIn("full", game.gift(5_000.0, "Here")[0])
 
-    def test_a_missed_call_pays_nothing(self):
+    def paid_for_calling(self, call, rolled=5, gear=None):
+        """What one rigged roll actually puts in the wallet."""
+        game = Game(seed=4, gear=gear or {})
+        while not game.dice_ready:
+            ride(game)
+        game.rng.randint = lambda a, b: rolled   # the dice are rigged, for once
+        game.player.capacity = 1e9               # so no payout is clipped
+        if gear:                                 # luck only counts while holding
+            game.player.holding("DOGE").qty = 1_000.0
+        before = game.player.used_capacity
+        game.roll_dice(call)
+        return game.player.used_capacity - before
+
+    def test_a_call_miles_off_pays_nothing(self):
         game = to_first_offer()
-        game.rng.randint = lambda a, b: 5        # the dice are rigged, for once
+        game.rng.randint = lambda a, b: 5
         before = game.player.used_capacity
         messages = game.roll_dice(10)
         self.assertIn("Nothing", " ".join(messages))
         self.assertAlmostEqual(game.player.used_capacity, before)
 
-    def test_calling_it_exactly_pays_the_most(self):
-        exact, near = Game(seed=4), Game(seed=4)
-        for game, call in ((exact, 5), (near, 6)):
-            while not game.dice_ready:
-                ride(game)
-            game.rng.randint = lambda a, b: 5
-            game.player.capacity = 1e9           # so neither payout is capped
-            game.roll_dice(call)
-        self.assertGreater(exact.player.used_capacity, near.player.used_capacity)
-        self.assertGreater(near.player.used_capacity, 0.0)
+    def test_the_payout_falls_off_the_further_you_are(self):
+        """The whole point of grading it: closer is worth more, every step."""
+        paid = [self.paid_for_calling(5 + d) for d in range(len(DICE_LADDER) + 1)]
+        self.assertEqual(paid, sorted(paid, reverse=True), f"not monotonic: {paid}")
+        self.assertGreater(paid[0], 0.0)
+        self.assertEqual(paid[-1], 0.0, "something beyond the ladder still paid")
+
+    def test_every_rung_pays_its_advertised_share(self):
+        for reach, _label, share in DICE_LADDER:
+            self.assertAlmostEqual(self.paid_for_calling(5 + reach),
+                                   DICE_TOP_PRIZE * share, places=4, msg=f"±{reach}")
+
+    def test_being_one_off_is_worth_a_real_fraction_not_a_token(self):
+        """A consolation nobody notices is the same as no consolation."""
+        self.assertGreater(self.paid_for_calling(6), self.paid_for_calling(5) * 0.2)
+
+    def test_gear_you_are_holding_for_lifts_the_prize(self):
+        from cryptowarz.gear import LUCK_PER_LEVEL, MAX_LEVEL
+        bare = self.paid_for_calling(5)
+        geared = self.paid_for_calling(5, gear={"meme": MAX_LEVEL})
+        self.assertAlmostEqual(geared, bare * (1 + MAX_LEVEL * LUCK_PER_LEVEL), places=4)
+
+    def test_a_middle_call_is_worth_more_than_an_edge_one(self):
+        """Exact arithmetic, and the only decision the dice actually offer."""
+        def value(pick):
+            return sum(dice_tier(abs(pick - r))[1] for r in range(1, DICE_SIDES + 1))
+        self.assertGreater(value(5), value(1))
+        self.assertAlmostEqual(value(5), value(6), msg="the middle should be symmetric")
+        self.assertAlmostEqual(value(1), value(DICE_SIDES))
 
 
 def play(calls, seed=5):

@@ -28,6 +28,9 @@ def draw(game: Game) -> None:
     print()
     print(ui.wallet_panel(game))
     print(ui.services(game))
+    dice = ui.dice_ladder(game)
+    if dice:
+        print(dice)
     stuck = ui.dead_end(game)
     if stuck:
         print(stuck)

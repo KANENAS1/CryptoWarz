@@ -128,6 +128,24 @@ def wallet_panel(game: Game) -> str:
     return "\n".join(lines)
 
 
+def dice_ladder(game: Game) -> str:
+    """What each degree of closeness is worth - shown before the call, not after."""
+    from .game import DICE_LADDER, DICE_SIDES, DICE_TOP_PRIZE
+
+    if not game.dice_ready:
+        return ""
+    boost = 1.0 + game.luck
+    rungs = "  ".join(
+        c(("exact" if reach == 0 else f"±{reach}"), MAG, True)
+        + c(f" {label} {money(DICE_TOP_PRIZE * share * boost)}", GREY)
+        for reach, label, share in DICE_LADDER)
+    lines = ["", "  " + c(f"DICE - call 1 to {DICE_SIDES}, free to play", MAG, True),
+             "  " + rungs]
+    if game.luck > 0:
+        lines.append("  " + c(f"your gear adds {game.luck:+.0%} to whatever it pays", GREEN))
+    return "\n".join(lines)
+
+
 def dead_end(game: Game) -> str:
     """Say so, loudly, when the run genuinely cannot continue."""
     if not game.stranded:

@@ -53,8 +53,28 @@ const out = {
     G.award(profile, streak);
     G.recordDaily(profile, streak, 0);
     return {
-      every: G.DICE_EVERY, sides: G.DICE_SIDES,
-      near_prize: G.DICE_NEAR_PRIZE, exact_prize: G.DICE_EXACT_PRIZE,
+      every: G.DICE_EVERY, sides: G.DICE_SIDES, top_prize: G.DICE_TOP_PRIZE,
+      ladder: G.DICE_LADDER.map(([reach, label, share]) => ({ reach, label, share })),
+      /* what each distance pays, and what one offer is worth for every call -
+         the shape of the thing, measured rather than read off the constants */
+      tiers: [0, 1, 2, 3, 4, 5, 9].map(d => G.diceTier(d).share),
+      ev_by_call: Array.from({ length: G.DICE_SIDES }, (_, i) => {
+        let ev = 0;
+        for (let r = 1; r <= G.DICE_SIDES; r++) ev += G.diceTier(Math.abs(i + 1 - r)).share;
+        return Math.round(G.DICE_TOP_PRIZE * ev / G.DICE_SIDES);
+      }),
+      gear_lifts_the_prize: (() => {
+        const bare = new G.Game(5), geared = new G.Game(5, 1, null, { meme: 3 });
+        for (const g of [bare, geared]) {
+          g.player.capacity = 1e9; g.player.cash = 1e6;
+          g.holding("DOGE").qty = 1000; g.holding("DOGE").cost = 1000;
+          g.stats.dice_days = []; g.day = 4;
+          g.rng.random = () => 0;            // the dice come up 1
+        }
+        const before = [bare.usedCapacity(), geared.usedCapacity()];
+        bare.rollDice(1); geared.rollDice(1);
+        return (geared.usedCapacity() - before[1]) > (bare.usedCapacity() - before[0]);
+      })(),
       streak_calls: G.HOT_HAND, streak_chance: G.HOT_HAND_CHANCE,
       streak_min: G.HOT_HAND_MIN, streak_max: G.HOT_HAND_MAX,
       unranked_grade: G.UNRANKED_GRADE,

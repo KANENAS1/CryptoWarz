@@ -46,8 +46,31 @@ FARE_BUFFER = 0.01
 #: it is deliberately not a way to gamble your way out of a bad run.
 DICE_EVERY = 4           # rides between offers
 DICE_SIDES = 10          # call a number, one to ten
-DICE_NEAR_PRIZE = 400.0  # one off the number
-DICE_EXACT_PRIZE = 3_000.0
+DICE_TOP_PRIZE = 2_200.0 # what calling it exactly is worth
+
+#: How close you got, and what share of the top prize that is worth. Binary
+#: hit-or-miss made nine calls in ten pay nothing, which is a slot machine
+#: rather than a call - you read the result and learned nothing from it. Graded
+#: by distance, almost every call tells you something and most of them pay
+#: something, and the number you say out loud starts to matter.
+#:
+#: Tuned so the WORST call is worth roughly what the old hit-or-miss version
+#: averaged, and the best is worth about 40% more. Rolling at all is then worth
+#: about five points of win rate - perk-sized, for a button nobody would ever
+#: decline to press.
+#:
+#: There is a quiet consequence worth leaving in: middle numbers are worth more
+#: than 1 or 10, because a call at the edge has nowhere to be close on one side.
+#: Calling 5 averages $541 against $381 for calling 1. It is exact arithmetic
+#: and it is also small - measured, it does not reliably move a win rate - so
+#: it is a detail for a player to notice, not a headline.
+DICE_LADDER = (
+    (0, "DEAD ON", 1.00),
+    (1, "ONE OFF", 0.40),
+    (2, "CLOSE",   0.20),
+    (3, "WARM",    0.09),
+    (4, "COLD",    0.04),
+)
 #: Opening calls that put a player on a streak, and what a streak pays.
 #: Not every ride and not the same amount: a fixed payment on a metronome
 #: stopped being a windfall by the third station and started being a salary.
@@ -88,6 +111,14 @@ SKIM_DEADBAND = 0.01      # a move smaller than this is a push, not a free win
 SKIM_HEAT = 1.4           # trouble multiplier when your whole roll is riding
 SKIM_SIDES = ("dip", "pump")
 
+
+
+def dice_tier(distance: int) -> tuple:
+    """How close that was, as (label, share of the top prize)."""
+    for reach, label, share in DICE_LADDER:
+        if distance <= reach:
+            return (label, share)
+    return ("", 0.0)
 
 
 class GameOver(Exception):
@@ -476,13 +507,18 @@ class Game:
         picks.append(pick)
         rolled = self.rng.randint(1, DICE_SIDES)
 
+        distance = abs(rolled - pick)
+        label, share = dice_tier(distance)
         messages = [f"You call {pick}. The dice come up {rolled}."]
-        if rolled == pick:
-            messages.extend(self.gift(DICE_EXACT_PRIZE, "Dead on"))
-        elif abs(rolled - pick) == 1:
-            messages.extend(self.gift(DICE_NEAR_PRIZE, "One off, and he's feeling generous"))
+        if share > 0:
+            # gear pays out here too: a bag you are geared for is the thing that
+            # makes the platform friendlier, and the dice are on the platform
+            value = DICE_TOP_PRIZE * share * (1.0 + self.luck)
+            bonus = f" (+{self.luck:.0%} on your gear)" if self.luck > 0 else ""
+            messages.extend(self.gift(
+                value, f"{label} - {share:.0%} of the pot{bonus}"))
         else:
-            messages.append("Nothing. It was free to play.")
+            messages.append(f"Off by {distance}. Nothing, and it was free to play.")
         messages.extend(self._check_streak(picks))
         for m in messages:
             self.say(m)

@@ -186,6 +186,11 @@
   .dicebox .t{color:#e07ad8;font-weight:700;letter-spacing:.14em;font-size:11px}
   .dice{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:9px}
   .dice button{padding:11px 0;font-size:14px;font-weight:700}
+  .ladder{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
+  .ladder span{font-size:9px;letter-spacing:.06em;padding:3px 6px;border-radius:2px;
+               border:1px solid var(--rule);color:var(--dim);white-space:nowrap}
+  .ladder span b{color:var(--purple);font-weight:700}
+  .ladder .boost{border-color:var(--green);color:var(--green)}
   .gradeline{color:var(--dim);font-size:11.5px;letter-spacing:.1em;margin-top:6px}
   .slate{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:12px}
   .slate .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:12px}
@@ -253,7 +258,9 @@
     </div>
     <div class="dicebox" id="dicewrap" hidden>
       <div class="t">DICE ON THE PLATFORM</div>
-      <div class="note">Call a number, 1 to 10. Free to play - the worst that happens is nothing.</div>
+      <div class="note">Call a number, 1 to 10. Free to play - the closer you land,
+        the bigger the cut.</div>
+      <div class="ladder" id="diceladder"></div>
       <div class="dice" id="dice"></div>
     </div>
     <h2>Market</h2>
@@ -460,9 +467,19 @@ function render(){
   renderDeadEnd();
   renderSkim();
   $("dicewrap").hidden = !g.diceReady;
-  if (g.diceReady && !$("dice").firstChild) {
-    $("dice").innerHTML = Array.from({ length: DICE_SIDES },
-      (_, i) => `<button data-dice="${i + 1}">${i + 1}</button>`).join("");
+  if (g.diceReady) {
+    if (!$("dice").firstChild) {
+      $("dice").innerHTML = Array.from({ length: DICE_SIDES },
+        (_, i) => `<button data-dice="${i + 1}">${i + 1}</button>`).join("");
+    }
+    // the payout ladder is shown BEFORE the call, not after it: a prize table
+    // you only learn by losing is a slot machine
+    const boost = 1 + g.luck;
+    $("diceladder").innerHTML = DICE_LADDER.map(([reach, label, share]) =>
+      `<span><b>${reach === 0 ? "EXACT" : "±" + reach}</b> ${label} · ${
+        fmtMoney(DICE_TOP_PRIZE * share * boost)}</span>`).join("")
+      + (g.luck > 0
+        ? `<span class="boost">+${Math.round(g.luck * 100)}% GEAR</span>` : "");
   }
 
   $("svcwrap").hidden = svc.length === 0;

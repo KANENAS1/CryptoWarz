@@ -340,8 +340,42 @@ was a salary.
 ### The dice on the platform
 
 Every few rides somebody is running dice. Call a number, 1 to 10 — free to
-play, no stake, and the worst outcome is nothing. Hit it exactly and you walk
-away with free crypto; land one off and you get a smaller cut.
+play, no stake. **What you win is graded by how close you land**, as a share of
+a $2,200 pot:
+
+| | | share | pays |
+|---|---|---|---|
+| exact | DEAD ON | 100% | $2,200 |
+| ±1 | ONE OFF | 40% | $880 |
+| ±2 | CLOSE | 20% | $440 |
+| ±3 | WARM | 9% | $198 |
+| ±4 | COLD | 4% | $88 |
+| ±5+ | — | 0% | nothing |
+
+Hit-or-miss made nine calls in ten pay nothing, which is a slot machine rather
+than a call — you read the result and learned nothing from it. Graded by
+distance, most calls pay something and the number you say out loud starts to
+matter. **The ladder is shown before you call**, not after; a prize table you
+only learn by losing is a slot machine too.
+
+**Gear pays out here as well.** Whatever luck you're holding for is added on
+top — up to +15% on any prize. A bag you're geared for is what makes the
+platform friendlier, and the dice are on the platform.
+
+Tuned so the *worst* call is worth roughly what the old hit-or-miss version
+averaged, and the best about 40% more. Rolling at all is worth about five
+points of win rate — perk-sized, for a button nobody would ever decline to
+press.
+
+<details>
+<summary>A quiet consequence worth leaving in.</summary>
+
+Middle numbers are worth more than 1 or 10, because a call at the edge has
+nowhere to be close on one side. Calling 5 averages **$541** an offer against
+**$381** for calling 1 — exact arithmetic, and the only actual decision the
+dice offer. It's also small: measured over 500 runs it doesn't reliably move a
+win rate. A detail for a player to notice, not a headline.
+</details>
 
 Free means you didn't pay cash for it, not that it weighs nothing: the gift
 lands in your wallet **at fair value**, so it takes up capacity like anything
@@ -425,7 +459,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 225 tests, no install needed
+python3 -m unittest discover -s tests     # 229 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

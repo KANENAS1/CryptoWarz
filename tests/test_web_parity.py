@@ -383,8 +383,28 @@ class TestDiceParity(unittest.TestCase):
         from cryptowarz import game as gm
         self.assertEqual(self.js["every"], gm.DICE_EVERY)
         self.assertEqual(self.js["sides"], gm.DICE_SIDES)
-        self.assertAlmostEqual(self.js["near_prize"], gm.DICE_NEAR_PRIZE)
-        self.assertAlmostEqual(self.js["exact_prize"], gm.DICE_EXACT_PRIZE)
+        self.assertAlmostEqual(self.js["top_prize"], gm.DICE_TOP_PRIZE)
+
+    def test_the_closeness_ladder_matches(self):
+        from cryptowarz.game import DICE_LADDER, dice_tier
+        self.assertEqual([(r["reach"], r["label"], r["share"]) for r in self.js["ladder"]],
+                         [tuple(rung) for rung in DICE_LADDER])
+        self.assertEqual(self.js["tiers"],
+                         [dice_tier(d)[1] for d in (0, 1, 2, 3, 4, 5, 9)])
+
+    def test_both_ports_value_a_call_the_same(self):
+        from cryptowarz.game import DICE_SIDES, DICE_TOP_PRIZE, dice_tier
+        expected = [round(DICE_TOP_PRIZE
+                          * sum(dice_tier(abs(pick - r))[1]
+                                for r in range(1, DICE_SIDES + 1)) / DICE_SIDES)
+                    for pick in range(1, DICE_SIDES + 1)]
+        self.assertEqual(self.js["ev_by_call"], expected)
+
+    def test_gear_lifts_the_dice_prize_on_both_sides(self):
+        self.assertTrue(self.js["gear_lifts_the_prize"])
+
+    def test_the_streak_constants_match(self):
+        from cryptowarz import game as gm
         self.assertEqual(self.js["streak_calls"], list(gm.HOT_HAND))
         self.assertAlmostEqual(self.js["streak_chance"], gm.HOT_HAND_CHANCE)
         self.assertAlmostEqual(self.js["streak_min"], gm.HOT_HAND_MIN)
