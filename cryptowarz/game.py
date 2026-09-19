@@ -45,8 +45,8 @@ FARE_BUFFER = 0.01
 #: worst outcome is nothing, so this is a flourish rather than a decision, and
 #: it is deliberately not a way to gamble your way out of a bad run.
 DICE_EVERY = 4           # rides between offers
-DICE_SIDES = 10          # call a number, one to ten
-DICE_TOP_PRIZE = 2_200.0 # what calling it exactly is worth
+DICE_SIDES = 6           # an actual die. Call a number, one to six
+DICE_TOP_PRIZE = 1_450.0 # what calling it exactly is worth
 
 #: How close you got, and what share of the top prize that is worth. Binary
 #: hit-or-miss made nine calls in ten pay nothing, which is a slot machine
@@ -54,22 +54,21 @@ DICE_TOP_PRIZE = 2_200.0 # what calling it exactly is worth
 #: by distance, almost every call tells you something and most of them pay
 #: something, and the number you say out loud starts to matter.
 #:
-#: Tuned so the WORST call is worth roughly what the old hit-or-miss version
-#: averaged, and the best is worth about 40% more. Rolling at all is then worth
-#: about five points of win rate - perk-sized, for a button nobody would ever
-#: decline to press.
+#: Retuned for six sides. A d6 lands close far more often than a d10, so the
+#: same ladder and the same pot would have paid half as much again; the rungs
+#: are tighter and the pot is smaller, which puts one offer back at about $536
+#: for the best call and $396 for the worst - where the ten-sided version sat.
 #:
 #: There is a quiet consequence worth leaving in: middle numbers are worth more
-#: than 1 or 10, because a call at the edge has nowhere to be close on one side.
-#: Calling 5 averages $541 against $381 for calling 1. It is exact arithmetic
-#: and it is also small - measured, it does not reliably move a win rate - so
-#: it is a detail for a player to notice, not a headline.
+#: than 1 or 6, because a call at the edge has nowhere to be close on one side.
+#: On six sides that gap is wider than it was on ten - $536 against $396 - so
+#: it is a little easier to notice, which is the right direction for a detail
+#: that rewards paying attention.
 DICE_LADDER = (
     (0, "DEAD ON", 1.00),
     (1, "ONE OFF", 0.40),
-    (2, "CLOSE",   0.20),
-    (3, "WARM",    0.09),
-    (4, "COLD",    0.04),
+    (2, "CLOSE",   0.18),
+    (3, "WARM",    0.06),
 )
 #: Opening calls that put a player on a streak, and what a streak pays.
 #: Not every ride and not the same amount: a fixed payment on a metronome
@@ -78,6 +77,27 @@ HOT_HAND = (4, 2)
 HOT_HAND_CHANCE = 0.75            # roughly three rides in four
 HOT_HAND_MIN = 250.0
 HOT_HAND_MAX = 10_000.0
+
+# -------------------------------------------------------------------- a word
+#: How often the man on the dice has heard something, and how often what he
+#: heard is right ABOUT THE RUN. Deliberately not an oracle: a tip you can bank
+#: is not information, it is an instruction, and the whole point is deciding
+#: whether to believe it.
+#:
+#: What the player actually experiences is weaker than TIP_ACCURACY, and that is
+#: worth knowing rather than guessing at. Measured against what the price really
+#: does over the next three days, tips land about 59% of the time - because a
+#: run pushes at roughly half a coin's daily noise, so three days of noise can
+#: and does bury it. A 59/41 edge is a real one and wrong often enough that
+#: following a whisper stays a decision. Raising accuracy to 90% only moved the
+#: felt hit rate to 61%, so the honest lever here is small.
+TIP_CHANCE = 0.60
+TIP_ACCURACY = 0.85
+#: A coin has to be running hard RELATIVE TO ITS OWN NOISE before anyone gossips
+#: about it - a 4% run is a rumour on Bitcoin and a rounding error on WIF.
+TIP_MIN_RUN = 0.5
+#: How many days a whisper is worth anything.
+TIP_FRESH_FOR = 3
 
 # ------------------------------------------------------------------ the wheel
 #: Somebody has a prize wheel set up on the mezzanine at some stops. ONE SPIN
@@ -385,6 +405,35 @@ class Game:
         self.say(message)
         return [message]
 
+    # ----------------------------------------------------------------- tips
+
+    @property
+    def tip(self) -> Optional[Dict[str, object]]:
+        """A rumour you were given recently, or None once it has gone stale."""
+        rumour = self.stats.get("tip")
+        if not rumour:
+            return None
+        if self.day - int(rumour.get("day", 0)) > TIP_FRESH_FOR:
+            return None
+        return rumour
+
+    def _hear_something(self) -> List[str]:
+        """The man on the dice passes on what he heard. Sometimes it is true."""
+        if self.rng.random() > TIP_CHANCE:
+            return []
+        running = [(c.symbol, self.state.running(c.symbol)) for c in COINS
+                   if c.symbol != "USDC"
+                   and abs(self.state.running(c.symbol)) >= c.vol * TIP_MIN_RUN]
+        if not running:
+            return []
+        symbol, trend = max(running, key=lambda st: abs(st[1]))
+        truthful = self.rng.random() < TIP_ACCURACY
+        going_up = (trend > 0) if truthful else (trend <= 0)
+        self.stats["tip"] = {"symbol": symbol, "up": going_up, "day": self.day}
+        word = "about to run" if going_up else "about to fall over"
+        return [f'"Word is {coin(symbol).name} is {word}." He might be wrong. '
+                f"He usually isn't."]
+
     # ----------------------------------------------------------------- dice
 
     @property
@@ -611,6 +660,7 @@ class Game:
         if self.dice_ready and not was_ready:
             messages.append(f"Somebody's running dice on the platform. "
                             f"Call a number, 1 to {DICE_SIDES}.")
+            messages.extend(self._hear_something())
 
         self._mark_stats()
         for m in messages:

@@ -28,6 +28,9 @@ def draw(game: Game) -> None:
     print()
     print(ui.wallet_panel(game))
     print(ui.services(game))
+    word = ui.whisper(game)
+    if word:
+        print(word)
     dice = ui.dice_ladder(game)
     if dice:
         print(dice)

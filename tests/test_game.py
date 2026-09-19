@@ -339,10 +339,17 @@ class TestTheSharkIsUsable(unittest.TestCase):
 
 class TestTravel(unittest.TestCase):
     def test_travel_advances_the_day_and_changes_the_market(self):
+        """A ride costs a day - or two, if the signals are against you.
+
+        This asserted exactly one day, which quietly assumed no delay event
+        fired on this seed. It broke the first time an unrelated change shifted
+        the random stream, which is a test failing for something it was never
+        about. A delay is a real outcome, so the assertion is the range.
+        """
         g = Game(seed=5)
         before = dict(g.market.prices)
         g.travel("Coney Island-Stillwell Av")
-        self.assertEqual(g.day, 2)
+        self.assertIn(g.day, (2, 3))
         self.assertEqual(g.station.name, "Coney Island-Stillwell Av")
         self.assertNotEqual(before, g.market.prices)
 

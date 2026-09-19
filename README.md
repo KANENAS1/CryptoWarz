@@ -288,18 +288,21 @@ Shocks on a coin you're geared for went from 51.9% pumps to 67.2%.
 
 ### The dice on the platform
 
-Every few rides somebody is running dice. Call a number, 1 to 10 — free to
-play, no stake. **What you win is graded by how close you land**, as a share of
-a $2,200 pot:
+Every few rides somebody is running dice — **an actual die, one to six**. Free
+to play, no stake. **What you win is graded by how close you land**, as a share
+of a $1,450 pot:
 
 | | | share | pays |
 |---|---|---|---|
-| exact | DEAD ON | 100% | $2,200 |
-| ±1 | ONE OFF | 40% | $880 |
-| ±2 | CLOSE | 20% | $440 |
-| ±3 | WARM | 9% | $198 |
-| ±4 | COLD | 4% | $88 |
-| ±5+ | — | 0% | nothing |
+| exact | DEAD ON | 100% | $1,450 |
+| ±1 | ONE OFF | 40% | $580 |
+| ±2 | CLOSE | 18% | $261 |
+| ±3 | WARM | 6% | $87 |
+
+Six sides land close far more often than ten, so the same ladder and the same
+pot would have paid half as much again. The rungs are tighter and the pot is
+smaller, which puts one offer back where it was: **$537 for the best call, $396
+for the worst.**
 
 Hit-or-miss made nine calls in ten pay nothing, which is a slot machine rather
 than a call — you read the result and learned nothing from it. Graded by
@@ -316,14 +319,22 @@ averaged, and the best about 40% more. Rolling at all is worth about five
 points of win rate — perk-sized, for a button nobody would ever decline to
 press.
 
+**And somebody will tell you something.** When the dice come out, six times in
+ten the man running them has heard a rumour: a coin that's *about to run*, or
+*about to fall over*. It's good information and it is not an oracle — he's
+right about the run 85% of the time, but three days of market noise can bury a
+run, so **measured against what the price actually does, a tip lands 59% of the
+time.** A real edge, wrong often enough that believing one stays a decision.
+Whispers go stale after three days.
+
 <details>
 <summary>A quiet consequence worth leaving in.</summary>
 
-Middle numbers are worth more than 1 or 10, because a call at the edge has
-nowhere to be close on one side. Calling 5 averages **$541** an offer against
-**$381** for calling 1 — exact arithmetic, and the only actual decision the
-dice offer. It's also small: measured over 500 runs it doesn't reliably move a
-win rate. A detail for a player to notice, not a headline.
+Middle numbers are worth more than 1 or 6, because a call at the edge has
+nowhere to be close on one side. Calling 3 averages **$537** an offer against
+**$396** for calling 1 — exact arithmetic, and the only actual decision the
+dice offer. On six sides that gap is wider than it was on ten, which is the
+right direction for a detail that rewards paying attention.
 </details>
 
 Free means you didn't pay cash for it, not that it weighs nothing: the gift
@@ -439,6 +450,30 @@ The cost is that the naive strategy gets better: buy-the-cheapest goes from 52%
 to 60% solvent. That's the trade, stated plainly — being stuck for a whole run
 with nothing to do is a worse failure than a strategy being slightly too good.
 
+## Pumps, dumps, and the reverse
+
+A random walk wanders. It does not pump, and it does not dump. So every coin
+now carries a **run** — a daily push that persists for four or five days and
+then re-rolls, on top of the noise. That's the term that gives a chart shapes:
+a climb that builds and then rolls over is something you can see coming, be
+wrong about, and act on. Noise alone is none of those.
+
+Thirty days now holds six or seven of these, and moves about **30% further**:
+
+| | swing over 30 days, before | after |
+|---|---|---|
+| WIF | 9.7× | **13.6×** |
+| BONK | 8.8× | **11.3×** |
+| DOGE | 4.8× | **6.5×** |
+| BTC | 1.8× | **2.1×** |
+
+Runs cut both ways, and the cost is on the record: **buy-the-cheapest fell from
+58% solvent to 43%**, because a coin that's cheap may simply keep falling. That
+is the naive formula getting worse, which is the right direction — and the
+whispers on the dice are the compensation. The drawdown tail barely moved (a
+25% drop on WIF still clears in 3 days at the median, 21 at the 90th against 18
+before), so bags don't get stickier; the market just goes further.
+
 ## The roster: twelve coins at four speeds
 
 The spread between `low` and `high` is where the money is. The spread between
@@ -529,7 +564,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 244 tests, no install needed
+python3 -m unittest discover -s tests     # 251 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

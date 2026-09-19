@@ -162,6 +162,14 @@
   /* The wheel's styles. These were once deleted wholesale by a tidy-up that cut
      a range of CSS by its start and end selectors - the wheel's rules happened
      to sit inside that range, so the wheel kept working and stopped moving. */
+  /* a rumour is information, not an instruction - it looks like something
+     somebody told you, not like a readout */
+  .whisper{border-left:3px solid var(--yellow);background:rgba(252,204,10,.07);
+           border-radius:0 3px 3px 0;padding:9px 12px;margin-bottom:12px}
+  .whisper .t{font-size:9.5px;letter-spacing:.16em;color:var(--yellow);font-weight:700}
+  .whisper .w{font-size:14px;margin-top:4px}
+  .whisper .w b.up{color:var(--green)} .whisper .w b.down{color:var(--red)}
+  .whisper .age{font-size:10px;color:var(--faint);letter-spacing:.08em;margin-top:3px}
   .wheelbox{border:2px solid var(--purple);border-radius:4px;padding:11px 12px;margin-bottom:12px}
   .wheelbox .t{color:#e07ad8;font-weight:700;letter-spacing:.14em;font-size:11px}
   .wheelstage{position:relative;width:186px;height:186px;margin:10px auto 8px}
@@ -191,8 +199,14 @@
   .grade.f{color:var(--red)} .grade.s{color:var(--green)} .grade.g{color:var(--purple)}
   .dicebox{border:2px solid var(--purple);border-radius:4px;padding:11px 12px;margin-bottom:12px}
   .dicebox .t{color:#e07ad8;font-weight:700;letter-spacing:.14em;font-size:11px}
-  .dice{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:9px}
-  .dice button{padding:11px 0;font-size:14px;font-weight:700}
+  /* one row of faces, however many the die has - hardcoding five columns left a
+     six-sided die sitting as five and a lonely one */
+  .dice{display:grid;grid-template-columns:repeat(var(--faces,6),1fr);gap:5px;margin-top:9px}
+  /* min-width:0 is load-bearing, for the second time in this file. Every button
+     carries min-width:64px, and a grid track will not shrink below its item's
+     minimum - so six faces demanded 384px of buttons inside a 340px panel and
+     the sixth simply hung off the edge. 1fr does not mean "fit" on its own. */
+  .dice button{padding:12px 0;font-size:15px;font-weight:700;min-width:0}
   .ladder{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
   .ladder span{font-size:9px;letter-spacing:.06em;padding:3px 6px;border-radius:2px;
                border:1px solid var(--rule);color:var(--dim);white-space:nowrap}
@@ -267,10 +281,10 @@
       <div id="wheelsaid"></div>
       <button class="go" id="spin">SPIN</button>
     </div>
+    <div class="whisper" id="whisper" hidden></div>
     <div class="dicebox" id="dicewrap" hidden>
       <div class="t">DICE ON THE PLATFORM</div>
-      <div class="note">Call a number, 1 to 10. Free to play - the closer you land,
-        the bigger the cut.</div>
+      <div class="note" id="dicehow"></div>
       <div class="ladder" id="diceladder"></div>
       <div class="dice" id="dice"></div>
     </div>
@@ -491,17 +505,21 @@ function render(){
     svc.push(`<button data-act="capacity">+$25K WALLET · ${fmtMoney(g.upgradeCost())}</button>`);
     if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
   }
+  renderWhisper();
   renderDeadEnd();
   renderWheel();
   $("dicewrap").hidden = !g.diceReady;
   if (g.diceReady) {
     if (!$("dice").firstChild) {
+      $("dice").style.setProperty("--faces", DICE_SIDES);
       $("dice").innerHTML = Array.from({ length: DICE_SIDES },
         (_, i) => `<button data-dice="${i + 1}">${i + 1}</button>`).join("");
     }
     // the payout ladder is shown BEFORE the call, not after it: a prize table
     // you only learn by losing is a slot machine
     const boost = 1 + g.luck;
+    $("dicehow").textContent = `Call a number, 1 to ${DICE_SIDES}. `
+      + "Free to play - the closer you land, the bigger the cut.";
     $("diceladder").innerHTML = DICE_LADDER.map(([reach, label, share]) =>
       `<span><b>${reach === 0 ? "EXACT" : "±" + reach}</b> ${label} · ${
         fmtMoney(DICE_TOP_PRIZE * share * boost)}</span>`).join("")
@@ -514,6 +532,19 @@ function render(){
 
   $("log").innerHTML = g.log.slice(-7).reverse()
     .map(l => `<div class="logline">${l}</div>`).join("");
+}
+
+/* ------------------------------- a whisper ---------------------------- */
+function renderWhisper(){
+  const tip = game.tip;
+  $("whisper").hidden = !tip;
+  if (!tip) return;
+  const age = game.day - (tip.day || 0);
+  $("whisper").innerHTML = `<div class="t">WORD ON THE PLATFORM</div>
+    <div class="w">${esc(COIN[tip.symbol].name)} is
+      <b class="${tip.up ? "up" : "down"}">${tip.up ? "about to run" : "about to fall over"}</b>.</div>
+    <div class="age">${age <= 0 ? "JUST HEARD" : age + " DAY" + (age > 1 ? "S" : "") + " OLD"}
+      · HE MIGHT BE WRONG</div>`;
 }
 
 /* ------------------------------ the wheel ----------------------------- */

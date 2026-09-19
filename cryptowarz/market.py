@@ -60,11 +60,26 @@ MEME_PUMPS = [
 ]
 
 
+#: How often a coin's trend re-rolls. At 0.22 a run lasts about four or five
+#: days, which is long enough to notice you are in one and short enough that
+#: thirty days holds six or seven of them.
+TREND_FLIP = 0.22
+#: How hard a trend pushes, as a multiple of the coin's daily volatility. A
+#: pure random walk wanders; it does not pump and it does not dump. This is the
+#: term that makes a chart have SHAPES in it - a climb that builds over four
+#: days and then rolls over is a thing a player can see coming, be wrong about,
+#: and act on. Noise alone is none of those.
+TREND_STRENGTH = 0.55
+
+
 class MarketState:
-    """The drifting level of every coin. One of these per game."""
+    """The drifting level of every coin, and which way each is running."""
 
     def __init__(self, rng: random.Random) -> None:
         self.levels: Dict[str, float] = {}
+        #: the current run for each coin: a daily push that persists for a few
+        #: days and then re-rolls, so movement arrives in arcs rather than fuzz
+        self.trends: Dict[str, float] = {c.symbol: 0.0 for c in COINS}
         for c in COINS:
             # Start in the middle of the range - but clamped to the coin's own
             # bounds. Unclamped, USDC opened anywhere from $0.78 to $1.21, which
@@ -75,17 +90,25 @@ class MarketState:
             self.levels[c.symbol] = max(c.low, min(c.mid * rng.uniform(0.8, 1.2), c.high))
 
     def drift(self, rng: random.Random) -> None:
-        """One day of movement: a random walk that resists the extremes."""
+        """One day of movement: a run, some noise, and a pull off the extremes."""
         for c in COINS:
             level = self.levels[c.symbol]
             if c.symbol == "USDC":
                 self.levels[c.symbol] = max(0.97, min(1.03, level * rng.uniform(0.997, 1.003)))
                 continue
-            step = rng.gauss(0.0, c.vol)
+            # the run re-rolls now and then; the rest of the time it carries on,
+            # which is what turns a walk into a pump and then a dump
+            if rng.random() < TREND_FLIP:
+                self.trends[c.symbol] = rng.gauss(0.0, c.vol * TREND_STRENGTH)
+            step = self.trends[c.symbol] + rng.gauss(0.0, c.vol)
             # pull back toward the middle so nothing drifts off forever
             pull = c.pull * math.log(c.mid / level) if level > 0 else 0.0
             level *= math.exp(step + pull)
             self.levels[c.symbol] = max(c.low * 0.4, min(level, c.high * 1.6))
+
+    def running(self, symbol: str) -> float:
+        """How hard this coin is currently running, and which way."""
+        return self.trends.get(symbol, 0.0)
 
     def apply(self, symbol: str, factor: float, coin: Coin) -> None:
         """A shock moves the real level, so it persists beyond one station."""

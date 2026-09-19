@@ -177,14 +177,25 @@ const MEME_PUMPS = [
   ["{name} adopted by an entire subreddit", 2.45],
 ];
 
+/* How often a coin's run re-rolls, and how hard it pushes as a multiple of the
+   coin's daily volatility. A pure random walk wanders; it does not pump and it
+   does not dump. This is the term that gives a chart SHAPES - a climb that
+   builds over four days and then rolls over is something a player can see
+   coming, be wrong about, and act on. Noise alone is none of those. */
+const TREND_FLIP = 0.22, TREND_STRENGTH = 0.55;
+
 function MarketState(rng) {
   this.levels = {};
+  /* the current run for each coin: a daily push that persists a few days */
+  this.trends = {};
+  for (const c of COINS) this.trends[c.symbol] = 0;
   for (const c of COINS) {
     // clamped to the coin's own range - an unclamped USDC opened as low as
     // $0.78, which made the safe asset the best trade on the board
     this.levels[c.symbol] = Math.max(c.low, Math.min(c.mid * rng.uniform(0.8, 1.2), c.high));
   }
 }
+MarketState.prototype.running = function (sym) { return this.trends[sym] || 0; };
 MarketState.prototype.drift = function (rng) {
   for (const c of COINS) {
     let level = this.levels[c.symbol];
@@ -192,7 +203,10 @@ MarketState.prototype.drift = function (rng) {
       this.levels.USDC = Math.max(0.97, Math.min(1.03, level * rng.uniform(0.997, 1.003)));
       continue;
     }
-    const step = rng.gauss(0, c.vol);
+    // the run re-rolls now and then; the rest of the time it carries on, which
+    // is what turns a walk into a pump and then a dump
+    if (rng.random() < TREND_FLIP) this.trends[c.symbol] = rng.gauss(0, c.vol * TREND_STRENGTH);
+    const step = this.trends[c.symbol] + rng.gauss(0, c.vol);
     const pull = level > 0 ? c.pull * Math.log(c.mid / level) : 0;
     level *= Math.exp(step + pull);
     this.levels[c.symbol] = Math.max(c.low * 0.4, Math.min(level, c.high * 1.6));
@@ -240,6 +254,15 @@ const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
 // a player who cannot afford the fare the reserve was protecting
 const FARE_BUFFER = 0.01;
 
+/* -------------------------------- a word ------------------------------
+   How often the man on the dice has heard something, and how often he is right
+   ABOUT THE RUN. Measured against what the price really does over the next
+   three days, tips land about 59% - a run pushes at roughly half a coin's daily
+   noise, so three days of noise can bury it. A real edge, wrong often enough
+   that believing one stays a decision. */
+const TIP_CHANCE = 0.6, TIP_ACCURACY = 0.85;
+const TIP_MIN_RUN = 0.5, TIP_FRESH_FOR = 3;
+
 /* ------------------------------ the wheel -----------------------------
    Somebody has a prize wheel on the mezzanine at some stops. ONE SPIN PER STOP
    PER RUN, which is the whole design: it pays for going somewhere you have not
@@ -268,7 +291,7 @@ const WHEEL_LINES = {
    Somebody runs dice on the platform every few rides. There is no stake: the
    worst outcome is nothing, so this is a flourish rather than a decision, and
    deliberately not a way to gamble out of a bad run. */
-const DICE_EVERY = 4, DICE_SIDES = 10, DICE_TOP_PRIZE = 2200;
+const DICE_EVERY = 4, DICE_SIDES = 6, DICE_TOP_PRIZE = 1450.0;
 /* How close you got, and what share of the top prize that is worth. Binary
    hit-or-miss made nine calls in ten pay nothing, which is a slot machine
    rather than a call. Graded by distance, most calls pay something and the
@@ -280,11 +303,10 @@ const DICE_EVERY = 4, DICE_SIDES = 10, DICE_TOP_PRIZE = 2200;
    side - $541 an offer against $381. Exact arithmetic, and small enough that it
    is a detail to notice rather than a headline. */
 const DICE_LADDER = [
-  [0, "DEAD ON", 1.00],
-  [1, "ONE OFF", 0.40],
-  [2, "CLOSE",   0.20],
-  [3, "WARM",    0.09],
-  [4, "COLD",    0.04],
+  [0, "DEAD ON", 1.0],
+  [1, "ONE OFF", 0.4],
+  [2, "CLOSE", 0.18],
+  [3, "WARM", 0.06],
 ];
 function diceTier(distance) {
   const hit = DICE_LADDER.find(([reach]) => distance <= reach);
@@ -364,6 +386,29 @@ Game.prototype.giveUp = function () {
   const message = `You give up the run at ${this.station.name} on day ${this.day}. That's it.`;
   this.say(message);
   return [message];
+};
+
+/* -------------------------------- a word ----------------------------- */
+Object.defineProperty(Game.prototype, "tip", {
+  get() {
+    const rumour = this.stats.tip;
+    if (!rumour) return null;
+    return (this.day - (rumour.day || 0)) > TIP_FRESH_FOR ? null : rumour;
+  } });
+/* The man on the dice passes on what he heard. Sometimes it is true. */
+Game.prototype.hearSomething = function () {
+  if (this.rng.random() > TIP_CHANCE) return [];
+  const running = COINS
+    .filter(c => c.symbol !== "USDC"
+                 && Math.abs(this.state.running(c.symbol)) >= c.vol * TIP_MIN_RUN)
+    .map(c => [c.symbol, this.state.running(c.symbol)]);
+  if (!running.length) return [];
+  const [symbol, trend] = running.reduce((a, b) => Math.abs(b[1]) > Math.abs(a[1]) ? b : a);
+  const truthful = this.rng.random() < TIP_ACCURACY;
+  const goingUp = truthful ? trend > 0 : trend <= 0;
+  this.stats.tip = { symbol: symbol, up: goingUp, day: this.day };
+  const word = goingUp ? "about to run" : "about to fall over";
+  return [`"Word is ${COIN[symbol].name} is ${word}." He might be wrong. He usually isn't.`];
 };
 
 /* ------------------------------ the wheel ---------------------------- */
@@ -607,7 +652,10 @@ Game.prototype.travel = function (index) {
   for (const m of rollEvent(this)) messages.push(m);
   if (this.wheelReady) messages.push("There's a prize wheel set up on the mezzanine here. "
     + "One spin, and only at stops you haven't worked yet.");
-  if (this.diceReady && !wasReady) messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
+  if (this.diceReady && !wasReady) {
+    messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
+    for (const m of this.hearSomething()) messages.push(m);
+  }
   this.markStats();
   messages.forEach(m => this.say(m));
   if (this.day > this.days) { this.finished = true; messages.push("That's the run."); }
@@ -1063,6 +1111,10 @@ function saveToDict(g) {
     player: { cash: g.player.cash, debt: g.player.debt, vault: g.player.vault,
               capacity: g.player.capacity, vpn: g.player.vpn, wallet },
     levels: Object.assign({}, g.state.levels),
+    /* the run each coin is on. Without it a reloaded game keeps the prices and
+       forgets which way everything was going - a different market wearing the
+       same numbers. */
+    trends: Object.assign({}, g.state.trends || {}),
     market: {
       prices: Object.assign({}, g.market.prices),
       shock: g.market.shock ? { symbol: g.market.shock.symbol,
@@ -1100,6 +1152,9 @@ function saveFromDict(data) {
     if (data.levels[c.symbol] === undefined) throw new Error("that save predates " + c.symbol);
   }
   g.state.levels = Object.assign({}, data.levels);
+  const savedTrends = data.trends || {};
+  g.state.trends = {};
+  for (const c of COINS) g.state.trends[c.symbol] = Number(savedTrends[c.symbol]) || 0;
   g.market = { station: g.station, prices: Object.assign({}, data.market.prices),
                shock: data.market.shock ? Object.assign({ crash: data.market.shock.factor < 1 },
                                                         data.market.shock) : null,
@@ -1166,7 +1221,8 @@ if (typeof module !== "undefined") {
                      PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,
                      WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
                      luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
-                     stationMarkup, BIAS_COMPRESSION,
+                     stationMarkup, BIAS_COMPRESSION, TREND_FLIP, TREND_STRENGTH,
+                     TIP_CHANCE, TIP_ACCURACY, TIP_MIN_RUN, TIP_FRESH_FOR,
                      RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
                      credit_wheel: creditWheel, WHEEL, WHEEL_LINES,
                      DICE_EVERY, DICE_SIDES, DICE_TOP_PRIZE, DICE_LADDER, diceTier,

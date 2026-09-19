@@ -136,6 +136,21 @@ def wallet_panel(game: Game) -> str:
     return "\n".join(lines)
 
 
+def whisper(game: Game) -> str:
+    """A rumour you were given, while it is still worth anything."""
+    from .coins import coin as get_coin
+
+    tip = game.tip
+    if not tip:
+        return ""
+    name = get_coin(str(tip["symbol"])).name
+    way = c("about to run", GREEN, True) if tip["up"] else c("about to fall over", RED, True)
+    age = game.day - int(tip["day"])
+    when = "just heard" if age <= 0 else f"{age} day{'s' if age > 1 else ''} old"
+    return ("\n  " + c("WORD ON THE PLATFORM", YELL, True)
+            + f"  {c(name, WHITE, True)} is {way}  {c('(' + when + ')', GREY)}")
+
+
 def dice_ladder(game: Game) -> str:
     """What each degree of closeness is worth - shown before the call, not after."""
     from .game import DICE_LADDER, DICE_SIDES, DICE_TOP_PRIZE

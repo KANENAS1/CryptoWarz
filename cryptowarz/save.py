@@ -95,6 +95,10 @@ def to_dict(game) -> Dict[str, Any]:
                        for sym, h in p.wallet.items() if h.qty > 0 or h.cost > 0},
         },
         "levels": dict(game.state.levels),
+        # the run each coin is on. Without it a reloaded game would keep the
+        # prices and forget which way everything was going, which is a different
+        # market wearing the same numbers.
+        "trends": dict(getattr(game.state, "trends", {}) or {}),
         # prices and the pending shock are stored rather than regenerated:
         # regenerating would draw from the generator and desynchronise the run
         "market": {
@@ -153,6 +157,8 @@ def from_dict(data: Dict[str, Any]):
     if missing:
         raise SaveError(f"that save predates {', '.join(sorted(missing))}. Start a new run.")
     state.levels = {sym: float(v) for sym, v in data["levels"].items() if sym in known}
+    saved_trends = data.get("trends") or {}
+    state.trends = {sym: float(saved_trends.get(sym, 0.0)) for sym in known}
     game.state = state
 
     shock_data = data["market"].get("shock")

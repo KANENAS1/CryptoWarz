@@ -2,6 +2,8 @@
    Python package. Structural drift - a coin retuned in coins.py but not in
    game.js, a station bias changed on one side only - is silent otherwise, and
    would quietly make the phone version a different game from the terminal one. */
+const COINS_EQUAL = (a, b) =>
+  JSON.stringify(a) === JSON.stringify(b);
 const G = require("./game.js");
 
 const out = {
@@ -27,6 +29,38 @@ const out = {
     daily_seeds: G.dailySeeds(1_700_000_000_000),
     achievements: G.ACHIEVEMENTS.map(a => a.key),
     perks: G.PERKS.map(x => ({ key: x.key, by: x.by })),
+  },
+  market: {
+    trend_flip: G.TREND_FLIP, trend_strength: G.TREND_STRENGTH,
+    tip_chance: G.TIP_CHANCE, tip_accuracy: G.TIP_ACCURACY,
+    tip_min_run: G.TIP_MIN_RUN, tip_fresh_for: G.TIP_FRESH_FOR,
+    /* measured, not read off the constants: a trend that does not persist is
+       not a trend, and a market that does not swing is not the one we tuned */
+    shape: (() => {
+      const runs = [], swings = [];
+      for (let seed = 0; seed < 400; seed++) {
+        const g = new G.Game(seed);
+        const base = g.state.levels.DOGE;
+        const path = [];
+        let flips = 0, prev = g.state.running("DOGE");
+        for (let d = 0; d < 30; d++) {
+          g.state.drift(g.rng);
+          path.push(g.state.levels.DOGE / base);
+          const now = g.state.running("DOGE");
+          if (now !== prev) { flips++; prev = now; }
+        }
+        runs.push(flips);
+        swings.push(Math.max(...path) / Math.min(...path));
+      }
+      const mid = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+      return { trend_changes_per_run: mid(runs), doge_swing: Math.round(mid(swings) * 10) / 10 };
+    })(),
+    trends_survive_a_reload: (() => {
+      const g = new G.Game(7);
+      for (let i = 0; i < 6; i++) g.state.drift(g.rng);
+      const back = G.saveFromDict(G.saveToDict(g));
+      return COINS_EQUAL(back.state.trends, g.state.trends);
+    })(),
   },
   dice: (() => {
     /* Constants both sides must agree on, plus the behaviours that keep a run

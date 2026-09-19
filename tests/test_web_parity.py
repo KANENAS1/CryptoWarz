@@ -64,6 +64,17 @@ class TestWebSourcesExist(unittest.TestCase):
         self.assertIn('return "saved"', html)
         self.assertIn("boardDirty", html)          # a failed post is retried
 
+    def test_the_page_never_writes_the_die_size_down(self):
+        """The die went from ten sides to six and the panel still said ten.
+
+        Any literal count in the markup is a second source of truth that nobody
+        remembers to change. The page must read DICE_SIDES instead.
+        """
+        html = (WEB / "index.html").read_text()
+        self.assertNotIn("1 to 10", html)
+        self.assertIn("1 to ${DICE_SIDES}", html)
+        self.assertIn("repeat(var(--faces", html, "the face grid is hardcoded")
+
     def test_the_wheel_can_actually_turn(self):
         """Guarding a bug that shipped, from a cause that has now bitten twice.
 
@@ -358,6 +369,75 @@ class TestGearCustomisationParity(unittest.TestCase):
         self.assertTrue(self.js["refused_unearned_rename"])
         self.assertTrue(self.js["refused_broke_retune"])
         self.assertTrue(self.js["drops_the_name_when_the_piece_is_gone"])
+
+
+@requires_node
+class TestMarketShapeParity(unittest.TestCase):
+    """Both ports must move the market the same way, not just price it the same.
+
+    The constants are the easy half. What matters is that a run really does
+    persist for a few days on both sides - a port that read TREND_FLIP and then
+    re-rolled every day would have the same numbers in it and a completely
+    different game coming out.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["market"]
+
+    def test_the_constants_match(self):
+        from cryptowarz import game as gm
+        from cryptowarz import market as mk
+        self.assertAlmostEqual(self.js["trend_flip"], mk.TREND_FLIP)
+        self.assertAlmostEqual(self.js["trend_strength"], mk.TREND_STRENGTH)
+        self.assertAlmostEqual(self.js["tip_chance"], gm.TIP_CHANCE)
+        self.assertAlmostEqual(self.js["tip_accuracy"], gm.TIP_ACCURACY)
+        self.assertAlmostEqual(self.js["tip_min_run"], gm.TIP_MIN_RUN)
+        self.assertEqual(self.js["tip_fresh_for"], gm.TIP_FRESH_FOR)
+
+    def test_a_run_persists_for_days_on_the_port(self):
+        import random
+        import statistics
+
+        from cryptowarz.market import MarketState
+
+        flips = []
+        for seed in range(400):
+            rng = random.Random(seed)
+            state = MarketState(rng)
+            changes, prev = 0, state.running("DOGE")
+            for _ in range(30):
+                state.drift(rng)
+                if state.running("DOGE") != prev:
+                    changes += 1
+                    prev = state.running("DOGE")
+            flips.append(changes)
+        self.assertAlmostEqual(self.js["shape"]["trend_changes_per_run"],
+                               statistics.median(flips), delta=2)
+        self.assertLess(self.js["shape"]["trend_changes_per_run"], 15,
+                        "the port re-rolls its trend far too often to be a trend")
+
+    def test_the_port_swings_as_hard(self):
+        import random
+        import statistics
+
+        from cryptowarz.market import MarketState
+
+        swings = []
+        for seed in range(400):
+            rng = random.Random(seed)
+            state = MarketState(rng)
+            base = state.levels["DOGE"]
+            path = []
+            for _ in range(30):
+                state.drift(rng)
+                path.append(state.levels["DOGE"] / base)
+            swings.append(max(path) / min(path))
+        self.assertAlmostEqual(self.js["shape"]["doge_swing"], statistics.median(swings),
+                               delta=statistics.median(swings) * 0.45)
+
+    def test_the_port_carries_the_run_through_a_reload(self):
+        self.assertTrue(self.js["trends_survive_a_reload"])
 
 
 @requires_node

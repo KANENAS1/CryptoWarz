@@ -18,6 +18,13 @@ from cryptowarz.game import (DICE_EVERY, DICE_LADDER, DICE_SIDES, DICE_TOP_PRIZE
 from cryptowarz.stations import STATIONS
 
 
+#: The middle of the die, and a call low enough that every rung of the ladder
+#: still fits above it. Derived rather than written down, because the die has
+#: already changed size once and these tests should not have to.
+MIDDLE = (DICE_SIDES + 1) // 2
+LOW = 1
+
+
 def ride(game, rides=1):
     """Move the run forward, keeping the fare topped up.
 
@@ -48,10 +55,10 @@ class TestWhenTheDiceAreOut(unittest.TestCase):
 
     def test_one_roll_per_offer(self):
         game = to_first_offer()
-        game.roll_dice(7)
+        game.roll_dice(MIDDLE)
         self.assertFalse(game.dice_ready)
         with self.assertRaises(ValueError):
-            game.roll_dice(7)
+            game.roll_dice(MIDDLE)
 
     def test_a_number_off_the_dice_is_refused(self):
         game = to_first_offer()
@@ -100,8 +107,9 @@ class TestTheGift(unittest.TestCase):
         game.player.capacity = 0.0
         self.assertIn("full", game.gift(5_000.0, "Here")[0])
 
-    def paid_for_calling(self, call, rolled=5, gear=None):
+    def paid_for_calling(self, call, rolled=None, gear=None):
         """What one rigged roll actually puts in the wallet."""
+        rolled = LOW if rolled is None else rolled
         game = Game(seed=4, gear=gear or {})
         while not game.dice_ready:
             ride(game)
@@ -115,41 +123,42 @@ class TestTheGift(unittest.TestCase):
 
     def test_a_call_miles_off_pays_nothing(self):
         game = to_first_offer()
-        game.rng.randint = lambda a, b: 5
+        game.rng.randint = lambda a, b: 1
         before = game.player.used_capacity
-        messages = game.roll_dice(10)
+        messages = game.roll_dice(DICE_SIDES)
         self.assertIn("Nothing", " ".join(messages))
         self.assertAlmostEqual(game.player.used_capacity, before)
 
     def test_the_payout_falls_off_the_further_you_are(self):
         """The whole point of grading it: closer is worth more, every step."""
-        paid = [self.paid_for_calling(5 + d) for d in range(len(DICE_LADDER) + 1)]
+        paid = [self.paid_for_calling(LOW + d) for d in range(len(DICE_LADDER) + 1)]
         self.assertEqual(paid, sorted(paid, reverse=True), f"not monotonic: {paid}")
         self.assertGreater(paid[0], 0.0)
         self.assertEqual(paid[-1], 0.0, "something beyond the ladder still paid")
 
     def test_every_rung_pays_its_advertised_share(self):
         for reach, _label, share in DICE_LADDER:
-            self.assertAlmostEqual(self.paid_for_calling(5 + reach),
+            self.assertAlmostEqual(self.paid_for_calling(LOW + reach),
                                    DICE_TOP_PRIZE * share, places=4, msg=f"±{reach}")
 
     def test_being_one_off_is_worth_a_real_fraction_not_a_token(self):
         """A consolation nobody notices is the same as no consolation."""
-        self.assertGreater(self.paid_for_calling(6), self.paid_for_calling(5) * 0.2)
+        self.assertGreater(self.paid_for_calling(LOW + 1), self.paid_for_calling(LOW) * 0.2)
 
     def test_gear_you_are_holding_for_lifts_the_prize(self):
         from cryptowarz.gear import LUCK_PER_LEVEL, MAX_LEVEL
-        bare = self.paid_for_calling(5)
-        geared = self.paid_for_calling(5, gear={"meme": MAX_LEVEL})
+        bare = self.paid_for_calling(LOW)
+        geared = self.paid_for_calling(LOW, gear={"meme": MAX_LEVEL})
         self.assertAlmostEqual(geared, bare * (1 + MAX_LEVEL * LUCK_PER_LEVEL), places=4)
 
     def test_a_middle_call_is_worth_more_than_an_edge_one(self):
         """Exact arithmetic, and the only decision the dice actually offer."""
         def value(pick):
             return sum(dice_tier(abs(pick - r))[1] for r in range(1, DICE_SIDES + 1))
-        self.assertGreater(value(5), value(1))
-        self.assertAlmostEqual(value(5), value(6), msg="the middle should be symmetric")
-        self.assertAlmostEqual(value(1), value(DICE_SIDES))
+        self.assertGreater(value(MIDDLE), value(1))
+        # the die is symmetric, so mirrored calls must be worth the same
+        for pick in range(1, DICE_SIDES + 1):
+            self.assertAlmostEqual(value(pick), value(DICE_SIDES + 1 - pick), msg=str(pick))
 
 
 def play(calls, seed=5):
