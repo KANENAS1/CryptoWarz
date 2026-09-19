@@ -145,37 +145,6 @@ const out = {
       unrankable_run_earns_nothing: win(["DOGE"], 600000, true).wins,
     };
   })(),
-  skim: (() => {
-    /* Fixed odds is the property the parity suite exists to protect: a port
-       that quietly went back to paying by the size of the move would keep
-       passing everything else while printing money. */
-    const settle = (side, move, stake) => {
-      const g = new G.Game(5); g.player.cash = 50000;
-      g.openSkim("DOGE", stake, side);
-      const before = g.player.cash;
-      g.state.levels.DOGE = g.skim.level * (1 + move);
-      g.settleSkim();
-      return Math.round((g.player.cash - before) * 1e6) / 1e6;
-    };
-    const exposure = (cash, stake) => {
-      const g = new G.Game(5); g.player.cash = cash; g.openSkim("DOGE", stake, "dip");
-      return g.skimExposure;
-    };
-    return {
-      min: G.SKIM_MIN, pays: G.SKIM_PAYS, deadband: G.SKIM_DEADBAND,
-      heat: G.SKIM_HEAT, sides: G.SKIM_SIDES,
-      win_small_move: settle("pump", 0.03, 1000),
-      win_huge_move: settle("pump", 4.00, 1000),
-      loss: settle("pump", -0.40, 1000),
-      push: settle("pump", G.SKIM_DEADBAND / 2, 1000),
-      dip_mirrors_pump: settle("dip", -0.20, 1000) === settle("pump", 0.20, 1000),
-      exposure_quarter: exposure(10000, 2500),
-      survives_reload: (() => {
-        const g = new G.Game(5); g.openSkim("SOL", 400, "dip");
-        return JSON.stringify(G.saveFromDict(G.saveToDict(g)).skim) === JSON.stringify(g.skim);
-      })(),
-    };
-  })(),
   custom: (() => {
     const p = G.blankProfile(); p.gear_wins = { meme: 4 };
     const named = G.renameGear(p, "meme", "  Lucky   Rat  ");
@@ -229,11 +198,42 @@ const out = {
       give_up_twice_is_harmless: gave.giveUp().length === 0,
     };
   })(),
+  wheel: (() => {
+    const stop = G.STATIONS.find(s => s.wheel);
+    const spins = 6000;
+    const counts = {};
+    let gears = 0;
+    for (let i = 0; i < spins; i++) {
+      const g = new G.Game(i); g.station = stop; g.player.capacity = 1e9;
+      const before = g.usedCapacity();
+      const said = g.spinWheel().join(" ");
+      const label = G.WHEEL.map(w => w[0]).find(l => said.includes(G.WHEEL_LINES[l]));
+      counts[label] = (counts[label] || 0) + 1;
+      if (g.wheelAward) gears++;
+      if (Math.abs((g.usedCapacity() - before)
+                   - G.WHEEL.find(w => w[0] === label)[2]) > 0.01) {
+        throw new Error("a wedge paid something other than its own number");
+      }
+    }
+    const again = (() => {
+      const g = new G.Game(1); g.station = stop; g.spinWheel();
+      return g.wheelReady;
+    })();
+    return {
+      table: G.WHEEL.map(([label, weight, cash, gear]) => ({ label, weight, cash, gear })),
+      /* the measured share of each wedge, so a port whose weights drifted shows
+         up here even if its table still reads the same */
+      shares: Object.fromEntries(Object.entries(counts)
+        .map(([k, v]) => [k, Math.round(v / spins * 1000) / 1000])),
+      gear_rate: Math.round(gears / spins * 1000) / 1000,
+      second_spin_at_the_same_stop: again,
+    };
+  })(),
   stations: G.STATIONS.map(s => ({
     name: s.name, lines: s.lines, borough: s.borough, heat: s.heat, bias: s.bias,
     /* the badge the player reads must be the same number the till uses */
     markup: Object.fromEntries(G.COINS.map(c => [c.symbol, G.stationMarkup(s, c.symbol)])),
-    shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,
+    shark: !!s.shark, vault: !!s.vault, shop: !!s.shop, wheel: !!s.wheel,
   })),
 };
 /* A representative save, so the Python side can check both implementations

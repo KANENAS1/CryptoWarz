@@ -164,7 +164,7 @@ load-bearing one: a run that ends badly still moves a bar you can see.
 | The Fixer | The Shark charges 8.5% a day | clear the Shark |
 | Cold Storage | +$15,000 wallet | be worth $100k |
 | Burner Phone | Trouble finds you a third less often | survive raid-free |
-| Insider | The map shows who pays most for what | visit all ten stations |
+| Insider | The map shows who pays most for what | visit every station |
 
 **Tiers** raise the ceiling once you've beaten it, because mastery with nowhere
 left to go is where people stop. Each is unlocked by clearing the one below.
@@ -286,57 +286,6 @@ Measured over 400 simulated runs of the same trading bot: **26.2% solvent with
 no gear, 32.0% with everything at full level** — about the weight of a perk.
 Shocks on a coin you're geared for went from 51.9% pumps to 67.2%.
 
-### The skim: gambling on a dip
-
-Bet cash on where a coin goes by the next stop. `skim DOGE 500 dip` — or
-`pump`. It settles the moment you ride, against the coin's **real market move**
-rather than a station's take on it, because betting on the station price would
-just be betting on which stop you rode to.
-
-It costs you attention. A position is somebody else's coin moving on your
-say-so, and while one is open the exchange is watching: trouble is up to 40%
-likelier, **scaled by how much of everything you own is riding**. That's the
-only reason a maximum bet is a decision at all.
-
-**It pays fixed odds — win and you get your stake back plus 0.6×, lose and it's
-gone, and a move under 1% is a push.** That flatness is the entire balance of
-the feature, and it is the second thing in this repo that had to be rebuilt
-after being measured.
-
-<details>
-<summary>The first version was a printing press. The numbers.</summary>
-
-It paid in proportion to how far the coin moved, at 2× leverage. That reads
-like a gamble, and it was arithmetic: the market pulls a stretched coin back
-toward its middle, a player can read exactly how stretched a coin is straight
-off the price, and a payout that scales with the move turns that read into
-compound interest over thirty days.
-
-| strategy | solvent | best run |
-|---|---|---|
-| no skimming | 26.2% | $165k |
-| bet against the stretch, 50% of cash | **62.0%** | **$39.8M** |
-
-Fixed odds severs the payout from the size of the move. The multiple is set so
-that the *best read available* is worth about two percent a ride — a coin at
-the top of its range drifts down ~11% against noise of ~30%, so calling the dip
-on it is right roughly 64% of the time, and 0.6× turns that into almost
-nothing. Anything repeatable and positive compounds, so "barely worth it when
-you're right" is the target, not "fair".
-
-| strategy | solvent | median | best run |
-|---|---|---|---|
-| never skims | 26.2% | −$7,986 | $165k |
-| best read, 25% of cash | **33.2%** | −$12,144 | $329k |
-| best read, 50% | 31.5% | −$13,369 | $2.5M |
-| best read, all in | **0.5%** | −$6,655 | $2.8k |
-| careless, 50% | 8.8% | **−$41,549** | $94k |
-
-Skill pays a little. Carelessness costs a lot. Greed is fatal — going all in
-repeatedly draws the heat that kills the run. That's a gamble; the first one
-was a salary.
-</details>
-
 ### The dice on the platform
 
 Every few rides somebody is running dice. Call a number, 1 to 10 — free to
@@ -392,6 +341,40 @@ along looked perfectly normal.
 No streak counter that punishes a missed day, and no lockout: when the three
 ranked runs are spent, practice is still there, unlimited, with the same rules.
 The daily slate exists to make scores comparable, not to ration the game.
+
+## The prize wheel, and a map worth crossing
+
+Sixteen stops now, across all five boroughs. Six of them have somebody running a
+prize wheel on the mezzanine, and the rule that makes it work is **one spin per
+stop, per run**.
+
+That single constraint is the whole design. A wheel you can spin repeatedly is a
+lever you pull; a wheel you get once per station is a reason to ride somewhere
+you haven't been. Without it, six extra stations earn nothing.
+
+| wedge | chance | pays |
+|---|---|---|
+| SMALL | 30% | $300 |
+| BUST | 24% | nothing |
+| MIDDLE | 22% | $750 |
+| BIG | 13% | $1,600 |
+| JACKPOT | 7% | $3,400 |
+| **GEAR** | **4%** | a win banked toward a piece |
+
+Gear you hold for lifts the cash prizes, same as the dice. A full sweep of all
+six wheels averages **$4,223** and about **0.23 gear wins** — roughly one piece
+of progress every four complete crossings of the map, which costs you six of
+your thirty days to collect.
+
+**On the phone it's an actual wheel**, and the wedges are drawn from the same
+weighted table the game scores against — a wedge's slice of the circle *is* its
+chance. A wheel whose art disagrees with its maths is the oldest trick in this
+particular book and not one worth reproducing.
+
+The gear wedge banks into the same pool as winning a run, deliberately: two
+parallel progress tracks for the same four pieces would be a UI problem
+pretending to be a feature. And a run the board won't rank gets the cash but
+never the gear, like everything else here.
 
 ## When the run has nowhere left to go
 
@@ -503,8 +486,6 @@ The roster grew by half and the naive formula gained two points. What did move
 is the variance: a worse floor and a higher ceiling, which is what "faster" is
 supposed to buy you.
 
-It also made the skim *harder*, which is correct — its edge came from reading
-mean reversion, and the fast coins don't revert.
 </details>
 
 ## Saving, and why you can't scum it
@@ -536,7 +517,7 @@ python3 -m cryptowarz --scores     # the board
 python3 -m cryptowarz --no-save    # touch nothing on disk
 python3 -m cryptowarz --goals      # achievements, perks and tiers
 python3 -m cryptowarz --gear       # your gear and what it's worth
-#   in-game: skim <coin> <amt> dip|pump · gear name · gear move
+#   in-game: spin · gear name · gear move · giveup
 python3 -m cryptowarz --daily      # your next ranked run of the day
 python3 -m cryptowarz --tier 3 --perk fixer
 ```
@@ -548,7 +529,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 242 tests, no install needed
+python3 -m unittest discover -s tests     # 244 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

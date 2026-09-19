@@ -196,6 +196,21 @@ def winning_class(game) -> Optional[str]:
     return max(totals.items(), key=lambda kv: kv[1])[0]
 
 
+def credit_wheel(profile, cls: str) -> Optional[Tuple[GearPiece, int, int]]:
+    """Bank a win handed out by the prize wheel. Same currency as a real win.
+
+    Deliberately the same bank rather than a separate one: a win is a win, and
+    two parallel progress tracks for the same four pieces would be a UI problem
+    pretending to be a feature. The wheel is bounded by the map instead - one
+    spin per stop per run - so it pays for exploring rather than for grinding.
+    """
+    if cls not in GEAR_BY_KEY:
+        return None
+    before = level_for(int(profile.gear_wins.get(cls, 0)))
+    profile.gear_wins[cls] = int(profile.gear_wins.get(cls, 0)) + 1
+    return (GEAR_BY_KEY[cls], before, level_for(profile.gear_wins[cls]))
+
+
 def credit_win(profile, game) -> Optional[Tuple[GearPiece, int, int]]:
     """Record a win against the gear it belongs to.
 

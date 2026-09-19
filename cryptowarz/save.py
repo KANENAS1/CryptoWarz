@@ -78,10 +78,6 @@ def to_dict(game) -> Dict[str, Any]:
         "perk": game.perk,
         # the gear the run started with, so a reload keeps the same luck
         "gear": dict(getattr(game, "gear", {}) or {}),
-        # an open bet rides with the save. Losing it on a reload would make
-        # closing the tab a free way out of a bet going the wrong way, which is
-        # the same savescum the RNG state exists to prevent
-        "skim": dict(getattr(game, "skim", None) or {}) or None,
         # which ranked run of today this is, or null for practice. Added after
         # version 1 shipped and read with a default, so an in-progress save from
         # the older build still loads - it simply resumes as practice.
@@ -135,8 +131,6 @@ def from_dict(data: Dict[str, Any]):
         game.stats = {**stats, "stations": set(stats.get("stations", []))}
     # carried in stats, so it reloads with the run and a reload cannot shake it
     game.hot_hand = bool(game.stats.get("hot_hand", False))
-    bet = data.get("skim")
-    game.skim = dict(bet) if bet else None
     game.rng = _decode_rng(data["rng"])
     game.day = int(data["day"])
     game.finished = bool(data.get("finished", False))

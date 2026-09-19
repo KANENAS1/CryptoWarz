@@ -67,7 +67,7 @@ ACHIEVEMENTS: List[Achievement] = [
                 lambda g: g.player.debt <= 0),
     Achievement("whale", "Whale Watching", "Be worth $100,000 at any point.",
                 lambda g: g.stats.get("peak_worth", 0) >= 100_000),
-    Achievement("tourist", "The Whole Map", "Visit all ten stations in one run.",
+    Achievement("tourist", "The Whole Map", "Visit every station in one run.",
                 _visited_all),
     Achievement("untouchable", "Untouchable", "Finish thirty days without a single SEC raid.",
                 lambda g: g.stats.get("raids", 0) == 0 and g.day > 25),

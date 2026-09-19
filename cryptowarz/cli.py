@@ -95,14 +95,17 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("look", "l", ""):
         return []
+    if cmd in ("spin", "wheel"):
+        messages = game.spin_wheel()
+        if game.wheel_award:
+            profile = progress_module.read_profile()
+            banked = gear_module.credit_wheel(profile, game.wheel_award)
+            progress_module.write_profile(profile)
+            if banked and banked[2] > banked[1]:
+                messages.append(f"{banked[0].name} is now level {banked[2]}.")
+        return messages
     if cmd in ("giveup", "give", "abandon"):
         return game.give_up()
-    if cmd in ("skim", "bet"):
-        if len(args) < 3:
-            return ["skim <coin> <amount|max> <dip|pump>   e.g. skim DOGE 500 dip"]
-        amount = (game.max_skim() if args[1] in ("max", "all")
-                  else float(args[1].replace(",", "").replace("$", "")))
-        return [game.open_skim(args[0], amount, args[2])]
     if cmd in ("gear", "kit"):
         profile = progress_module.read_profile()
         if args and args[0] == "name" and len(args) >= 2:

@@ -116,6 +116,7 @@ class TestDataParity(unittest.TestCase):
             self.assertEqual(js["shark"], py.has_shark, py.name)
             self.assertEqual(js["vault"], py.has_vault, py.name)
             self.assertEqual(js["shop"], py.has_upgrades, py.name)
+            self.assertEqual(js["wheel"], py.has_wheel, py.name)
             self.assertEqual(set(js["bias"]), set(py.bias), f"{py.name} biases differ")
             for symbol, value in py.bias.items():
                 self.assertAlmostEqual(js["bias"][symbol], value, msg=f"{py.name}/{symbol}")
@@ -306,47 +307,6 @@ class TestStrandedParity(unittest.TestCase):
 
 
 @requires_node
-class TestSkimParity(unittest.TestCase):
-    """Fixed odds is what the parity suite is here to protect.
-
-    A port that quietly went back to paying by the size of the move would keep
-    passing every other test while printing money into a shared leaderboard.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        cls.js = run_node("dump.js")["skim"]
-
-    def test_the_numbers_match(self):
-        from cryptowarz import game as gm
-        self.assertAlmostEqual(self.js["min"], gm.SKIM_MIN)
-        self.assertAlmostEqual(self.js["pays"], gm.SKIM_PAYS)
-        self.assertAlmostEqual(self.js["deadband"], gm.SKIM_DEADBAND)
-        self.assertAlmostEqual(self.js["heat"], gm.SKIM_HEAT)
-        self.assertEqual(self.js["sides"], list(gm.SKIM_SIDES))
-
-    def test_the_port_pays_a_flat_multiple_too(self):
-        from cryptowarz.game import SKIM_PAYS
-        self.assertAlmostEqual(self.js["win_small_move"], self.js["win_huge_move"])
-        self.assertAlmostEqual(self.js["win_small_move"], 1_000.0 * (1.0 + SKIM_PAYS))
-
-    def test_the_port_loses_the_stake_and_pushes_the_same_way(self):
-        self.assertAlmostEqual(self.js["loss"], 0.0)
-        self.assertAlmostEqual(self.js["push"], 1_000.0)
-        self.assertTrue(self.js["dip_mirrors_pump"])
-
-    def test_the_port_measures_exposure_the_same_way(self):
-        from cryptowarz.game import Game
-        game = Game(seed=5)
-        game.player.cash = 10_000.0
-        game.open_skim("DOGE", 2_500.0, "dip")
-        self.assertAlmostEqual(self.js["exposure_quarter"], game.skim_exposure)
-
-    def test_the_port_carries_a_bet_through_a_reload(self):
-        self.assertTrue(self.js["survives_reload"])
-
-
-@requires_node
 class TestGearCustomisationParity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -375,6 +335,43 @@ class TestGearCustomisationParity(unittest.TestCase):
         self.assertTrue(self.js["refused_unearned_rename"])
         self.assertTrue(self.js["refused_broke_retune"])
         self.assertTrue(self.js["drops_the_name_when_the_piece_is_gone"])
+
+
+@requires_node
+class TestWheelParity(unittest.TestCase):
+    """The odds a wheel really pays, measured on both sides.
+
+    Comparing the tables alone would miss a port that read the table correctly
+    and then sampled it wrong, which is the failure that matters - so the share
+    of each wedge is measured over thousands of spins and checked against the
+    weight it is supposed to have.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["wheel"]
+
+    def test_the_wedge_table_matches(self):
+        from cryptowarz.game import WHEEL
+        self.assertEqual([(w["label"], w["weight"], w["cash"], w["gear"])
+                          for w in self.js["table"]],
+                         [tuple(rung) for rung in WHEEL])
+
+    def test_the_port_really_pays_those_odds(self):
+        from cryptowarz.game import WHEEL
+        total = sum(w[1] for w in WHEEL)
+        for label, weight, _cash, _gear in WHEEL:
+            self.assertAlmostEqual(self.js["shares"].get(label, 0.0), weight / total,
+                                   delta=0.02, msg=label)
+
+    def test_gear_stays_rare_on_the_port(self):
+        from cryptowarz.game import WHEEL
+        expected = sum(w[1] for w in WHEEL if w[3]) / sum(w[1] for w in WHEEL)
+        self.assertAlmostEqual(self.js["gear_rate"], expected, delta=0.015)
+        self.assertLess(self.js["gear_rate"], 0.08, "the rare wedge is not rare")
+
+    def test_the_port_allows_one_spin_per_stop(self):
+        self.assertFalse(self.js["second_spin_at_the_same_stop"])
 
 
 @requires_node

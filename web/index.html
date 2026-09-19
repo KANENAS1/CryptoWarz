@@ -86,6 +86,8 @@
   button.sell{background:var(--red);border-color:var(--red);color:#fff}
   button.go{background:var(--yellow);border-color:var(--yellow);color:#000}
   .note{color:var(--faint);font-size:11.5px;margin-top:6px}
+  .alert{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+  .alert .x{flex:none;opacity:.5;font-weight:700}
 
   .svc{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
   .logbox{margin-top:14px;border-top:1px solid var(--rule);padding-top:9px}
@@ -158,21 +160,6 @@
   /* what THIS stop adds or takes off - the thing that used to be invisible */
   .tag.over{background:rgba(239,68,68,.16);color:#ff8f8f;border:1px solid rgba(239,68,68,.45)}
   .tag.under{background:rgba(34,197,94,.16);color:#7ee6a0;border:1px solid rgba(34,197,94,.45)}
-  .pill.skim{border-color:var(--orange);color:var(--orange)}
-  .deadend{border:2px solid var(--red);border-radius:4px;padding:13px 12px;margin-bottom:12px}
-  .deadend .t{color:var(--red);font-weight:700;letter-spacing:.14em;font-size:12px}
-  .deadend .d{color:var(--paper);font-size:12.5px;margin-top:6px;line-height:1.45}
-  .deadend .btns{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:11px}
-  .deadend button.end{background:var(--red);border-color:var(--red);color:#fff}
-  .skimbox{border:2px solid var(--orange);border-radius:4px;padding:11px 12px;margin-bottom:12px}
-  .skimbox .t{color:var(--orange);font-weight:700;letter-spacing:.14em;font-size:11px}
-  .skimbox .open{color:var(--paper);font-size:14px;font-weight:700;margin-top:6px}
-  .skimgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px}
-  .skimgrid button{padding:9px 0;font-size:11px}
-  .skimgrid button.on{background:var(--orange);border-color:var(--orange);color:#000}
-  .skimgo{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
-  .skimgo button.dip{background:var(--red);border-color:var(--red);color:#fff}
-  .skimgo button.pump{background:var(--green);border-color:var(--green);color:#fff}
   .gearrow{cursor:pointer}
   .gearrow{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start;
            padding:11px 2px;border-bottom:1px solid var(--rule)}
@@ -225,7 +212,6 @@
       <span class="day" id="day">DAY 1 OF 30</span>
       <span class="pill tier" id="tierpill" hidden>OFF PEAK</span>
       <span class="pill luck" id="luckpill" hidden>+5% LUCK</span>
-      <span class="pill skim" id="skimpill" hidden>RIDING</span>
       <div class="cap" aria-label="wallet capacity used"><i id="capbar" style="width:0%"></i></div>
       <span class="day num" id="capnum" style="color:var(--dim)">$0 / $25,000</span>
     </div>
@@ -253,11 +239,16 @@
       </div>
       <div class="note" id="deadendnote"></div>
     </div>
-    <div class="skimbox" id="skimwrap">
-      <div class="t">THE SKIM</div>
-      <div class="note">Bet cash on where a coin goes by the next stop. Settles when you
-        ride. While it's open, the exchange is watching - trouble finds you more often.</div>
-      <div id="skimbody"></div>
+    <div class="wheelbox" id="wheelwrap" hidden>
+      <div class="t">PRIZE WHEEL</div>
+      <div class="note">One spin at every stop you haven't worked yet. Free crypto,
+        and once in a while something you can't buy.</div>
+      <div class="wheelstage">
+        <svg id="wheelart" viewBox="0 0 200 200" aria-hidden="true"></svg>
+        <div class="needle"></div>
+      </div>
+      <button class="go" id="spin">SPIN</button>
+      <div class="note" id="wheelsaid"></div>
     </div>
     <div class="dicebox" id="dicewrap" hidden>
       <div class="t">DICE ON THE PLATFORM</div>
@@ -392,8 +383,6 @@ function render(){
   $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
   const tierInfo = TIER_BY_LEVEL[g.tier];
   const pill = $("tierpill");
-  $("skimpill").hidden = !g.skim;
-  if (g.skim) $("skimpill").textContent = `${fmtMoney(g.skim.stake)} ${g.skim.side.toUpperCase()}`;
   $("luckpill").hidden = g.luck <= 0;
   $("luckpill").textContent = `+${Math.round(g.luck * 100)}% LUCK`;
   pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.hotHand;
@@ -414,8 +403,16 @@ function render(){
   $("capbar").style.width = Math.min(100, used / p.capacity * 100) + "%";
   $("capnum").textContent = `$${Math.round(used).toLocaleString()} / $${Math.round(p.capacity).toLocaleString()}`;
 
-  $("alerts").innerHTML = g.market.headline
-    ? `<div class="alert ${g.market.shock.crash ? "bad" : ""}">${g.market.headline}</div>` : "";
+  // render() used to rebuild this wholesale, which erased anything flash() had
+  // put there a moment earlier - the reason messages seemed to disappear even
+  // faster than their own timeout. The headline is now its own row.
+  const head = g.market.headline
+    ? `<div class="alert ${g.market.shock.crash ? "bad" : ""}" data-headline="1">
+         <span>${esc(g.market.headline)}</span><b class="x" aria-hidden="true">×</b></div>`
+    : "";
+  const existing = $("alerts").querySelector("[data-headline]");
+  if (existing) existing.remove();
+  $("alerts").insertAdjacentHTML("beforeend", head);
 
   $("market").innerHTML = COINS.map(c => {
     const price = g.market.prices[c.symbol];
@@ -478,7 +475,7 @@ function render(){
     if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
   }
   renderDeadEnd();
-  renderSkim();
+  renderWheel();
   $("dicewrap").hidden = !g.diceReady;
   if (g.diceReady) {
     if (!$("dice").firstChild) {
@@ -501,6 +498,85 @@ function render(){
   $("log").innerHTML = g.log.slice(-7).reverse()
     .map(l => `<div class="logline">${l}</div>`).join("");
 }
+
+/* ------------------------------ the wheel ----------------------------- */
+/* The wedges are drawn from the same weighted table the game scores against, so
+   the picture cannot flatter or lie about the odds: a wedge's slice of the
+   circle IS its chance. A wheel whose art disagrees with its maths is the
+   oldest trick in this particular book, and not one worth reproducing. */
+const WEDGE_FILL = { BUST: "#2a2a33", SMALL: "#1f6f42", MIDDLE: "#2f8f55",
+                     BIG: "#c7902a", JACKPOT: "#d94f4f", GEAR: "#8b5cf6" };
+let wheelSpinning = false, wheelTurns = 0;
+
+function wheelGeometry(){
+  const total = WHEEL.reduce((a, w) => a + w[1], 0);
+  let at = 0;
+  return WHEEL.map(([label, weight]) => {
+    const start = at / total * 360;
+    at += weight;
+    return { label, start, end: at / total * 360, mid: (start + at / total * 360) / 2 };
+  });
+}
+
+function drawWheel(){
+  const parts = wheelGeometry();
+  const arc = (a) => [100 + 92 * Math.cos((a - 90) * Math.PI / 180),
+                      100 + 92 * Math.sin((a - 90) * Math.PI / 180)];
+  $("wheelart").innerHTML = parts.map(p => {
+    const [x1, y1] = arc(p.start), [x2, y2] = arc(p.end);
+    const big = p.end - p.start > 180 ? 1 : 0;
+    const [tx, ty] = arc(p.mid).map((v, i) => 100 + (v - 100) * 0.62);
+    return `<path d="M100,100 L${x1},${y1} A92,92 0 ${big},1 ${x2},${y2} Z"
+                  fill="${WEDGE_FILL[p.label]}" stroke="#050507" stroke-width="1.5"/>
+      <text x="${tx}" y="${ty}" fill="#fff" font-size="9" font-weight="700"
+            text-anchor="middle" dominant-baseline="middle"
+            transform="rotate(${p.mid} ${tx} ${ty})">${p.label}</text>`;
+  }).join("") + `<circle cx="100" cy="100" r="13" fill="#050507" stroke="#8b5cf6" stroke-width="2"/>`;
+}
+
+function renderWheel(){
+  const on = game.wheelReady && !wheelSpinning;
+  $("wheelwrap").hidden = !(game.wheelReady || wheelSpinning);
+  if ($("wheelwrap").hidden) return;
+  if (!$("wheelart").firstChild) drawWheel();
+  $("spin").disabled = !on;
+  $("spin").textContent = wheelSpinning ? "…" : "SPIN";
+}
+
+$("spin").addEventListener("click", () => {
+  if (wheelSpinning || !game.wheelReady) return;
+  wheelSpinning = true;
+  $("spin").disabled = true;
+  $("wheelsaid").textContent = "";
+
+  // resolve first, then point the wheel at the answer - the picture follows the
+  // game, never the other way round
+  let said;
+  try { said = game.spinWheel(); }
+  catch (err) { wheelSpinning = false; return flash(err.message, false); }
+  const label = (said[0].match(/You spin\. (.*)/) || [])[1];
+  const landed = wheelGeometry().find(p => WHEEL_LINES[p.label] === label)
+              || wheelGeometry()[0];
+  wheelTurns += 4;
+  $("wheelart").style.transform = `rotate(${wheelTurns * 360 - landed.mid}deg)`;
+
+  setTimeout(() => {
+    wheelSpinning = false;
+    $("wheelsaid").textContent = said.slice(1).join(" ") || said[0];
+    if (game.wheelAward) {
+      profile = readProfile();
+      const banked = credit_wheel(profile, game.wheelAward);
+      writeProfile(profile);
+      game.gear = levelsFromWins(profile.gear_wins);
+      if (banked && banked[2] > banked[1]) {
+        $("wheelsaid").textContent += ` ${banked[0].name} is now level ${banked[2]}.`;
+      }
+      game.wheelAward = null;
+    }
+    render();
+    persist();
+  }, 2700);
+});
 
 /* ------------------------------- dead end ----------------------------- */
 /* Two honest exits, never a quiet third one. Ending the run scores it for what
@@ -544,48 +620,24 @@ $("startover").addEventListener("click", () => {
   openSetup();
 });
 
-/* ------------------------------- the skim ----------------------------- */
-/* A coin and a stake are picked first, then the direction commits it - so the
-   irreversible tap is always the last one, and never the one you meant to use
-   to change your mind. */
-let skimCoin = null, skimFrac = 0.25;
-
-function renderSkim(){
-  const g = game, box = $("skimbody");
-  if (g.skim) {
-    box.innerHTML = `<div class="open">${fmtMoney(g.skim.stake)} on ${esc(g.skim.symbol)}
-      to ${esc(g.skim.side)}</div>
-      <div class="note">Settles the moment you ride. They're watching until it does.</div>`;
-    return;
-  }
-  const most = g.maxSkim();
-  if (most < SKIM_MIN) {
-    box.innerHTML = `<div class="note">You need ${fmtMoney(SKIM_MIN)} spare to place one.</div>`;
-    return;
-  }
-  const coins = COINS.filter(c => c.symbol !== "USDC");
-  if (!coins.some(c => c.symbol === skimCoin)) skimCoin = null;
-  const stake = Math.max(SKIM_MIN, Math.min(most, most * skimFrac));
-  box.innerHTML = `<div class="skimgrid">${coins.map(c =>
-      `<button data-skimcoin="${c.symbol}" class="${c.symbol === skimCoin ? "on" : ""}">${c.symbol}</button>`
-    ).join("")}</div>
-    <div class="skimgrid">${[0.25, 0.5, 1].map(f =>
-      `<button data-skimfrac="${f}" class="${f === skimFrac ? "on" : ""}">${
-        f === 1 ? "ALL" : Math.round(f * 100) + "%"}</button>`).join("")}
-      <button disabled style="opacity:1">${fmtMoney(stake)}</button></div>
-    <div class="skimgo">
-      <button class="dip" data-skimside="dip" ${skimCoin ? "" : "disabled"}>BET THE DIP</button>
-      <button class="pump" data-skimside="pump" ${skimCoin ? "" : "disabled"}>BET THE PUMP</button>
-    </div>`;
-}
-
+/* Messages STAY. They used to vanish after 3.2 seconds, which is not long
+   enough to read a sentence, let alone one that just cost you money - and the
+   things this game says are the only record of what happened to you. They clear
+   when you tap one, or when you ride, because a new station is a new situation.
+   Three at a time, newest first, so a busy arrival cannot bury the screen. */
 function flash(msg, good){
+  if (!msg) return;
   const div = document.createElement("div");
   div.className = "alert" + (good ? "" : " bad");
-  div.textContent = msg;
+  div.innerHTML = `<span>${esc(msg)}</span><b class="x" aria-hidden="true">×</b>`;
+  div.title = "tap to dismiss";
   $("alerts").prepend(div);
-  setTimeout(() => div.remove(), 3200);
+  while ($("alerts").children.length > 3) $("alerts").lastElementChild.remove();
 }
+$("alerts").addEventListener("click", e => {
+  const alert = e.target.closest(".alert");
+  if (alert) alert.remove();
+});
 
 function act(fn){
   try { const r = fn(); if (r && r.text) { game.say(r.text); flash(r.text, r.good !== false); } }
@@ -602,13 +654,6 @@ $("main").addEventListener("click", e => {
   }
   const b = e.target.closest("button");
   if (!b) return;
-  if (b.dataset.skimcoin) { skimCoin = b.dataset.skimcoin; return renderSkim(); }
-  if (b.dataset.skimfrac) { skimFrac = parseFloat(b.dataset.skimfrac); return renderSkim(); }
-  if (b.dataset.skimside) {
-    const most = game.maxSkim();
-    const stake = Math.max(SKIM_MIN, Math.min(most, most * skimFrac));
-    return act(() => ({ text: game.openSkim(skimCoin, stake, b.dataset.skimside), good: true }));
-  }
   if (b.dataset.dice) {
     // rollDice logs its own lines, so this flashes them rather than re-saying them
     try { flash(game.rollDice(+b.dataset.dice).filter(Boolean).join(" "), true); }
@@ -661,11 +706,15 @@ $("stops").addEventListener("click", e => {
   if (!s) return;
   closeSheets();
   openCoin = null;
+  $("alerts").innerHTML = "";          // a new station is a new situation
   try {
     const msgs = game.travel(parseInt(s.dataset.go, 10));
     render();
-    const notable = msgs.slice(2).find(m => m);
-    if (notable) flash(notable, !/SEC|drainer|Gas|Signal|Shark's/.test(notable));
+    // every consequence of the ride, not just the first one - they stay now, so
+    // there is no reason to pick one and throw the rest away
+    for (const line of msgs.slice(2).filter(Boolean).slice(0, 3).reverse()) {
+      flash(line, !/SEC|drainer|Gas|Signal|Shark's|gone|full/.test(line));
+    }
   } catch (err) { flash(err.message, false); }
   persist();
   if (game.finished) showFinal();

@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .coins import COINS, Coin, coin
 from .market import Market, MarketState, generate
@@ -79,39 +79,29 @@ HOT_HAND_CHANCE = 0.75            # roughly three rides in four
 HOT_HAND_MIN = 250.0
 HOT_HAND_MAX = 10_000.0
 
-# ------------------------------------------------------------------- the skim
-#: A bet on where a coin goes next, settled on your next ride. Not a trade: you
-#: put up nothing but cash and take nothing but cash, so it pays no attention to
-#: wallet capacity - which is exactly why it has to cost something else.
+# ------------------------------------------------------------------ the wheel
+#: Somebody has a prize wheel set up on the mezzanine at some stops. ONE SPIN
+#: PER STOP PER RUN, which is the whole design: it pays for going somewhere you
+#: have not been, not for bouncing between two stations. Without that it is a
+#: lever you pull instead of a map you explore, and a bigger map earns nothing.
 #:
-#: What it costs is attention. A position is somebody else's coin moving on your
-#: say-so, and while one is open the exchange is looking at you: trouble is
-#: SKIM_HEAT times more likely on the ride that settles it. That is the whole
-#: design. Without the heat this is free optionality bolted onto a game about
-#: carrying risk around on a train, and the correct play would be to skim on
-#: every single ride forever.
-#: FIXED ODDS, and that is the whole balance of it. The first version paid out
-#: in proportion to how far the coin moved, at 2x leverage. It looked like a
-#: gamble and was a printing press: the market pulls a stretched coin back
-#: toward its middle, a player can read exactly how stretched a coin is off the
-#: price, and a payout that scales with the move turns that read into compound
-#: interest. Measured, it took a trading bot from 26% solvent to 62%, with a
-#: best run of $39.8 million. Paying a flat multiple severs the payout from the
-#: size of the move, which is what removes the blow-up.
-#:
-#: The multiple is set so that the best read available is worth almost nothing.
-#: A coin at the top of its range drifts down about 11% against noise of 30%,
-#: so calling the dip on it is right roughly 64% of the time; at 0.6 that is an
-#: edge of about two percent a ride. Careless betting is a clear loss. Anything
-#: repeatable and positive compounds over thirty days, so "barely worth it when
-#: you are right" is the target, not "fair".
-SKIM_MIN = 100.0          # below this it is not a bet, it is a rounding error
-SKIM_PAYS = 0.6           # win and you get the stake back plus this much again
-SKIM_DEADBAND = 0.01      # a move smaller than this is a push, not a free win
-SKIM_HEAT = 1.4           # trouble multiplier when your whole roll is riding
-SKIM_SIDES = ("dip", "pump")
-
-
+#: (label, weight, cash, gives gear)
+WHEEL: Tuple[Tuple[str, float, float, bool], ...] = (
+    ("BUST",    24.0,     0.0, False),
+    ("SMALL",   30.0,   300.0, False),
+    ("MIDDLE",  22.0,   750.0, False),
+    ("BIG",     13.0, 1_600.0, False),
+    ("JACKPOT",  7.0, 3_400.0, False),
+    ("GEAR",     4.0,     0.0, True),
+)
+WHEEL_LINES = {
+    "BUST":    "It lands between two wedges. The man shrugs.",
+    "SMALL":   "A small one. He counts it out slowly, to make it last.",
+    "MIDDLE":  "A decent wedge. He looks mildly disappointed for you.",
+    "BIG":     "The crowd makes a noise. He stops smiling.",
+    "JACKPOT": "JACKPOT. He looks at the wheel, then at you, then at the wheel.",
+    "GEAR":    "The wheel stops on the wedge nobody ever hits.",
+}
 
 def dice_tier(distance: int) -> tuple:
     """How close that was, as (label, share of the top prize)."""
@@ -213,8 +203,9 @@ class Game:
                       "best_multiple": 0.0, "worth_by_day": [],
                       "dice_picks": [], "dice_days": [], "hot_hand": False}
         self.hot_hand = False
-        #: an open bet, or None. See open_skim.
-        self.skim: Optional[Dict[str, object]] = None
+        #: set by spin_wheel to a gear class the caller should bank, or None.
+        #: The Game does not own the profile, so it cannot bank it itself.
+        self.wheel_award: Optional[str] = None
         self.rng = random.Random(self.seed)
         self.state = MarketState(self.rng)
         self.market = generate(self.station, self.rng, self.state,
@@ -315,6 +306,48 @@ class Game:
         return (f"Sold {qty:,.6f} {symbol} at ${price:,.6f} for ${proceeds:,.2f} "
                 f"({verb} ${abs(profit):,.2f})")
 
+    # ----------------------------------------------------------------- wheel
+
+    @property
+    def wheel_ready(self) -> bool:
+        """A wheel at this stop that you have not already spun this run."""
+        return (self.station.has_wheel
+                and self.station.name not in (self.stats.get("wheels") or []))
+
+    def spin_wheel(self) -> List[str]:
+        """One spin. Sets ``wheel_award`` to a gear class on a rare wedge."""
+        if not self.wheel_ready:
+            raise ValueError("no wheel here, or you've already had your spin")
+
+        self.wheel_award = None
+        self.stats.setdefault("wheels", []).append(self.station.name)
+        labels = [w[0] for w in WHEEL]
+        weights = [w[1] for w in WHEEL]
+        label = self.rng.choices(labels, weights=weights, k=1)[0]
+        _, _, cash, gives_gear = next(w for w in WHEEL if w[0] == label)
+
+        messages = [f"You spin. {WHEEL_LINES[label]}"]
+        if cash > 0:
+            # the same gear bonus the dice pay, for the same reason
+            messages.extend(self.gift(cash * (1.0 + self.luck), f"Wheel - {label}"))
+        if gives_gear:
+            from .gear import GEAR, GEAR_BY_KEY, winning_class
+            from .progress import counts_for_progress
+            if not counts_for_progress(self):
+                messages.append("It would have been a piece of gear. This run keeps nothing.")
+            else:
+                # the class you are actually carrying, so the wheel reinforces a
+                # style rather than handing out a random fifth of a collection
+                cls = winning_class(self) or self.rng.choice([g.key for g in GEAR])
+                self.wheel_award = cls
+                messages.append(f"{GEAR_BY_KEY[cls].name}. That is a win banked "
+                                f"toward it, and they are not given away.")
+        elif not cash:
+            messages.append("Nothing. It cost you nothing either.")
+        for m in messages:
+            self.say(m)
+        return messages
+
     # ------------------------------------------------------------- dead end
 
     @property
@@ -351,96 +384,6 @@ class Game:
                    f"{self.station.name} on day {self.day}. That's it.")
         self.say(message)
         return [message]
-
-    # ----------------------------------------------------------------- skim
-
-    @property
-    def skim_open(self) -> bool:
-        return self.skim is not None
-
-    @property
-    def skim_exposure(self) -> float:
-        """How much of everything you have is riding on the bet, 0.0 to 1.0.
-
-        Trouble scales with this rather than switching on, so shoving your whole
-        roll onto one call is a louder thing to do than putting a little down -
-        which is the only reason a maximum bet is a decision at all.
-        """
-        if self.skim is None:
-            return 0.0
-        stake = float(self.skim["stake"])
-        # the stake counts toward what you have: it is money you still own, it
-        # is just not in your pocket while the bet is open
-        rest = max(0.0, self.player.cash + self.player.vault
-                   + self.player.portfolio_value(self.market))
-        return max(0.0, min(1.0, stake / (stake + rest)))
-
-    def max_skim(self) -> float:
-        """The most you could stake - the fare is never part of it."""
-        return max(0.0, self.player.cash - self.fare - FARE_BUFFER)
-
-    def open_skim(self, symbol: str, amount: float, side: str) -> str:
-        """Bet cash on where a coin goes by the next station.
-
-        One at a time, deliberately. A player who could stack a bet on every
-        coin would have bought the market rather than made a call, and the
-        whole point is that it is a call.
-        """
-        symbol = symbol.upper()
-        side = str(side).lower()
-        if side not in SKIM_SIDES:
-            raise ValueError(f"bet the {' or the '.join(SKIM_SIDES)}")
-        if symbol not in {c.symbol for c in COINS}:
-            raise ValueError(f"nobody here trades {symbol}")
-        if symbol == "USDC":
-            raise ValueError("a dollar is not going anywhere. Pick something with a pulse")
-        if self.skim is not None:
-            raise ValueError("you already have something riding. One at a time")
-        amount = float(amount)
-        if amount < SKIM_MIN:
-            raise ValueError(f"${SKIM_MIN:,.0f} is the smallest they'll take")
-        if amount > self.max_skim() + 1e-9:
-            raise ValueError(f"you can stake ${self.max_skim():,.2f} and still make the fare")
-
-        self.player.cash -= amount
-        self.skim = {"symbol": symbol, "stake": amount, "side": side,
-                     "level": self.state.levels[symbol]}
-        self.stats["skims"] = int(self.stats.get("skims", 0)) + 1
-        return (f"${amount:,.2f} on {symbol} to {side}. Settles when you move. "
-                f"Somebody is watching you now.")
-
-    def _settle_skim(self) -> List[str]:
-        """Close the open bet against the coin's real move, not a station's take.
-
-        The market level is what is being bet on, deliberately: betting on the
-        station price would just be betting on which stop you rode to, which is
-        a decision the player already makes with their wallet.
-        """
-        if self.skim is None:
-            return []
-        bet = self.skim
-        self.skim = None
-        symbol = str(bet["symbol"])
-        stake = float(bet["stake"])
-        opened = float(bet["level"])
-        now = self.state.levels[symbol]
-        move = (now / opened - 1.0) if opened > 0 else 0.0
-        toward = move if bet["side"] == "pump" else -move
-        side = str(bet["side"])
-        if abs(move) < SKIM_DEADBAND:
-            self.player.cash += stake
-            return [f"{symbol} barely moved ({move:+.1%}). Nobody wins. "
-                    f"You get your ${stake:,.2f} back."]
-        if toward > 0:
-            payout = stake * (1.0 + SKIM_PAYS)
-            self.player.cash += payout
-            self.stats["skims_won"] = int(self.stats.get("skims_won", 0)) + 1
-            self.stats["best_skim"] = max(float(self.stats.get("best_skim", 0.0)),
-                                          payout - stake)
-            return [f"The {side} came in on {symbol} ({move:+.1%}). "
-                    f"You take ${payout:,.2f} - up ${payout - stake:,.2f}."]
-        return [f"{symbol} went {move:+.1%}. The ${stake:,.2f} is gone. "
-                f"That is what the word gamble means."]
 
     # ----------------------------------------------------------------- dice
 
@@ -662,9 +605,9 @@ class Game:
         if self.hot_hand:
             messages.extend(self._streak_gift())
         messages.extend(roll_event(self))
-        # settled after the events, so the heat a position attracts lands on the
-        # ride you were actually exposed on
-        messages.extend(self._settle_skim())
+        if self.wheel_ready:
+            messages.append("There's a prize wheel set up on the mezzanine here. "
+                            "One spin, and only at stops you haven't worked yet.")
         if self.dice_ready and not was_ready:
             messages.append(f"Somebody's running dice on the platform. "
                             f"Call a number, 1 to {DICE_SIDES}.")

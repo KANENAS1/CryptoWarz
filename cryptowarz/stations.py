@@ -29,6 +29,11 @@ class Station:
     has_shark: bool = False
     has_vault: bool = False
     has_upgrades: bool = False
+    #: somebody is running a prize wheel on the mezzanine. Once per stop per
+    #: run, so it pays for going somewhere NEW rather than for bouncing between
+    #: two stations - which is the only version of this that makes a bigger map
+    #: worth having.
+    has_wheel: bool = False
 
     def multiplier(self, symbol: str) -> float:
         return self.bias.get(symbol, 1.0)
@@ -102,6 +107,48 @@ STATIONS: List[Station] = [
         "Everything connects here. Fair prices, which is its own kind of trap.",
         bias={},
         heat=0.50, has_vault=True, has_upgrades=True,
+    ),
+    Station(
+        "Bedford Av", "L", "Brooklyn",
+        "Williamsburg. Every third person here has a podcast about this.",
+        bias={"WIF": 1.72, "BONK": 1.58, "PEPE": 1.50, "SOL": 1.18, "SUI": 1.16,
+              "BTC": 0.86, "ETH": 0.90},
+        heat=0.58, has_wheel=True,
+    ),
+    Station(
+        "Atlantic Av-Barclays Ctr", "2 3 4 5 B D N Q R", "Brooklyn",
+        "Nine lines and a arena. Everybody is going somewhere else.",
+        bias={"BTC": 1.12, "ETH": 1.09, "AVAX": 1.10, "DOGE": 1.18, "SUI": 1.08,
+              "USDC": 1.01},
+        heat=0.72, has_shark=True, has_wheel=True,
+    ),
+    Station(
+        "Roosevelt Av-Jackson Hts", "7 E F M R", "Queens",
+        "Five lines, forty languages, and a remittance shop on every corner.",
+        bias={"XRP": 1.30, "USDC": 1.02, "SOL": 1.08, "AVAX": 1.04, "SHIB": 1.12,
+              "BTC": 0.90},
+        heat=0.62, has_vault=True, has_wheel=True,
+    ),
+    Station(
+        "Canal St", "6 J N Q R W Z", "Manhattan",
+        "Chinatown. Cash only, and everything is a slightly better price.",
+        bias={"USDC": 0.99, "BTC": 0.84, "ETH": 0.86, "SOL": 0.80, "XRP": 0.76,
+              "SUI": 0.78, "AVAX": 0.82},
+        heat=0.68, has_upgrades=True, has_wheel=True,
+    ),
+    Station(
+        "Woodlawn", "4", "Bronx",
+        "The top of the 4. A cemetery, a golf course, and nobody watching.",
+        bias={"SHIB": 0.52, "PEPE": 0.50, "BONK": 0.48, "WIF": 0.46, "DOGE": 0.66,
+              "ETH": 0.88},
+        heat=0.18, has_wheel=True,
+    ),
+    Station(
+        "Far Rockaway-Mott Av", "A", "Queens",
+        "Ninety minutes from Midtown. The board here has not been updated in a while.",
+        bias={"WIF": 0.44, "BONK": 0.46, "SUI": 0.68, "AVAX": 0.74, "SOL": 0.78,
+              "XRP": 1.28, "USDC": 1.02},
+        heat=0.22, has_shark=True, has_wheel=True,
     ),
 ]
 

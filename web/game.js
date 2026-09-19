@@ -86,43 +86,67 @@ const STATIONS = [
   { name: "Wall Street", lines: ["4", "5"], borough: "Manhattan",
     flavor: "Suits everywhere. Someone is explaining an ETF to a tourist.",
     bias: { BTC: 1.3, ETH: 1.22, AVAX: 1.16, USDC: 1.02, SUI: 1.06, DOGE: 0.62, SHIB: 0.55, PEPE: 0.5, BONK: 0.48, WIF: 0.44 },
-    heat: 0.85, shark: false, vault: true, shop: false },
+    heat: 0.85, shark: false, vault: true, shop: false, wheel: false },
   { name: "Jefferson St", lines: ["L"], borough: "Brooklyn",
     flavor: "Bushwick. Three people in this car are launching a token this week.",
     bias: { WIF: 1.88, PEPE: 1.75, BONK: 1.7, SHIB: 1.62, DOGE: 1.45, SOL: 1.14, SUI: 1.12, BTC: 0.8 },
-    heat: 0.55, shark: false, vault: false, shop: true },
+    heat: 0.55, shark: false, vault: false, shop: true, wheel: false },
   { name: "Times Sq-42 St", lines: ["N", "Q", "R", "W", "1", "2", "3", "7", "S"], borough: "Manhattan",
     flavor: "Tourist money. Everything here costs more and everyone knows it.",
     bias: { BTC: 1.18, ETH: 1.15, SOL: 1.2, DOGE: 1.25, XRP: 1.15, WIF: 1.32, BONK: 1.24, SUI: 1.18, AVAX: 1.12 },
-    heat: 0.8, shark: false, vault: false, shop: false },
+    heat: 0.8, shark: false, vault: false, shop: false, wheel: false },
   { name: "Coney Island-Stillwell Av", lines: ["D", "F", "N", "Q"], borough: "Brooklyn",
     flavor: "End of the line. Salt air, dead arcade, suspiciously cheap everything.",
     bias: { SHIB: 0.45, PEPE: 0.42, BONK: 0.4, WIF: 0.38, DOGE: 0.58, XRP: 0.7, SOL: 0.82, SUI: 0.72, AVAX: 0.8 },
-    heat: 0.3, shark: false, vault: false, shop: false },
+    heat: 0.3, shark: false, vault: false, shop: false, wheel: false },
   { name: "125 St", lines: ["4", "5", "6"], borough: "Manhattan",
     flavor: "Harlem. A man with a folding table will sell you anything.",
     bias: { DOGE: 1.3, XRP: 1.34, SHIB: 1.2, WIF: 1.36, BONK: 1.28, SUI: 1.12, ETH: 0.88 },
-    heat: 0.6, shark: true, vault: false, shop: false },
+    heat: 0.6, shark: true, vault: false, shop: false, wheel: false },
   { name: "Grand Central-42 St", lines: ["4", "5", "6", "7", "S"], borough: "Manhattan",
     flavor: "Commuters moving with purpose. Liquidity, but no bargains.",
     bias: { BTC: 1.08, ETH: 1.1, USDC: 1.01, SOL: 1.05, AVAX: 1.07, SUI: 1.04 },
-    heat: 0.7, shark: false, vault: true, shop: false },
+    heat: 0.7, shark: false, vault: true, shop: false, wheel: false },
   { name: "Flushing-Main St", lines: ["7"], borough: "Queens",
     flavor: "The busiest station outside Manhattan. Cash moves fast here.",
     bias: { XRP: 0.62, USDC: 0.98, SOL: 0.86, ETH: 0.92, SUI: 0.66, AVAX: 0.88, WIF: 0.78 },
-    heat: 0.45, shark: false, vault: false, shop: false },
+    heat: 0.45, shark: false, vault: false, shop: false, wheel: false },
   { name: "161 St-Yankee Stadium", lines: ["4", "B", "D"], borough: "Bronx",
     flavor: "Game day. Everyone is up, everyone is buying, nobody is reading.",
     bias: { DOGE: 1.52, SHIB: 1.4, PEPE: 1.38, WIF: 1.6, BONK: 1.48, SUI: 1.22, BTC: 0.92 },
-    heat: 0.65, shark: true, vault: false, shop: false },
+    heat: 0.65, shark: true, vault: false, shop: false, wheel: false },
   { name: "St George", lines: ["SIR"], borough: "Staten Island",
     flavor: "Off the ferry. Quiet, cheap, and a long way from anywhere.",
     bias: { BTC: 0.78, ETH: 0.8, SOL: 0.74, USDC: 0.99, AVAX: 0.76, SUI: 0.7, WIF: 0.72, BONK: 0.74 },
-    heat: 0.2, shark: false, vault: false, shop: true },
+    heat: 0.2, shark: false, vault: false, shop: true, wheel: false },
   { name: "14 St-Union Sq", lines: ["4", "5", "6", "L", "N", "Q", "R", "W"], borough: "Manhattan",
     flavor: "Everything connects here. Fair prices, which is its own kind of trap.",
     bias: {  },
-    heat: 0.5, shark: false, vault: true, shop: true },
+    heat: 0.5, shark: false, vault: true, shop: true, wheel: false },
+  { name: "Bedford Av", lines: ["L"], borough: "Brooklyn",
+    flavor: "Williamsburg. Every third person here has a podcast about this.",
+    bias: { WIF: 1.72, BONK: 1.58, PEPE: 1.5, SOL: 1.18, SUI: 1.16, BTC: 0.86, ETH: 0.9 },
+    heat: 0.58, shark: false, vault: false, shop: false, wheel: true },
+  { name: "Atlantic Av-Barclays Ctr", lines: ["2", "3", "4", "5", "B", "D", "N", "Q", "R"], borough: "Brooklyn",
+    flavor: "Nine lines and a arena. Everybody is going somewhere else.",
+    bias: { BTC: 1.12, ETH: 1.09, AVAX: 1.1, DOGE: 1.18, SUI: 1.08, USDC: 1.01 },
+    heat: 0.72, shark: true, vault: false, shop: false, wheel: true },
+  { name: "Roosevelt Av-Jackson Hts", lines: ["7", "E", "F", "M", "R"], borough: "Queens",
+    flavor: "Five lines, forty languages, and a remittance shop on every corner.",
+    bias: { XRP: 1.3, USDC: 1.02, SOL: 1.08, AVAX: 1.04, SHIB: 1.12, BTC: 0.9 },
+    heat: 0.62, shark: false, vault: true, shop: false, wheel: true },
+  { name: "Canal St", lines: ["6", "J", "N", "Q", "R", "W", "Z"], borough: "Manhattan",
+    flavor: "Chinatown. Cash only, and everything is a slightly better price.",
+    bias: { USDC: 0.99, BTC: 0.84, ETH: 0.86, SOL: 0.8, XRP: 0.76, SUI: 0.78, AVAX: 0.82 },
+    heat: 0.68, shark: false, vault: false, shop: true, wheel: true },
+  { name: "Woodlawn", lines: ["4"], borough: "Bronx",
+    flavor: "The top of the 4. A cemetery, a golf course, and nobody watching.",
+    bias: { SHIB: 0.52, PEPE: 0.5, BONK: 0.48, WIF: 0.46, DOGE: 0.66, ETH: 0.88 },
+    heat: 0.18, shark: false, vault: false, shop: false, wheel: true },
+  { name: "Far Rockaway-Mott Av", lines: ["A"], borough: "Queens",
+    flavor: "Ninety minutes from Midtown. The board here has not been updated in a while.",
+    bias: { WIF: 0.44, BONK: 0.46, SUI: 0.68, AVAX: 0.74, SOL: 0.78, XRP: 1.28, USDC: 1.02 },
+    heat: 0.22, shark: true, vault: false, shop: false, wheel: true },
 ];
 const bias = (st, sym) => (st.bias[sym] !== undefined ? st.bias[sym] : 1.0);
 /* How much of a stop's raw opinion reaches the price. Compressed toward 1.0 so
@@ -216,6 +240,30 @@ const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
 // a player who cannot afford the fare the reserve was protecting
 const FARE_BUFFER = 0.01;
 
+/* ------------------------------ the wheel -----------------------------
+   Somebody has a prize wheel on the mezzanine at some stops. ONE SPIN PER STOP
+   PER RUN, which is the whole design: it pays for going somewhere you have not
+   been, not for bouncing between two stations. Without that it is a lever you
+   pull instead of a map you explore, and a bigger map earns nothing.
+
+   [label, weight, cash, gives gear] */
+const WHEEL = [
+  ["BUST", 24.0, 0.0, false],
+  ["SMALL", 30.0, 300.0, false],
+  ["MIDDLE", 22.0, 750.0, false],
+  ["BIG", 13.0, 1600.0, false],
+  ["JACKPOT", 7.0, 3400.0, false],
+  ["GEAR", 4.0, 0.0, true]
+];
+const WHEEL_LINES = {
+  BUST: "It lands between two wedges. The man shrugs.",
+  SMALL: "A small one. He counts it out slowly, to make it last.",
+  MIDDLE: "A decent wedge. He looks mildly disappointed for you.",
+  BIG: "The crowd makes a noise. He stops smiling.",
+  JACKPOT: "JACKPOT. He looks at the wheel, then at you, then at the wheel.",
+  GEAR: "The wheel stops on the wedge nobody ever hits."
+};
+
 /* ------------------------------- the dice ------------------------------
    Somebody runs dice on the platform every few rides. There is no stake: the
    worst outcome is nothing, so this is a flourish rather than a decision, and
@@ -248,28 +296,6 @@ function diceTier(distance) {
 const HOT_HAND = [4, 2];
 const HOT_HAND_CHANCE = 0.75, HOT_HAND_MIN = 250, HOT_HAND_MAX = 10000;
 
-/* ------------------------------- the skim -------------------------------
-   A bet on where a coin goes next, settled on your next ride. Not a trade: you
-   put up cash and take cash, so it ignores wallet capacity - which is exactly
-   why it has to cost something else.
-
-   What it costs is attention. A position is somebody else's coin moving on
-   your say-so, and while one is open the exchange is looking at you: trouble is
-   SKIM_HEAT times likelier on the ride that settles it. Without that, this is
-   free optionality bolted onto a game about carrying risk around on a train,
-   and the correct play would be to skim on every ride forever. */
-/* FIXED ODDS, and that is the whole balance of it. The first version paid out
-   in proportion to how far the coin moved, at 2x leverage - it looked like a
-   gamble and was a printing press, because the market pulls a stretched coin
-   back toward its middle, a player can read how stretched a coin is straight
-   off the price, and a payout that scales with the move turns that read into
-   compound interest. Measured, it took a trading bot from 26% solvent to 62%
-   with a best run of $39.8 million. A flat multiple severs the payout from the
-   size of the move, which is what removes the blow-up. The multiple is set so
-   the best read available is worth about two percent a ride and careless
-   betting is a clear loss. */
-const SKIM_MIN = 100, SKIM_PAYS = 0.6, SKIM_DEADBAND = 0.01, SKIM_HEAT = 1.4;
-const SKIM_SIDES = ["dip", "pump"];
 
 function Game(seed, tier, perk, gear) {
   // kept so a save records which run this was - the RNG state is what restores
@@ -293,7 +319,7 @@ function Game(seed, tier, perk, gear) {
                  best_multiple: 0, worth_by_day: [],
                  dice_picks: [], dice_days: [], hot_hand: false };
   this.hotHand = false;
-  this.skim = null;                        // an open bet; see openSkim
+  this.wheelAward = null;                  // a gear class for the caller to bank
   this.log = [];
   this.state = new MarketState(this.rng);
   this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
@@ -340,69 +366,37 @@ Game.prototype.giveUp = function () {
   return [message];
 };
 
-/* ------------------------------- the skim ---------------------------- */
-Object.defineProperty(Game.prototype, "skimOpen", { get() { return this.skim !== null; } });
-/* How much of everything you have is riding, 0 to 1. Trouble scales with this
-   rather than switching on, so shoving the whole roll onto one call is a louder
-   thing to do - the only reason a maximum bet is a decision at all. */
-Object.defineProperty(Game.prototype, "skimExposure", {
+/* ------------------------------ the wheel ---------------------------- */
+Object.defineProperty(Game.prototype, "wheelReady", {
   get() {
-    if (this.skim === null) return 0;
-    // the stake counts toward what you have: it is money you still own, it is
-    // just not in your pocket while the bet is open
-    const stake = this.skim.stake;
-    const rest = Math.max(0, this.player.cash + this.player.vault + this.portfolioValue());
-    return Math.max(0, Math.min(1, stake / (stake + rest)));
+    return !!this.station.wheel && !(this.stats.wheels || []).includes(this.station.name);
   } });
-/* The fare is never part of the stake. */
-Game.prototype.maxSkim = function () {
-  return Math.max(0, this.player.cash - this.fare - FARE_BUFFER);
-};
-/* One at a time, deliberately: a player who could stack a bet on every coin
-   would have bought the market rather than made a call. */
-Game.prototype.openSkim = function (sym, amount, side) {
-  sym = String(sym).toUpperCase();
-  side = String(side).toLowerCase();
-  if (!SKIM_SIDES.includes(side)) throw new Error("bet the dip or the pump");
-  if (!COIN[sym]) throw new Error(`nobody here trades ${sym}`);
-  if (sym === "USDC") throw new Error("a dollar is not going anywhere. Pick something with a pulse");
-  if (this.skim !== null) throw new Error("you already have something riding. One at a time");
-  amount = Number(amount);
-  if (!(amount >= SKIM_MIN)) throw new Error(`$${SKIM_MIN} is the smallest they'll take`);
-  if (amount > this.maxSkim() + 1e-9) {
-    throw new Error(`you can stake $${this.maxSkim().toFixed(2)} and still make the fare`);
+/* Sets wheelAward to a gear class on the rare wedge; the caller banks it,
+   because the Game does not own the profile. */
+Game.prototype.spinWheel = function () {
+  if (!this.wheelReady) throw new Error("no wheel here, or you've already had your spin");
+  this.wheelAward = null;
+  (this.stats.wheels = this.stats.wheels || []).push(this.station.name);
+  const label = this.rng.choices(WHEEL.map(w => w[0]), WHEEL.map(w => w[1]));
+  const wedge = WHEEL.find(w => w[0] === label);
+  const cash = wedge[2], givesGear = wedge[3];
+  const messages = [`You spin. ${WHEEL_LINES[label]}`];
+  if (cash > 0) messages.push(...this.gift(cash * (1 + this.luck), `Wheel - ${label}`));
+  if (givesGear) {
+    if (!countsForProgress(this)) {
+      messages.push("It would have been a piece of gear. This run keeps nothing.");
+    } else {
+      // the class you are actually carrying, so the wheel reinforces a style
+      const cls = winningClass(this) || this.rng.choice(GEAR.map(g => g.key));
+      this.wheelAward = cls;
+      messages.push(`${GEAR_BY_KEY[cls].name}. That is a win banked toward it, `
+                    + `and they are not given away.`);
+    }
+  } else if (!cash) {
+    messages.push("Nothing. It cost you nothing either.");
   }
-  this.player.cash -= amount;
-  this.skim = { symbol: sym, stake: amount, side: side, level: this.state.levels[sym] };
-  this.stats.skims = (this.stats.skims || 0) + 1;
-  return `$${amount.toFixed(2)} on ${sym} to ${side}. Settles when you move. Somebody is watching you now.`;
-};
-/* Settled against the coin's real move, not a station's take: betting on the
-   station price would just be betting on which stop you rode to, which the
-   player already decides with their wallet. */
-Game.prototype.settleSkim = function () {
-  if (this.skim === null) return [];
-  const bet = this.skim;
-  this.skim = null;
-  const opened = bet.level, now = this.state.levels[bet.symbol];
-  const move = opened > 0 ? now / opened - 1 : 0;
-  const toward = bet.side === "pump" ? move : -move;
-  const pct = (move >= 0 ? "+" : "") + (move * 100).toFixed(1) + "%";
-  if (Math.abs(move) < SKIM_DEADBAND) {
-    this.player.cash += bet.stake;
-    return [`${bet.symbol} barely moved (${pct}). Nobody wins. `
-            + `You get your $${bet.stake.toFixed(2)} back.`];
-  }
-  if (toward > 0) {
-    const payout = bet.stake * (1 + SKIM_PAYS);
-    this.player.cash += payout;
-    this.stats.skims_won = (this.stats.skims_won || 0) + 1;
-    this.stats.best_skim = Math.max(this.stats.best_skim || 0, payout - bet.stake);
-    return [`The ${bet.side} came in on ${bet.symbol} (${pct}). `
-            + `You take $${payout.toFixed(2)} - up $${(payout - bet.stake).toFixed(2)}.`];
-  }
-  return [`${bet.symbol} went ${pct}. The $${bet.stake.toFixed(2)} is gone. `
-          + `That is what the word gamble means.`];
+  messages.forEach(m => this.say(m));
+  return messages;
 };
 
 /* ------------------------------- the dice ---------------------------- */
@@ -611,9 +605,8 @@ Game.prototype.travel = function (index) {
   if (this.market.headline) messages.push(this.market.headline);
   if (this.hotHand) for (const m of this.streakGift()) messages.push(m);
   for (const m of rollEvent(this)) messages.push(m);
-  // settled after the events, so the heat a position attracts lands on the ride
-  // you were actually exposed on
-  for (const m of this.settleSkim()) messages.push(m);
+  if (this.wheelReady) messages.push("There's a prize wheel set up on the mezzanine here. "
+    + "One spin, and only at stops you haven't worked yet.");
   if (this.diceReady && !wasReady) messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
   this.markStats();
   messages.forEach(m => this.say(m));
@@ -721,8 +714,6 @@ function rollEvent(game) {
   if (game.perk === "burner") shelter *= 0.66;
   // gear you are currently holding for; the best piece, never the sum
   shelter *= 1 - game.luck;
-  // an open bet is somebody else's coin moving on your say-so
-  if (game.skim) shelter *= 1 + (SKIM_HEAT - 1) * game.skimExposure;
   const weights = EVENTS.map(([, w, scales]) => (scales ? w * (0.35 + 1.4 * heat) * shelter : w));
   return game.rng.choices(EVENTS.map(e => e[0]), weights)(game);
 }
@@ -839,6 +830,16 @@ function winningClass(g) {
   return best ? best[0] : null;
 }
 /* Returns [piece, levelBefore, levelAfter] or null. */
+/* Same bank as a real win, deliberately: two parallel progress tracks for the
+   same four pieces would be a UI problem pretending to be a feature. */
+function creditWheel(profile, cls) {
+  if (!GEAR_BY_KEY[cls]) return null;
+  if (!profile.gear_wins) profile.gear_wins = {};
+  const before = levelFor(profile.gear_wins[cls] || 0);
+  profile.gear_wins[cls] = (profile.gear_wins[cls] || 0) + 1;
+  return [GEAR_BY_KEY[cls], before, levelFor(profile.gear_wins[cls])];
+}
+
 function creditWin(profile, g) {
   if (!countsForProgress(g) || g.finalScore() <= WIN_AT) return null;
   const cls = winningClass(g);
@@ -861,7 +862,7 @@ const ACHIEVEMENTS = [
     test: g => g.player.debt <= 0 },
   { key: "whale",        name: "Whale Watching",      blurb: "Be worth $100,000 at any point.",
     test: g => (g.stats.peak_worth || 0) >= 100000 },
-  { key: "tourist",      name: "The Whole Map",       blurb: "Visit all ten stations in one run.",
+  { key: "tourist",      name: "The Whole Map",       blurb: "Visit every station in one run.",
     test: g => (g.stats.stations || []).length >= STATIONS.length },
   { key: "untouchable",  name: "Untouchable",         blurb: "Thirty days, no SEC raid.",
     test: g => (g.stats.raids || 0) === 0 && g.day > 25 },
@@ -1051,10 +1052,6 @@ function saveToDict(g) {
     perk: g.perk,
     /* the gear the run started with, so a reload keeps the same luck */
     gear: Object.assign({}, g.gear || {}),
-    /* an open bet rides with the save. Losing it on a reload would make closing
-       the tab a free way out of a bet going the wrong way - the same savescum
-       the RNG state exists to prevent */
-    skim: g.skim ? Object.assign({}, g.skim) : null,
     /* which ranked run of today this is, or null for practice. Added after
        version 1 shipped and read with a default, so an in-progress save from
        the older build still loads - it simply resumes as practice. */
@@ -1089,7 +1086,6 @@ function saveFromDict(data) {
   if (data.stats) g.stats = data.stats;
   // carried in stats, so it reloads with the run and a reload cannot shake it
   g.hotHand = !!(g.stats && g.stats.hot_hand);
-  g.skim = data.skim ? Object.assign({}, data.skim) : null;
   g.day = data.day;
   g.finished = !!data.finished;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
@@ -1170,8 +1166,9 @@ if (typeof module !== "undefined") {
                      PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,
                      WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
                      luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
+                     stationMarkup, BIAS_COMPRESSION,
                      RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
-                     stationMarkup, BIAS_COMPRESSION, SKIM_MIN, SKIM_PAYS, SKIM_DEADBAND, SKIM_HEAT, SKIM_SIDES,
+                     credit_wheel: creditWheel, WHEEL, WHEEL_LINES,
                      DICE_EVERY, DICE_SIDES, DICE_TOP_PRIZE, DICE_LADDER, diceTier,
                      HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
                      HOT_HAND_MAX, UNRANKED_GRADE,

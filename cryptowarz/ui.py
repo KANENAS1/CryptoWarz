@@ -133,12 +133,6 @@ def wallet_panel(game: Game) -> str:
     if game.luck > 0:
         lines.append(f"  {c('luck', GREY)}     {c(f'+{game.luck:.0%}', GREEN)}"
                      f"{c(' on what you are holding', GREY)}")
-    bet = game.skim
-    if bet:
-        stake = money(float(bet["stake"]))
-        riding = f'{stake} on {bet["symbol"]} to {bet["side"]}'
-        lines.append(f"  {c('riding', GREY)}   {c(riding, YELL, True)}"
-                     + c(" · settles when you move · they're watching", GREY))
     return "\n".join(lines)
 
 
@@ -184,6 +178,9 @@ def services(game: Game) -> str:
         have.append(c("VAULT", CYAN) + c(" deposit/withdraw", GREY))
     if s.has_upgrades:
         have.append(c("SHOP", YELL) + c(" wallet/vpn", GREY))
+    if s.has_wheel:
+        have.append(c("WHEEL", MAG, True) + c(" spin" if game.wheel_ready
+                                              else " already spun", GREY))
     return "  " + ("   ".join(have) if have else c("no services at this stop", GREY))
 
 
@@ -304,8 +301,7 @@ HELP = f"""
     sell <coin> <qty|all>     {c('s DOGE all  ·   sell SOL 12', GREY)}
 
   {c('GAMBLE', MAG, True)}
-    skim <coin> <amt> dip     {c('bet a coin falls by the next stop', GREY)}
-    skim <coin> <amt> pump    {c('or that it climbs - settles when you move', GREY)}
+    spin                      {c('the prize wheel - one go per stop, per run', GREY)}
     gear                      {c('what you have earned · gear name · gear move', GREY)}
     giveup                    {c('end a run that has nowhere left to go', GREY)}
 
