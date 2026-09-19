@@ -159,6 +159,23 @@
   .pill.luck{border-color:var(--green);color:var(--green)}
   /* what THIS stop adds or takes off - the thing that used to be invisible */
   .tag.over{background:rgba(239,68,68,.16);color:#ff8f8f;border:1px solid rgba(239,68,68,.45)}
+  /* The wheel's styles. These were once deleted wholesale by a tidy-up that cut
+     a range of CSS by its start and end selectors - the wheel's rules happened
+     to sit inside that range, so the wheel kept working and stopped moving. */
+  .wheelbox{border:2px solid var(--purple);border-radius:4px;padding:11px 12px;margin-bottom:12px}
+  .wheelbox .t{color:#e07ad8;font-weight:700;letter-spacing:.14em;font-size:11px}
+  .wheelstage{position:relative;width:186px;height:186px;margin:10px auto 8px}
+  #wheelart{width:186px;height:186px;display:block;
+            transition:transform 3s cubic-bezier(.16,.84,.28,1)}
+  .needle{position:absolute;top:-4px;left:50%;transform:translateX(-50%);
+          width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;
+          border-top:18px solid var(--yellow);filter:drop-shadow(0 1px 3px #000);z-index:2}
+  .wheelresult{text-align:center;margin:4px 0 10px}
+  .wheelresult .big{font-size:26px;font-weight:700;letter-spacing:-.01em;line-height:1.1}
+  .wheelresult .sub{color:var(--dim);font-size:12.5px;margin-top:5px;line-height:1.45}
+  .wheelresult.bust .big{color:var(--dim)}
+  .wheelresult.cash .big{color:var(--green)}
+  .wheelresult.gear .big{color:#c4a2ff}
   .tag.under{background:rgba(34,197,94,.16);color:#7ee6a0;border:1px solid rgba(34,197,94,.45)}
   .gearrow{cursor:pointer}
   .gearrow{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start;
@@ -247,8 +264,8 @@
         <svg id="wheelart" viewBox="0 0 200 200" aria-hidden="true"></svg>
         <div class="needle"></div>
       </div>
+      <div id="wheelsaid"></div>
       <button class="go" id="spin">SPIN</button>
-      <div class="note" id="wheelsaid"></div>
     </div>
     <div class="dicebox" id="dicewrap" hidden>
       <div class="t">DICE ON THE PLATFORM</div>
@@ -506,7 +523,7 @@ function render(){
    oldest trick in this particular book, and not one worth reproducing. */
 const WEDGE_FILL = { BUST: "#2a2a33", SMALL: "#1f6f42", MIDDLE: "#2f8f55",
                      BIG: "#c7902a", JACKPOT: "#d94f4f", GEAR: "#8b5cf6" };
-let wheelSpinning = false, wheelTurns = 0;
+let wheelSpinning = false, wheelTurns = 0, wheelResult = null;
 
 function wheelGeometry(){
   const total = WHEEL.reduce((a, w) => a + w[1], 0);
@@ -535,16 +552,26 @@ function drawWheel(){
 }
 
 function renderWheel(){
+  // The result used to be written into a box that render() had already hidden,
+  // because the spin makes wheelReady false - so the wheel paid out and the
+  // player never saw what they had won. It stays until they ride or tap it away.
   const on = game.wheelReady && !wheelSpinning;
-  $("wheelwrap").hidden = !(game.wheelReady || wheelSpinning);
+  $("wheelwrap").hidden = !(game.wheelReady || wheelSpinning || wheelResult);
   if ($("wheelwrap").hidden) return;
   if (!$("wheelart").firstChild) drawWheel();
-  $("spin").disabled = !on;
-  $("spin").textContent = wheelSpinning ? "…" : "SPIN";
+  $("wheelsaid").innerHTML = wheelResult
+    ? `<div class="wheelresult ${wheelResult.kind}">
+         <div class="big">${esc(wheelResult.headline)}</div>
+         <div class="sub">${esc(wheelResult.detail)}</div></div>`
+    : "";
+  $("spin").disabled = !on && !wheelResult;
+  $("spin").textContent = wheelSpinning ? "spinning…" : (wheelResult ? "GOT IT" : "SPIN");
 }
 
 $("spin").addEventListener("click", () => {
-  if (wheelSpinning || !game.wheelReady) return;
+  if (wheelSpinning) return;
+  if (wheelResult) { wheelResult = null; return render(); }   // "GOT IT"
+  if (!game.wheelReady) return;
   wheelSpinning = true;
   $("spin").disabled = true;
   $("wheelsaid").textContent = "";
@@ -562,20 +589,28 @@ $("spin").addEventListener("click", () => {
 
   setTimeout(() => {
     wheelSpinning = false;
-    $("wheelsaid").textContent = said.slice(1).join(" ") || said[0];
+    const detail = said.slice(1).join(" ") || "Better luck at the next stop.";
+    wheelResult = {
+      kind: game.wheelAward ? "gear" : (landed.label === "BUST" ? "bust" : "cash"),
+      headline: landed.label === "BUST" ? "NOTHING" : landed.label,
+      detail: detail,
+    };
     if (game.wheelAward) {
       profile = readProfile();
       const banked = credit_wheel(profile, game.wheelAward);
       writeProfile(profile);
       game.gear = levelsFromWins(profile.gear_wins);
       if (banked && banked[2] > banked[1]) {
-        $("wheelsaid").textContent += ` ${banked[0].name} is now level ${banked[2]}.`;
+        wheelResult.detail += ` ${banked[0].name} is now level ${banked[2]}.`;
       }
       game.wheelAward = null;
     }
+    // also in the message strip, which now keeps things, so the result survives
+    // even if they tap the wheel away before reading it
+    flash(`${wheelResult.headline}. ${wheelResult.detail}`, true);   // never bad news
     render();
     persist();
-  }, 2700);
+  }, 3100);
 });
 
 /* ------------------------------- dead end ----------------------------- */
@@ -707,6 +742,7 @@ $("stops").addEventListener("click", e => {
   closeSheets();
   openCoin = null;
   $("alerts").innerHTML = "";          // a new station is a new situation
+  wheelResult = null;
   try {
     const msgs = game.travel(parseInt(s.dataset.go, 10));
     render();

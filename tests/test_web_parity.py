@@ -64,6 +64,29 @@ class TestWebSourcesExist(unittest.TestCase):
         self.assertIn('return "saved"', html)
         self.assertIn("boardDirty", html)          # a failed post is retried
 
+    def test_the_wheel_can_actually_turn(self):
+        """Guarding a bug that shipped, from a cause that has now bitten twice.
+
+        Tidying up once cut a range of CSS by its start and end selectors, and
+        the wheel's rules happened to sit inside that range. Nothing threw, no
+        test failed, and the wheel silently stopped being able to move: it kept
+        paying out and just snapped to its answer. Structural, because a unit
+        test cannot see a stylesheet.
+        """
+        html = (WEB / "index.html").read_text()
+        for rule in (".wheelbox{", ".wheelstage{", "#wheelart{", ".needle{"):
+            self.assertIn(rule, html, f"the wheel lost its {rule} rule")
+        art = html[html.index("#wheelart{"):html.index("}", html.index("#wheelart{"))]
+        self.assertIn("transition:transform", art, "the wheel cannot animate")
+
+    def test_the_wheel_result_outlives_the_spin(self):
+        """The spin makes wheelReady false, which used to hide the answer."""
+        html = (WEB / "index.html").read_text()
+        i = html.index("function renderWheel()")
+        body = html[i:html.index("\n}", i)]
+        self.assertIn("wheelResult", body,
+                      "renderWheel hides the box without checking for a result")
+
     def test_the_artifact_build_inlines_everything(self):
         import sys
         sys.path.insert(0, str(WEB))
