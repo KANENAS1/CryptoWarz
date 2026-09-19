@@ -35,6 +35,14 @@ class Coin:
     #: vol with a strong pull would be free money, because "buy whatever sits
     #: lowest in its range" would be a formula rather than a judgement. The
     #: fast coins wander instead: they move further and owe you nothing.
+    #:
+    #: Tuned twice. The first pass set the fast coins to 0.05-0.07, which shut
+    #: the exploit hardest and was miserable to play: a 25% drop on WIF left you
+    #: underwater for 27 days in the worst tenth of cases, and 8% of the time it
+    #: never came back inside a run. At 0.10-0.11 that is 17 days and 4%, and
+    #: the naive strategy gains about four points. Worth it - being stuck for a
+    #: whole run with nothing to do is a worse failure than a strategy being
+    #: slightly too good.
     pull: float = 0.18
 
     @property
@@ -60,12 +68,12 @@ COINS: List[Coin] = [
     Coin("PEPE", "Pepe",         0.000002, 0.000031, meme=True, vol=0.30,
          note="pure vibes, no roadmap"),
     Coin("BONK", "Bonk",         0.0000090, 0.000105, meme=True, vol=0.42,
-         pull=0.07,
+         pull=0.11,
          note="moves like a firework - lit at one stop, gone by the next"),
     Coin("DOGE", "Dogecoin",     0.06,     0.71,     meme=True, vol=0.30,
          note="started as a joke, still is"),
     Coin("WIF",  "Dogwifhat",    0.22,     4.80,     meme=True, vol=0.45,
-         pull=0.05,
+         pull=0.10,
          note="the fastest thing on the board, in both directions"),
     Coin("XRP",  "Ripple",       0.38,     3.40,     vol=0.13,
          note="perpetually in court"),

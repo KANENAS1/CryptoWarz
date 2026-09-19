@@ -80,13 +80,19 @@ def header(game: Game) -> str:
 
 
 def market_table(game: Game) -> str:
-    rows = [c(f"  {'COIN':<6}{'PRICE':>15}{'YOU HOLD':>18}{'WORTH':>14}{'AVG PAID':>14}", GREY)]
+    from .market import station_markup
+
+    rows = [c(f"  {'COIN':<6}{'PRICE':>15}{'YOU HOLD':>18}{'WORTH':>14}{'AVG PAID':>14}"
+              f"  {'MARKET':<7} {'THIS STOP':<10}", GREY)]
     for coin in COINS:
         p = game.market.price(coin.symbol)
         h = game.player.wallet.get(coin.symbol)
         qty = h.qty if h else 0.0
         worth = qty * p
-        # flag where this price sits in the coin's normal range
+        # Two different facts, which the old single tag ran together: where the
+        # MARKET has this coin, and what THIS STOP is adding on top. A player
+        # who only sees the first experiences their own overpaying as the coin
+        # turning on them.
         span = coin.high - coin.low
         pos = (p - coin.low) / span if span > 0 else 0.5
         if pos <= 0.2:
@@ -95,11 +101,19 @@ def market_table(game: Game) -> str:
             tag, col = "DEAR ", RED
         else:
             tag, col = "     ", GREY
+        markup = station_markup(game.station, coin.symbol) - 1.0
+        if abs(markup) < 0.02:
+            here, here_col = "      ", GREY
+        elif markup > 0:
+            here, here_col = f"{markup:+.0%} here", RED
+        else:
+            here, here_col = f"{markup:+.0%} here", GREEN
         held = f"{qty:,.6f}" if qty > 0 else c("-", GREY)
         rows.append(
             f"  {c(coin.symbol, WHITE, True):<6}{price(p):>15}"
             f"{held:>18}{(money(worth) if qty > 0 else '-'):>14}"
             f"{(price(h.avg_price) if h and qty > 0 else '-'):>14}  {c(tag, col)}"
+            f"  {c(here, here_col)}"
         )
     if game.market.headline:
         rows.append("")

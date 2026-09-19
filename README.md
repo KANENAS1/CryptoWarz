@@ -418,6 +418,44 @@ one), starting over still spends the slot. The daily markets are the same three
 for everybody, so a free retry against a market you've already seen would make
 the leaderboard meaningless. Backing out on day one costs nothing.
 
+## "I bet on one coin and it stayed down"
+
+Reported from a real run, and worth writing down because the answer was two
+things and only one of them was the market.
+
+**Nothing in the game watches what you hold and punishes it.** `market.py`
+never looks at the player. The only code that reads your wallet either helps
+you (gear luck) or is an event with its own name on it (an SEC raid).
+
+**What actually happened, most likely: you overpaid and couldn't see it.** Each
+stop marks coins up or down, and buying WIF at the stop that loves it and
+selling anywhere else loses **60% with the market completely still**. The
+interface showed a CHEAP/DEAR tag measured against the *coin's own range* — a
+fact about the market — and said nothing at all about the stop you were
+standing in. A player who can't see the markup experiences their own overpaying
+as the coin turning on them.
+
+So every coin row now carries a second badge: **`+55% HERE`** or **`-38% HERE`**,
+the markup at this stop, in the same number the till is using. Standing at
+Jefferson St you can finally see that WIF is +55% and BTC is −12% before you
+spend anything.
+
+**The second thing was mine.** The fast coins were given a very weak pull back
+toward the middle to stop "buy whatever's cheapest" being a formula, and it
+overshot: a 25% drop on WIF left you underwater for **27 days** in the worst
+tenth of cases and never recovered at all 8% of the time. That's a whole run
+with nothing to do.
+
+| after a 25% drop | before | now |
+|---|---|---|
+| WIF, 90th percentile | 27 days | **18 days** |
+| WIF, never recovers in 30 | 8% | **4%** |
+| BONK, never recovers | 7% | **3%** |
+
+The cost is that the naive strategy gets better: buy-the-cheapest goes from 52%
+to 60% solvent. That's the trade, stated plainly — being stuck for a whole run
+with nothing to do is a worse failure than a strategy being slightly too good.
+
 ## The roster: twelve coins at four speeds
 
 The spread between `low` and `high` is where the money is. The spread between
@@ -510,7 +548,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 238 tests, no install needed
+python3 -m unittest discover -s tests     # 242 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

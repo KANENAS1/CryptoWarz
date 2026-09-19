@@ -231,6 +231,8 @@ const out = {
   })(),
   stations: G.STATIONS.map(s => ({
     name: s.name, lines: s.lines, borough: s.borough, heat: s.heat, bias: s.bias,
+    /* the badge the player reads must be the same number the till uses */
+    markup: Object.fromEntries(G.COINS.map(c => [c.symbol, G.stationMarkup(s, c.symbol)])),
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,
   })),
 };

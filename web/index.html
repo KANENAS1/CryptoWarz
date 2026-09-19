@@ -155,6 +155,9 @@
   .pill.tier{border-color:var(--purple);color:#e07ad8}
   .pill.perk{border-color:var(--yellow);color:var(--yellow)}
   .pill.luck{border-color:var(--green);color:var(--green)}
+  /* what THIS stop adds or takes off - the thing that used to be invisible */
+  .tag.over{background:rgba(239,68,68,.16);color:#ff8f8f;border:1px solid rgba(239,68,68,.45)}
+  .tag.under{background:rgba(34,197,94,.16);color:#7ee6a0;border:1px solid rgba(34,197,94,.45)}
   .pill.skim{border-color:var(--orange);color:var(--orange)}
   .deadend{border:2px solid var(--red);border-radius:4px;padding:13px 12px;margin-bottom:12px}
   .deadend .t{color:var(--red);font-weight:700;letter-spacing:.14em;font-size:12px}
@@ -366,11 +369,21 @@ function bullet(line){
 
 let game, openCoin = null;
 
+/* Two different facts, which one tag used to run together: where the MARKET has
+   this coin, and what THIS STOP is adding on top. A player who only sees the
+   first experiences their own overpaying as the coin turning on them. */
 function tagFor(c, price){
   const pos = (price - c.low) / (c.high - c.low);
   if (pos <= 0.2) return '<span class="tag cheap">CHEAP</span>';
   if (pos >= 0.8) return '<span class="tag dear">DEAR</span>';
   return "";
+}
+
+function hereFor(c){
+  const markup = stationMarkup(game.station, c.symbol) - 1;
+  if (Math.abs(markup) < 0.02) return "";
+  const pct = (markup > 0 ? "+" : "") + Math.round(markup * 100) + "%";
+  return `<span class="tag ${markup > 0 ? "over" : "under"}">${pct} HERE</span>`;
 }
 
 function render(){
@@ -440,7 +453,7 @@ function render(){
       <div class="coinrow" data-coin="${c.symbol}" role="button" tabindex="0">
         <div><div class="sym">${c.symbol}</div></div>
         <div><div class="cname">${c.name}</div></div>
-        <div class="px"><b class="num">${fmtPrice(price)}</b>${tagFor(c, price)}${heldLine}</div>
+        <div class="px"><b class="num">${fmtPrice(price)}</b>${tagFor(c, price)}${hereFor(c)}${heldLine}</div>
       </div>
       <div class="trade">${trade}</div>
     </div>`;

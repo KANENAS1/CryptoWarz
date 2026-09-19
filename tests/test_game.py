@@ -411,13 +411,23 @@ class TestTheRoster(unittest.TestCase):
         self.assertGreater(BY_SYMBOL["WIF"].vol, BY_SYMBOL["DOGE"].vol)
         self.assertGreater(BY_SYMBOL["BONK"].vol, BY_SYMBOL["SHIB"].vol)
 
-    def test_a_coin_that_rips_is_never_also_a_coin_that_snaps_back(self):
-        """The two together are free money, which is what broke the first pass."""
-        for coin in COINS:
-            if coin.symbol == "USDC":
-                continue
-            if coin.vol > 0.35:
-                self.assertLess(coin.pull, 0.10, f"{coin.symbol} is fast AND reverts")
+    def test_a_coin_that_rips_never_snaps_back_like_a_slow_one(self):
+        """The two together are free money, which is what broke the first pass.
+
+        The threshold moved once, on purpose. The fast coins started at
+        0.05-0.07, which shut the exploit hardest and was miserable: a 25% drop
+        on WIF left you underwater for 27 days in the worst tenth of cases. So
+        what is asserted is the RELATIONSHIP - a fast coin reverts markedly less
+        than a slow one - rather than a number that has to be edited every time
+        the tuning moves.
+        """
+        slow = [c for c in COINS if c.symbol != "USDC" and c.vol <= 0.15]
+        fast = [c for c in COINS if c.vol > 0.35]
+        self.assertTrue(slow and fast, "the roster lost one end of its range")
+        slowest_pull = min(c.pull for c in slow)
+        for coin in fast:
+            self.assertLess(coin.pull, slowest_pull * 0.75,
+                            f"{coin.symbol} is fast AND reverts like a blue chip")
 
     def test_the_stablecoin_is_still_the_slowest_thing_on_the_board(self):
         from cryptowarz.coins import BY_SYMBOL
@@ -453,3 +463,53 @@ class TestTheRoster(unittest.TestCase):
 
         self.assertGreater(typical_move("WIF"), typical_move("BTC") * 2)
         self.assertGreater(typical_move("BONK"), typical_move("SHIB"))
+
+
+class TestTheStopYouAreStandingAt(unittest.TestCase):
+    """The biggest thing that happens to a player's money, made visible.
+
+    Buying a coin at the stop that loves it and selling anywhere else can lose
+    60% with the market completely still. That was invisible, and a player who
+    cannot see it experiences their own overpaying as the coin turning on them
+    - which is exactly how it was reported.
+    """
+
+    def test_a_stop_that_loves_a_coin_charges_for_it(self):
+        from cryptowarz.market import station_markup
+        from cryptowarz.stations import station
+        self.assertGreater(station_markup(station("Jefferson St"), "WIF"), 1.3)
+        self.assertLess(station_markup(station("Coney Island-Stillwell Av"), "WIF"), 0.8)
+
+    def test_a_stop_with_no_opinion_is_exactly_fair(self):
+        from cryptowarz.market import station_markup
+        from cryptowarz.stations import station
+        self.assertAlmostEqual(station_markup(station("14 St-Union Sq"), "WIF"), 1.0)
+
+    def test_the_markup_is_what_the_price_actually_uses(self):
+        """The badge has to be the same number the till is using."""
+        import random
+        from cryptowarz.coins import BY_SYMBOL
+        from cryptowarz.market import MarketState, _station_price, station_markup
+        from cryptowarz.stations import STATIONS
+
+        coin = BY_SYMBOL["WIF"]
+        state = MarketState(random.Random(3))
+        level = state.levels["WIF"]
+        for stop in STATIONS:
+            # average out the per-stop noise, leaving the bias
+            prices = [_station_price(coin, level, stop, random.Random(seed))
+                      for seed in range(400)]
+            implied = (sum(prices) / len(prices)) / level
+            self.assertAlmostEqual(implied, station_markup(stop, "WIF"),
+                                   delta=0.01, msg=stop.name)
+
+    def test_the_table_shows_it(self):
+        from cryptowarz import ui
+        from cryptowarz.market import generate
+        from cryptowarz.stations import station
+        game = Game(seed=5)
+        game.station = station("Jefferson St")
+        game.market = generate(game.station, game.rng, game.state)
+        table = ui.market_table(game)
+        self.assertIn("THIS STOP", table)
+        self.assertIn("here", table)

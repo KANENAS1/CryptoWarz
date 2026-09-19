@@ -107,10 +107,25 @@ class Market:
         return self.shock.headline if self.shock else None
 
 
+#: How much of a station's raw opinion actually reaches the price. Compressed
+#: toward 1.0 so no single stop is a money printer.
+BIAS_COMPRESSION = 0.62
+
+
+def station_markup(station: Station, symbol: str) -> float:
+    """What this stop adds to, or takes off, the market price. 1.0 is fair.
+
+    This is the single biggest thing that happens to a player's money and it
+    used to be invisible: buying WIF at the stop that loves it and selling
+    anywhere else loses 60% with the market completely still. A player who
+    cannot see it experiences their own overpaying as the coin betraying them.
+    """
+    return 1.0 + (station.multiplier(symbol) - 1.0) * BIAS_COMPRESSION
+
+
 def _station_price(coin: Coin, level: float, station: Station, rng: random.Random) -> float:
     """What this station will trade at, given the market level."""
-    # bias is compressed toward 1.0 so no single stop is a money printer
-    bias = 1.0 + (station.multiplier(coin.symbol) - 1.0) * 0.62
+    bias = station_markup(station, coin.symbol)
     noise = rng.uniform(0.94, 1.06) if coin.meme else rng.uniform(0.975, 1.025)
     price = level * bias * noise
     if coin.symbol == "USDC":

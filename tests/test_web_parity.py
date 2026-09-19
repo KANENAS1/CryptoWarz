@@ -19,6 +19,7 @@ from pathlib import Path
 
 from cryptowarz.coins import COINS
 from cryptowarz.game import DAYS, START_CAPACITY, START_CASH, START_DEBT, SUBWAY_FARE
+from cryptowarz.market import station_markup
 from cryptowarz.stations import STATIONS
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -109,6 +110,9 @@ class TestDataParity(unittest.TestCase):
             self.assertEqual(js["lines"], py.lines.split(), py.name)
             self.assertEqual(js["borough"], py.borough, py.name)
             self.assertAlmostEqual(js["heat"], py.heat, msg=py.name)
+            for symbol, value in js["markup"].items():
+                self.assertAlmostEqual(value, station_markup(py, symbol),
+                                       msg=f"{py.name}/{symbol}")
             self.assertEqual(js["shark"], py.has_shark, py.name)
             self.assertEqual(js["vault"], py.has_vault, py.name)
             self.assertEqual(js["shop"], py.has_upgrades, py.name)

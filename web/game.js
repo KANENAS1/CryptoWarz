@@ -48,13 +48,13 @@ const COINS = [
     meme: true, vol: 0.3, pull: 0.18,
     note: "pure vibes, no roadmap" },
   { symbol: "BONK", name: "Bonk", low: 9e-06, high: 0.000105,
-    meme: true, vol: 0.42, pull: 0.07,
+    meme: true, vol: 0.42, pull: 0.11,
     note: "moves like a firework - lit at one stop, gone by the next" },
   { symbol: "DOGE", name: "Dogecoin", low: 0.06, high: 0.71,
     meme: true, vol: 0.3, pull: 0.18,
     note: "started as a joke, still is" },
   { symbol: "WIF", name: "Dogwifhat", low: 0.22, high: 4.8,
-    meme: true, vol: 0.45, pull: 0.05,
+    meme: true, vol: 0.45, pull: 0.1,
     note: "the fastest thing on the board, in both directions" },
   { symbol: "XRP", name: "Ripple", low: 0.38, high: 3.4,
     meme: false, vol: 0.13, pull: 0.18,
@@ -125,6 +125,15 @@ const STATIONS = [
     heat: 0.5, shark: false, vault: true, shop: true },
 ];
 const bias = (st, sym) => (st.bias[sym] !== undefined ? st.bias[sym] : 1.0);
+/* How much of a stop's raw opinion reaches the price. Compressed toward 1.0 so
+   no single stop is a money printer. */
+const BIAS_COMPRESSION = 0.62;
+/* What THIS stop adds to, or takes off, the market price. 1.0 is fair.
+   The single biggest thing that happens to a player's money, and it used to be
+   invisible: buying WIF where it is loved and selling anywhere else loses 60%
+   with the market completely still. A player who cannot see that experiences
+   their own overpaying as the coin turning on them. */
+function stationMarkup(st, sym) { return 1 + (bias(st, sym) - 1) * BIAS_COMPRESSION; }
 
 /* ----------------------------- market.py ------------------------------ */
 const CRASHES = [
@@ -171,7 +180,7 @@ MarketState.prototype.apply = function (symbol, factor, c) {
 };
 
 function stationPrice(c, level, st, rng) {
-  const b = 1.0 + (bias(st, c.symbol) - 1.0) * 0.62;
+  const b = stationMarkup(st, c.symbol);
   const noise = c.meme ? rng.uniform(0.94, 1.06) : rng.uniform(0.975, 1.025);
   const price = level * b * noise;
   if (c.symbol === "USDC") return Math.max(c.low, Math.min(price, c.high));
@@ -1162,7 +1171,7 @@ if (typeof module !== "undefined") {
                      WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
                      luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
                      RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
-                     SKIM_MIN, SKIM_PAYS, SKIM_DEADBAND, SKIM_HEAT, SKIM_SIDES,
+                     stationMarkup, BIAS_COMPRESSION, SKIM_MIN, SKIM_PAYS, SKIM_DEADBAND, SKIM_HEAT, SKIM_SIDES,
                      DICE_EVERY, DICE_SIDES, DICE_TOP_PRIZE, DICE_LADDER, diceTier,
                      HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
                      HOT_HAND_MAX, UNRANKED_GRADE,
