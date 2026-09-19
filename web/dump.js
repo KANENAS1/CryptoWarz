@@ -13,7 +13,8 @@ const out = {
     START_CAPACITY: new G.Game(1).player.capacity,
   },
   coins: G.COINS.map(c => ({
-    symbol: c.symbol, name: c.name, low: c.low, high: c.high, meme: c.meme, note: c.note,
+    symbol: c.symbol, name: c.name, low: c.low, high: c.high, meme: c.meme,
+    vol: c.vol, pull: c.pull, note: c.note,
   })),
   progress: {
     version: G.PROGRESS_VERSION,
@@ -229,7 +230,7 @@ const out = {
     };
   })(),
   stations: G.STATIONS.map(s => ({
-    name: s.name, heat: s.heat, bias: s.bias,
+    name: s.name, lines: s.lines, borough: s.borough, heat: s.heat, bias: s.bias,
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop,
   })),
 };

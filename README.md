@@ -418,6 +418,57 @@ one), starting over still spends the slot. The daily markets are the same three
 for everybody, so a free retry against a market you've already seen would make
 the leaderboard meaningless. Backing out on day one costs nothing.
 
+## The roster: twelve coins at four speeds
+
+The spread between `low` and `high` is where the money is. The spread between
+**speeds** is where the decisions are.
+
+| | coin | daily move | reverts? |
+|---|---|---|---|
+| 🔥 | **WIF** Dogwifhat | ~29% | barely |
+| 🔥 | **BONK** | ~28% | barely |
+| | SHIB · PEPE · DOGE | ~21% | yes |
+| | **SUI** | ~16% | some |
+| | **AVAX** | ~14% | mostly |
+| | XRP · SOL · ETH | ~9% | yes |
+| | BTC | ~8% | yes |
+| | USDC | ~0.1% | it's a dollar |
+
+Eight coins where everything either crawled or ripped gave you two settings.
+Twelve across a range give you a dial — there's always something moving enough
+to be worth a trip, and the slow end is what makes the fast end mean something.
+
+**The fast coins wander; the slow ones come back.** That pairing is deliberate
+and it is the whole reason the roster is safe to grow.
+
+<details>
+<summary>The first version of this broke the game. The numbers.</summary>
+
+Adding four fast coins and nothing else took the naive strategy — *buy whatever
+sits lowest in its own range* — from **50% solvent to 70%**. Two things
+compound: the best-of-N pick gets better every day as N grows, and a wild coin
+sits near its floor more often, so it looks cheap more often. With a strong pull
+back toward the middle, "cheap" was a promise. That's a formula, not a game.
+
+So volatility and mean reversion are now separate per-coin dials, and the fast
+coins get a *weak* pull — they move further and owe you nothing. Being cheap
+stops being a promise.
+
+| | before | naive add | shipped |
+|---|---|---|---|
+| buy the cheapest, solvent | 50% | **70%** | 52% |
+| median | $423 | $40,276 | $4,422 |
+| p10 | −$75,351 | −$59,857 | **−$84,437** |
+| best | $244,044 | $315,377 | $316,950 |
+
+The roster grew by half and the naive formula gained two points. What did move
+is the variance: a worse floor and a higher ceiling, which is what "faster" is
+supposed to buy you.
+
+It also made the skim *harder*, which is correct — its edge came from reading
+mean reversion, and the fast coins don't revert.
+</details>
+
 ## Saving, and why you can't scum it
 
 Quit whenever. The terminal game writes to `~/.cryptowarz/save.json` after
@@ -459,7 +510,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 229 tests, no install needed
+python3 -m unittest discover -s tests     # 238 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

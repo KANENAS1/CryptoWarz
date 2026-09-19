@@ -37,15 +37,46 @@ RNG.prototype.choices = function (arr, weights) {
 };
 
 /* ------------------------------ coins.py ------------------------------ */
+/* A spread of SPEEDS, not just of prices: `vol` is how fast the real market
+   moves under every station, `meme` is how silly the local price gets from stop
+   to stop. A coin can be a serious asset and still rip. */
 const COINS = [
-  { symbol: "SHIB", name: "Shiba Inu", low: 0.000008, high: 0.000075, meme: true,  note: "fractions of a cent, whole lot of hope" },
-  { symbol: "PEPE", name: "Pepe",      low: 0.000002, high: 0.000031, meme: true,  note: "pure vibes, no roadmap" },
-  { symbol: "DOGE", name: "Dogecoin",  low: 0.06,     high: 0.71,     meme: true,  note: "started as a joke, still is" },
-  { symbol: "XRP",  name: "Ripple",    low: 0.38,     high: 3.40,     meme: false, note: "perpetually in court" },
-  { symbol: "USDC", name: "USD Coin",  low: 0.97,     high: 1.03,     meme: false, note: "a dollar, mostly - park cash here when it gets hot" },
-  { symbol: "SOL",  name: "Solana",    low: 18.0,     high: 260.0,    meme: false, note: "fast chain, frequent outages" },
-  { symbol: "ETH",  name: "Ethereum",  low: 1100.0,   high: 4900.0,   meme: false, note: "gas fees will eat you alive" },
-  { symbol: "BTC",  name: "Bitcoin",   low: 21000.0,  high: 109000.0, meme: false, note: "the original, and the heaviest to carry" },
+  { symbol: "SHIB", name: "Shiba Inu", low: 8e-06, high: 7.5e-05,
+    meme: true, vol: 0.3, pull: 0.18,
+    note: "fractions of a cent, whole lot of hope" },
+  { symbol: "PEPE", name: "Pepe", low: 2e-06, high: 3.1e-05,
+    meme: true, vol: 0.3, pull: 0.18,
+    note: "pure vibes, no roadmap" },
+  { symbol: "BONK", name: "Bonk", low: 9e-06, high: 0.000105,
+    meme: true, vol: 0.42, pull: 0.07,
+    note: "moves like a firework - lit at one stop, gone by the next" },
+  { symbol: "DOGE", name: "Dogecoin", low: 0.06, high: 0.71,
+    meme: true, vol: 0.3, pull: 0.18,
+    note: "started as a joke, still is" },
+  { symbol: "WIF", name: "Dogwifhat", low: 0.22, high: 4.8,
+    meme: true, vol: 0.45, pull: 0.05,
+    note: "the fastest thing on the board, in both directions" },
+  { symbol: "XRP", name: "Ripple", low: 0.38, high: 3.4,
+    meme: false, vol: 0.13, pull: 0.18,
+    note: "perpetually in court" },
+  { symbol: "SUI", name: "Sui", low: 0.45, high: 6.2,
+    meme: false, vol: 0.24, pull: 0.12,
+    note: "a real chain that trades like a rumour" },
+  { symbol: "USDC", name: "USD Coin", low: 0.97, high: 1.03,
+    meme: false, vol: 0.01, pull: 0.18,
+    note: "a dollar, mostly - park cash here when it gets hot" },
+  { symbol: "SOL", name: "Solana", low: 18.0, high: 260.0,
+    meme: false, vol: 0.13, pull: 0.18,
+    note: "fast chain, frequent outages" },
+  { symbol: "AVAX", name: "Avalanche", low: 9.0, high: 78.0,
+    meme: false, vol: 0.2, pull: 0.14,
+    note: "serious money that still can't sit still" },
+  { symbol: "ETH", name: "Ethereum", low: 1100.0, high: 4900.0,
+    meme: false, vol: 0.13, pull: 0.18,
+    note: "gas fees will eat you alive" },
+  { symbol: "BTC", name: "Bitcoin", low: 21000.0, high: 109000.0,
+    meme: false, vol: 0.11, pull: 0.18,
+    note: "the original, and the heaviest to carry" },
 ];
 COINS.forEach(c => { c.mid = (c.low + c.high) / 2; });
 const COIN = Object.fromEntries(COINS.map(c => [c.symbol, c]));
@@ -54,36 +85,44 @@ const COIN = Object.fromEntries(COINS.map(c => [c.symbol, c]));
 const STATIONS = [
   { name: "Wall Street", lines: ["4", "5"], borough: "Manhattan",
     flavor: "Suits everywhere. Someone is explaining an ETF to a tourist.",
-    bias: { BTC: 1.30, ETH: 1.22, USDC: 1.02, DOGE: 0.62, SHIB: 0.55, PEPE: 0.50 },
-    heat: 0.85, vault: true },
+    bias: { BTC: 1.3, ETH: 1.22, AVAX: 1.16, USDC: 1.02, SUI: 1.06, DOGE: 0.62, SHIB: 0.55, PEPE: 0.5, BONK: 0.48, WIF: 0.44 },
+    heat: 0.85, shark: false, vault: true, shop: false },
   { name: "Jefferson St", lines: ["L"], borough: "Brooklyn",
     flavor: "Bushwick. Three people in this car are launching a token this week.",
-    bias: { PEPE: 1.75, SHIB: 1.62, DOGE: 1.45, SOL: 1.14, BTC: 0.80 },
-    heat: 0.55, shop: true },
-  { name: "Times Sq-42 St", lines: ["N", "Q", "R", "W", "1", "2", "3", "7"], borough: "Manhattan",
+    bias: { WIF: 1.88, PEPE: 1.75, BONK: 1.7, SHIB: 1.62, DOGE: 1.45, SOL: 1.14, SUI: 1.12, BTC: 0.8 },
+    heat: 0.55, shark: false, vault: false, shop: true },
+  { name: "Times Sq-42 St", lines: ["N", "Q", "R", "W", "1", "2", "3", "7", "S"], borough: "Manhattan",
     flavor: "Tourist money. Everything here costs more and everyone knows it.",
-    bias: { BTC: 1.18, ETH: 1.15, SOL: 1.20, DOGE: 1.25, XRP: 1.15 }, heat: 0.80 },
+    bias: { BTC: 1.18, ETH: 1.15, SOL: 1.2, DOGE: 1.25, XRP: 1.15, WIF: 1.32, BONK: 1.24, SUI: 1.18, AVAX: 1.12 },
+    heat: 0.8, shark: false, vault: false, shop: false },
   { name: "Coney Island-Stillwell Av", lines: ["D", "F", "N", "Q"], borough: "Brooklyn",
     flavor: "End of the line. Salt air, dead arcade, suspiciously cheap everything.",
-    bias: { SHIB: 0.45, PEPE: 0.42, DOGE: 0.58, XRP: 0.70, SOL: 0.82 }, heat: 0.30 },
+    bias: { SHIB: 0.45, PEPE: 0.42, BONK: 0.4, WIF: 0.38, DOGE: 0.58, XRP: 0.7, SOL: 0.82, SUI: 0.72, AVAX: 0.8 },
+    heat: 0.3, shark: false, vault: false, shop: false },
   { name: "125 St", lines: ["4", "5", "6"], borough: "Manhattan",
     flavor: "Harlem. A man with a folding table will sell you anything.",
-    bias: { DOGE: 1.30, XRP: 1.34, SHIB: 1.20, ETH: 0.88 }, heat: 0.60, shark: true },
+    bias: { DOGE: 1.3, XRP: 1.34, SHIB: 1.2, WIF: 1.36, BONK: 1.28, SUI: 1.12, ETH: 0.88 },
+    heat: 0.6, shark: true, vault: false, shop: false },
   { name: "Grand Central-42 St", lines: ["4", "5", "6", "7", "S"], borough: "Manhattan",
     flavor: "Commuters moving with purpose. Liquidity, but no bargains.",
-    bias: { BTC: 1.08, ETH: 1.10, USDC: 1.01, SOL: 1.05 }, heat: 0.70, vault: true },
+    bias: { BTC: 1.08, ETH: 1.1, USDC: 1.01, SOL: 1.05, AVAX: 1.07, SUI: 1.04 },
+    heat: 0.7, shark: false, vault: true, shop: false },
   { name: "Flushing-Main St", lines: ["7"], borough: "Queens",
     flavor: "The busiest station outside Manhattan. Cash moves fast here.",
-    bias: { XRP: 0.62, USDC: 0.98, SOL: 0.86, ETH: 0.92 }, heat: 0.45 },
+    bias: { XRP: 0.62, USDC: 0.98, SOL: 0.86, ETH: 0.92, SUI: 0.66, AVAX: 0.88, WIF: 0.78 },
+    heat: 0.45, shark: false, vault: false, shop: false },
   { name: "161 St-Yankee Stadium", lines: ["4", "B", "D"], borough: "Bronx",
     flavor: "Game day. Everyone is up, everyone is buying, nobody is reading.",
-    bias: { DOGE: 1.52, SHIB: 1.40, PEPE: 1.38, BTC: 0.92 }, heat: 0.65, shark: true },
+    bias: { DOGE: 1.52, SHIB: 1.4, PEPE: 1.38, WIF: 1.6, BONK: 1.48, SUI: 1.22, BTC: 0.92 },
+    heat: 0.65, shark: true, vault: false, shop: false },
   { name: "St George", lines: ["SIR"], borough: "Staten Island",
     flavor: "Off the ferry. Quiet, cheap, and a long way from anywhere.",
-    bias: { BTC: 0.78, ETH: 0.80, SOL: 0.74, USDC: 0.99 }, heat: 0.20, shop: true },
+    bias: { BTC: 0.78, ETH: 0.8, SOL: 0.74, USDC: 0.99, AVAX: 0.76, SUI: 0.7, WIF: 0.72, BONK: 0.74 },
+    heat: 0.2, shark: false, vault: false, shop: true },
   { name: "14 St-Union Sq", lines: ["4", "5", "6", "L", "N", "Q", "R", "W"], borough: "Manhattan",
     flavor: "Everything connects here. Fair prices, which is its own kind of trap.",
-    bias: {}, heat: 0.50, vault: true, shop: true },
+    bias: {  },
+    heat: 0.5, shark: false, vault: true, shop: true },
 ];
 const bias = (st, sym) => (st.bias[sym] !== undefined ? st.bias[sym] : 1.0);
 
@@ -120,9 +159,8 @@ MarketState.prototype.drift = function (rng) {
       this.levels.USDC = Math.max(0.97, Math.min(1.03, level * rng.uniform(0.997, 1.003)));
       continue;
     }
-    const vol = c.meme ? 0.30 : 0.13;
-    const step = rng.gauss(0, vol);
-    const pull = level > 0 ? 0.18 * Math.log(c.mid / level) : 0;
+    const step = rng.gauss(0, c.vol);
+    const pull = level > 0 ? c.pull * Math.log(c.mid / level) : 0;
     level *= Math.exp(step + pull);
     this.levels[c.symbol] = Math.max(c.low * 0.4, Math.min(level, c.high * 1.6));
   }
@@ -692,9 +730,9 @@ function rollEvent(game) {
    into the save, so a reloaded run carries the same luck and replays as it
    would have. */
 const CLASSES = {
-  meme:   ["SHIB", "PEPE", "DOGE"],
-  alt:    ["XRP", "SOL"],
-  major:  ["ETH", "BTC"],
+  meme:   ["SHIB", "PEPE", "BONK", "DOGE", "WIF"],
+  alt:    ["XRP", "SUI", "SOL"],
+  major:  ["AVAX", "ETH", "BTC"],
   stable: ["USDC"],
 };
 const CLASS_OF = {};

@@ -390,3 +390,66 @@ class TestScoring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheRoster(unittest.TestCase):
+    """Twelve coins across a spread of speeds, and the rules that keeps honest.
+
+    The roster grew from eight to twelve, and the first attempt at it took the
+    naive strategy - buy whatever sits lowest in its own range - from 50%
+    solvent to 70%. More coins means the best-of-N pick is better every single
+    day, and high volatility feeds it further because a wild coin sits near its
+    floor more often. What fixed it is that the fast coins WANDER: they have a
+    weak pull back toward the middle, so being cheap is not a promise.
+    """
+
+    def test_the_fast_coins_really_are_faster(self):
+        from cryptowarz.coins import BY_SYMBOL
+        fast = max(COINS, key=lambda c: c.vol)
+        slow = min((c for c in COINS if c.symbol != "USDC"), key=lambda c: c.vol)
+        self.assertGreater(fast.vol, slow.vol * 3)
+        self.assertGreater(BY_SYMBOL["WIF"].vol, BY_SYMBOL["DOGE"].vol)
+        self.assertGreater(BY_SYMBOL["BONK"].vol, BY_SYMBOL["SHIB"].vol)
+
+    def test_a_coin_that_rips_is_never_also_a_coin_that_snaps_back(self):
+        """The two together are free money, which is what broke the first pass."""
+        for coin in COINS:
+            if coin.symbol == "USDC":
+                continue
+            if coin.vol > 0.35:
+                self.assertLess(coin.pull, 0.10, f"{coin.symbol} is fast AND reverts")
+
+    def test_the_stablecoin_is_still_the_slowest_thing_on_the_board(self):
+        from cryptowarz.coins import BY_SYMBOL
+        self.assertEqual(min(COINS, key=lambda c: c.vol).symbol, "USDC")
+        self.assertLess(BY_SYMBOL["USDC"].vol, 0.05)
+
+    def test_every_coin_is_tradeable_somewhere_worth_going(self):
+        """A coin no station has an opinion on is decoration, not a decision."""
+        from cryptowarz.stations import STATIONS
+        for coin in COINS:
+            if coin.symbol == "USDC":
+                continue
+            spread = max(s.multiplier(coin.symbol) for s in STATIONS) \
+                / min(s.multiplier(coin.symbol) for s in STATIONS)
+            self.assertGreater(spread, 1.4, f"{coin.symbol} trades the same everywhere")
+
+    def test_volatility_actually_moves_the_market(self):
+        """Measured, not read off the constant."""
+        import random
+        import statistics
+        from cryptowarz.coins import BY_SYMBOL
+        from cryptowarz.market import MarketState
+
+        def typical_move(symbol):
+            rng = random.Random(7)
+            state = MarketState(rng)
+            moves = []
+            for _ in range(1_500):
+                before = state.levels[symbol]
+                state.drift(rng)
+                moves.append(abs(state.levels[symbol] / before - 1.0))
+            return statistics.median(moves)
+
+        self.assertGreater(typical_move("WIF"), typical_move("BTC") * 2)
+        self.assertGreater(typical_move("BONK"), typical_move("SHIB"))

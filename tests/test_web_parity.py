@@ -96,11 +96,18 @@ class TestDataParity(unittest.TestCase):
             self.assertAlmostEqual(js["low"], py.low, msg=py.symbol)
             self.assertAlmostEqual(js["high"], py.high, msg=py.symbol)
             self.assertEqual(js["meme"], py.meme, py.symbol)
+            self.assertAlmostEqual(js["vol"], py.vol, msg=py.symbol)
+            self.assertAlmostEqual(js["pull"], py.pull, msg=py.symbol)
             self.assertEqual(js["note"], py.note, py.symbol)
 
     def test_every_station_matches(self):
         self.assertEqual([s["name"] for s in self.js["stations"]], [s.name for s in STATIONS])
         for js, py in zip(self.js["stations"], STATIONS):
+            # the port carries the route bullets as a list and Python as a
+            # string; regenerating the table once flattened the list and only a
+            # browser noticed, because nothing here was comparing them
+            self.assertEqual(js["lines"], py.lines.split(), py.name)
+            self.assertEqual(js["borough"], py.borough, py.name)
             self.assertAlmostEqual(js["heat"], py.heat, msg=py.name)
             self.assertEqual(js["shark"], py.has_shark, py.name)
             self.assertEqual(js["vault"], py.has_vault, py.name)

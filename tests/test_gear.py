@@ -169,10 +169,48 @@ class TestItActuallyChangesTheGame(unittest.TestCase):
                            bare_p / (bare_p + bare_c) + 0.05)
 
     def test_it_does_not_tilt_a_coin_you_have_no_gear_for(self):
-        bare_p, bare_c = self.shocks_on({}, symbol="BTC")
-        geared_p, geared_c = self.shocks_on({"meme": G.MAX_LEVEL}, symbol="BTC")
-        self.assertAlmostEqual(geared_p / (geared_p + geared_c),
-                               bare_p / (bare_p + bare_c), delta=0.001)
+        """Asserted on the coin flip itself, not by comparing two whole runs.
+
+        The first version of this compared shock outcomes across a geared run
+        and a bare one and demanded they match to a tenth of a percent. That is
+        not a property the game has: taking the pump branch instead of the
+        crash branch draws from a different-length list, which shifts every
+        random number after it. The test passed on eight coins by luck of the
+        sample and failed the moment the roster grew - it was measuring stream
+        divergence, not tilt. This rigs one shock and reads the threshold.
+        """
+        from cryptowarz.market import MarketState, generate
+        from cryptowarz.stations import STATIONS
+
+        class Rigged:
+            """A shock, on a coin of our choosing, with a chosen crash draw."""
+
+            def __init__(self, target, crash_draw):
+                self.target, self.draws = target, iter([0.0, crash_draw])
+
+            def random(self):
+                return next(self.draws, 0.5)
+
+            def choice(self, seq):
+                return next((x for x in seq
+                             if getattr(x, "symbol", None) == self.target), seq[0])
+
+            def uniform(self, a, b):
+                return (a + b) / 2.0
+
+            def gauss(self, mu, sigma):
+                return mu
+
+        def crashed(luck, draw):
+            state = MarketState(Rigged("BTC", 0.0))
+            market = generate(STATIONS[0], Rigged("BTC", draw), state, luck=luck)
+            return market.shock.is_crash
+
+        # just under an even chance: a crash for anyone the luck map ignores
+        self.assertTrue(crashed({"DOGE": 0.4}, 0.49), "an ungeared coin was tilted")
+        self.assertTrue(crashed({}, 0.49))
+        # and the same draw becomes a pump once the coin IS geared for
+        self.assertFalse(crashed({"BTC": 0.4}, 0.49), "gear failed to tilt its own coin")
 
 
 class TestCustomisingIt(unittest.TestCase):

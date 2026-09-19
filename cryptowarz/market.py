@@ -81,10 +81,9 @@ class MarketState:
             if c.symbol == "USDC":
                 self.levels[c.symbol] = max(0.97, min(1.03, level * rng.uniform(0.997, 1.003)))
                 continue
-            vol = 0.30 if c.meme else 0.13
-            step = rng.gauss(0.0, vol)
+            step = rng.gauss(0.0, c.vol)
             # pull back toward the middle so nothing drifts off forever
-            pull = 0.18 * math.log(c.mid / level) if level > 0 else 0.0
+            pull = c.pull * math.log(c.mid / level) if level > 0 else 0.0
             level *= math.exp(step + pull)
             self.levels[c.symbol] = max(c.low * 0.4, min(level, c.high * 1.6))
 

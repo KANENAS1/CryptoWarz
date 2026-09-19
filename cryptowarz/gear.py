@@ -43,9 +43,9 @@ from .coins import BY_SYMBOL, COINS
 #: Coins group into four kinds, because four pieces of gear is a collection and
 #: eight is a chore.
 CLASSES: Dict[str, Tuple[str, ...]] = {
-    "meme":   ("SHIB", "PEPE", "DOGE"),
-    "alt":    ("XRP", "SOL"),
-    "major":  ("ETH", "BTC"),
+    "meme":   ("SHIB", "PEPE", "BONK", "DOGE", "WIF"),
+    "alt":    ("XRP", "SUI", "SOL"),
+    "major":  ("AVAX", "ETH", "BTC"),
     "stable": ("USDC",),
 }
 CLASS_OF: Dict[str, str] = {sym: cls for cls, syms in CLASSES.items() for sym in syms}
