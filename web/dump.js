@@ -55,11 +55,36 @@ const out = {
       const mid = a => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
       return { trend_changes_per_run: mid(runs), doge_swing: Math.round(mid(swings) * 10) / 10 };
     })(),
+    history_kept: G.HISTORY_KEPT, spark_days: G.SPARK_DAYS,
+    /* a chart that lies is worse than no chart, so this is measured: a coin
+       that moved must be drawn moving, and the peg must be drawn flat */
+    chart_truth: (() => {
+      const g = new G.Game(5);
+      g.player.capacity = 1e9;
+      for (let i = 0; i < 12; i++) {
+        g.player.cash += 800;
+        const here = G.STATIONS.findIndex(s => s.name === g.station.name);
+        try { g.travel((here + 3) % G.STATIONS.length); } catch (e) { break; }
+      }
+      const range = sym => {
+        const h = g.state.history[sym];
+        const lo = Math.min(...h), hi = Math.max(...h);
+        return hi > 0 ? (hi - lo) / hi : 0;
+      };
+      return {
+        days_recorded: g.state.history.DOGE.length,
+        peg_barely_moves: range("USDC") < 0.05,
+        memecoin_really_moves: range("WIF") > 0.05,
+        first_point_is_the_opening_level: Math.abs(
+          new G.Game(3).state.history.DOGE[0] - new G.Game(3).state.levels.DOGE) < 1e-9,
+      };
+    })(),
     trends_survive_a_reload: (() => {
       const g = new G.Game(7);
       for (let i = 0; i < 6; i++) g.state.drift(g.rng);
       const back = G.saveFromDict(G.saveToDict(g));
-      return COINS_EQUAL(back.state.trends, g.state.trends);
+      return COINS_EQUAL(back.state.trends, g.state.trends)
+          && COINS_EQUAL(back.state.history, g.state.history);
     })(),
   },
   dice: (() => {

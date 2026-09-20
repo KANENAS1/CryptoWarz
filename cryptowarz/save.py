@@ -99,6 +99,10 @@ def to_dict(game) -> Dict[str, Any]:
         # prices and forget which way everything was going, which is a different
         # market wearing the same numbers.
         "trends": dict(getattr(game.state, "trends", {}) or {}),
+        # the chart the player has been reading. Dropping it on reload would
+        # blank every sparkline mid-run, which looks exactly like a bug.
+        "history": {sym: list(vals) for sym, vals
+                    in (getattr(game.state, "history", {}) or {}).items()},
         # prices and the pending shock are stored rather than regenerated:
         # regenerating would draw from the generator and desynchronise the run
         "market": {
@@ -157,6 +161,9 @@ def from_dict(data: Dict[str, Any]):
     if missing:
         raise SaveError(f"that save predates {', '.join(sorted(missing))}. Start a new run.")
     state.levels = {sym: float(v) for sym, v in data["levels"].items() if sym in known}
+    saved_history = data.get("history") or {}
+    state.history = {sym: [float(v) for v in saved_history.get(sym, [])]
+                     or [state.levels.get(sym, 0.0)] for sym in known}
     saved_trends = data.get("trends") or {}
     state.trends = {sym: float(saved_trends.get(sym, 0.0)) for sym in known}
     game.state = state

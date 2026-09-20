@@ -158,6 +158,11 @@
   .pill.perk{border-color:var(--yellow);color:var(--yellow)}
   .pill.luck{border-color:var(--green);color:var(--green)}
   /* what THIS stop adds or takes off - the thing that used to be invisible */
+  .worthwrap{margin:16px 0 6px;touch-action:pan-y}
+  .worthwrap svg{display:block;touch-action:none}
+  .spark{display:block;margin:0 0 3px auto;overflow:visible}
+  .move{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;margin-left:6px}
+  .move.up{color:#34d07a} .move.down{color:#EE352E}
   .tag.over{background:rgba(239,68,68,.16);color:#ff8f8f;border:1px solid rgba(239,68,68,.45)}
   /* The wheel's styles. These were once deleted wholesale by a tidy-up that cut
      a range of CSS by its start and end selectors - the wheel's rules happened
@@ -401,6 +406,18 @@ function tagFor(c, price){
   return "";
 }
 
+/* The number the sparkline is a picture of. Text carries the direction too, so
+   nothing here depends on telling green from red. */
+function moveFor(c){
+  const past = (game.state.history[c.symbol] || []).slice(-SPARK_DAYS);
+  if (past.length < 2) return "";
+  const change = past[past.length - 1] / past[0] - 1;
+  if (!isFinite(change) || Math.abs(change) < 0.005) return "";
+  const up = change >= 0;
+  return `<span class="move ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${
+    Math.abs(change * 100).toFixed(0)}%</span>`;
+}
+
 function hereFor(c){
   const markup = stationMarkup(game.station, c.symbol) - 1;
   if (Math.abs(markup) < 0.02) return "";
@@ -481,7 +498,9 @@ function render(){
       <div class="coinrow" data-coin="${c.symbol}" role="button" tabindex="0">
         <div><div class="sym">${c.symbol}</div></div>
         <div><div class="cname">${c.name}</div></div>
-        <div class="px"><b class="num">${fmtPrice(price)}</b>${tagFor(c, price)}${hereFor(c)}${heldLine}</div>
+        <div class="px">${sparkline(g.state.history[c.symbol] || [], { paid: h.qty > 0 ? h.cost / h.qty : 0 })}
+          <div><b class="num">${fmtPrice(price)}</b>${moveFor(c)}</div>
+          <div>${tagFor(c, price)}${hereFor(c)}</div>${heldLine}</div>
       </div>
       <div class="trade">${trade}</div>
     </div>`;
@@ -532,6 +551,136 @@ function render(){
 
   $("log").innerHTML = g.log.slice(-7).reverse()
     .map(l => `<div class="logline">${l}</div>`).join("");
+}
+
+/* -------------------------------- charts ------------------------------ */
+/* Two single-series charts, so neither needs a legend - the row or the heading
+   names it. Colours are chart colours, NOT the MTA palette the rest of the page
+   wears: #34d07a against #EE352E clears deuteranope separation (delta-E 13.2,
+   checked with a validator rather than an opinion), where the signage green
+   #00933C only managed 7.2 and would have left a red-green trading game
+   unreadable to the people most likely to be looking at it.
+   Direction is never colour alone either: the end marker is a triangle that
+   points the way the price went, and the number beside it carries a sign. */
+const UP = "#34d07a", DOWN = "#EE352E", QUIET = "#5e5e6b";
+/* Below this much total movement across the window, draw it flat. */
+const FLAT_BELOW = 0.05;
+
+function sparkline(values, opts){
+  const o = opts || {};
+  const w = o.w || 62, h = o.h || 22, pad = 3;
+  const pts = values.slice(-SPARK_DAYS);
+  if (pts.length < 2) return "";
+  const lo = Math.min(...pts), hi = Math.max(...pts);
+  // A sparkline scales its window to full height, which is right for a coin
+  // that moved and a lie for one that did not: USDC wanders 3% around a dollar
+  // and was drawn with the same dramatic peaks as a memecoin that tripled.
+  if (hi <= 0 || (hi - lo) / hi < FLAT_BELOW) {
+    const mid = (h / 2).toFixed(1);
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"
+                 role="img" aria-label="flat"><line x1="${pad}" x2="${w - pad}"
+                 y1="${mid}" y2="${mid}" stroke="${QUIET}" stroke-width="2"
+                 stroke-linecap="round"/></svg>`;
+  }
+  const span = (hi - lo) || Math.abs(hi) || 1;
+  const x = i => pad + i * (w - pad * 2) / (pts.length - 1);
+  const y = v => h - pad - ((v - lo) / span) * (h - pad * 2);
+  const rising = pts[pts.length - 1] >= pts[0];
+  const hue = rising ? UP : DOWN;
+  const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  // the last few days in the accent, the rest recessive. Drawn as its own path
+  // over its own points: a dash-offset trick highlighted the FIRST segment
+  // instead, which quietly told the player the opposite of what happened.
+  const from = Math.max(0, pts.length - 4);
+  const recent = pts.slice(from)
+    .map((v, i) => `${i ? "L" : "M"}${x(from + i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const ex = x(pts.length - 1), ey = y(pts[pts.length - 1]);
+  // your average cost, if you hold any - the one line that turns a shape into a
+  // decision, because "is it up" matters far less than "is it up on ME"
+  let mine = "";
+  if (o.paid > 0 && o.paid >= lo && o.paid <= hi) {
+    mine = `<line x1="${pad}" x2="${w - pad}" y1="${y(o.paid).toFixed(1)}"
+                  y2="${y(o.paid).toFixed(1)}" stroke="#f2f2f4" stroke-width="1"
+                  stroke-dasharray="2 2" opacity=".55"/>`;
+  }
+  const tri = rising
+    ? `${ex},${(ey - 3.4).toFixed(1)} ${(ex - 3).toFixed(1)},${(ey + 2.2).toFixed(1)} ${(ex + 3).toFixed(1)},${(ey + 2.2).toFixed(1)}`
+    : `${ex},${(ey + 3.4).toFixed(1)} ${(ex - 3).toFixed(1)},${(ey - 2.2).toFixed(1)} ${(ex + 3).toFixed(1)},${(ey - 2.2).toFixed(1)}`;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"
+               role="img" aria-label="${pts.length} day trend, ${rising ? "up" : "down"}">
+    ${mine}
+    <path d="${line}" fill="none" stroke="${QUIET}" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${recent}" fill="none" stroke="${hue}" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+    <polygon points="${tri}" fill="${hue}" stroke="var(--panel)" stroke-width="2"
+             stroke-linejoin="round" paint-order="stroke"/>
+  </svg>`;
+}
+
+/* The run, as one line. A single series, so the heading names it and no legend
+   is needed; the zero line is the only other thing drawn, because "did I ever
+   get above water" is the question the chart exists to answer. */
+function worthChart(values){
+  const w = 320, h = 132, padL = 6, padR = 6, padT = 10, padB = 18;
+  const pts = values.filter(v => isFinite(v));
+  if (pts.length < 2) return "";
+  const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts);
+  const span = (hi - lo) || 1;
+  const x = i => padL + i * (w - padL - padR) / (pts.length - 1);
+  const y = v => padT + (1 - (v - lo) / span) * (h - padT - padB);
+  const end = pts[pts.length - 1];
+  const hue = end >= 0 ? UP : DOWN;
+  const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const wash = `${line}L${x(pts.length - 1).toFixed(1)},${y(0).toFixed(1)}L${x(0).toFixed(1)},${y(0).toFixed(1)}Z`;
+  return `<svg id="worthart" viewBox="0 0 ${w} ${h}" width="100%" height="${h}"
+               role="img" aria-label="net worth across ${pts.length} days, ending ${fmtMoney(end)}">
+    <path d="${wash}" fill="${hue}" opacity=".10"/>
+    <line x1="${padL}" x2="${w - padR}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"
+          stroke="#2c2c34" stroke-width="1"/>
+    <text x="${padL}" y="${(y(0) - 4).toFixed(1)}" fill="#5e5e6b" font-size="9"
+          letter-spacing=".08em">BROKE EVEN</text>
+    <path d="${line}" fill="none" stroke="${hue}" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(pts.length - 1).toFixed(1)}" cy="${y(end).toFixed(1)}" r="4"
+            fill="${hue}" stroke="#0a0a0c" stroke-width="2"/>
+    <text x="${padL}" y="${h - 5}" fill="#5e5e6b" font-size="9" letter-spacing=".08em">DAY 1</text>
+    <text x="${w - padR}" y="${h - 5}" fill="#5e5e6b" font-size="9" letter-spacing=".08em"
+          text-anchor="end">DAY ${pts.length}</text>
+    <g id="worthcross" style="display:none">
+      <line stroke="#f2f2f4" stroke-width="1" opacity=".4" y1="${padT}" y2="${h - padB}"/>
+      <circle r="4" fill="#f2f2f4" stroke="#0a0a0c" stroke-width="2"/>
+    </g>
+  </svg>
+  <div class="note" id="worthread">Drag across to read any day.</div>`;
+}
+
+/* A line chart on a phone still gets a hover layer - it is just a finger. */
+function wireWorthChart(values){
+  const art = $("worthart");
+  if (!art) return;
+  const pts = values.filter(v => isFinite(v));
+  const move = e => {
+    const box = art.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    const frac = Math.max(0, Math.min(1, (touch.clientX - box.left) / box.width));
+    const i = Math.round(frac * (pts.length - 1));
+    const w = 320, padL = 6, padR = 6, padT = 10, padB = 18, h = 132;
+    const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = (hi - lo) || 1;
+    const cx = padL + i * (w - padL - padR) / (pts.length - 1);
+    const cy = padT + (1 - (pts[i] - lo) / span) * (h - padT - padB);
+    const cross = $("worthcross");
+    cross.style.display = "";
+    cross.querySelector("line").setAttribute("x1", cx);
+    cross.querySelector("line").setAttribute("x2", cx);
+    cross.querySelector("circle").setAttribute("cx", cx);
+    cross.querySelector("circle").setAttribute("cy", cy);
+    $("worthread").textContent = `Day ${i + 1} · ${fmtMoney(pts[i])}`;
+    if (e.cancelable) e.preventDefault();
+  };
+  art.addEventListener("pointermove", move);
+  art.addEventListener("pointerdown", move);
+  art.addEventListener("touchmove", move, { passive: false });
 }
 
 /* ------------------------------- a whisper ---------------------------- */
@@ -841,6 +990,11 @@ function showFinal(){
            + (slotsLeft !== null
               ? ` You still have ranked run ${slotsLeft + 1} of ${RUNS_PER_DAY} today.` : "")
          : "This run posts nothing and unlocks nothing - and it didn't spend a ranked run either."}</div>`;
+  // the run as a picture, above the accounting - a number tells you the result,
+  // a line tells you the story, and the story is the thing worth another go
+  const story = g.stats.worth_by_day || [];
+  $("fscore").insertAdjacentHTML("afterend",
+    story.length > 2 ? `<div class="worthwrap">${worthChart(story)}</div>` : "");
   $("fbreak").insertAdjacentHTML("afterend", today + gearNote + (earned.length
     ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
          ${earned.map(a => `<span class="pill perk">${a.name.toUpperCase()}</span>`).join("")}
@@ -869,6 +1023,7 @@ function showFinal(){
     $("fverdict").textContent = `Number ${rank + 1} on your board. ` + $("fverdict").textContent;
   }
   openSheet("over");
+  wireWorthChart(story);
 }
 
 /* ------------------------- progression & setup ------------------------- */

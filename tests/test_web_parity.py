@@ -436,8 +436,22 @@ class TestMarketShapeParity(unittest.TestCase):
         self.assertAlmostEqual(self.js["shape"]["doge_swing"], statistics.median(swings),
                                delta=statistics.median(swings) * 0.45)
 
-    def test_the_port_carries_the_run_through_a_reload(self):
+    def test_the_port_carries_the_run_and_the_chart_through_a_reload(self):
         self.assertTrue(self.js["trends_survive_a_reload"])
+
+    def test_the_port_keeps_the_same_amount_of_history(self):
+        from cryptowarz.market import HISTORY_KEPT, SPARK_DAYS
+        self.assertEqual(self.js["history_kept"], HISTORY_KEPT)
+        self.assertEqual(self.js["spark_days"], SPARK_DAYS)
+
+    def test_the_port_records_a_day_per_day(self):
+        self.assertEqual(self.js["chart_truth"]["days_recorded"], 13)
+        self.assertTrue(self.js["chart_truth"]["first_point_is_the_opening_level"])
+
+    def test_the_port_would_draw_the_peg_flat_and_the_memecoin_moving(self):
+        """A sparkline scales its window, so a flat coin must be KNOWN flat."""
+        self.assertTrue(self.js["chart_truth"]["peg_barely_moves"])
+        self.assertTrue(self.js["chart_truth"]["memecoin_really_moves"])
 
 
 @requires_node

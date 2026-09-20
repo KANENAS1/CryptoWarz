@@ -183,6 +183,12 @@ const MEME_PUMPS = [
    builds over four days and then rolls over is something a player can see
    coming, be wrong about, and act on. Noise alone is none of those. */
 const TREND_FLIP = 0.22, TREND_STRENGTH = 0.55;
+/* How many days of level history to keep per coin, and how many a sparkline
+   draws. The game has always moved like this and never let anyone SEE it - a
+   market game showing one number per coin is a trading screen with the chart
+   switched off, and a rumour that a coin is running is unusable if you cannot
+   check whether it has been. */
+const HISTORY_KEPT = 20, SPARK_DAYS = 14;
 
 function MarketState(rng) {
   this.levels = {};
@@ -194,7 +200,17 @@ function MarketState(rng) {
     // $0.78, which made the safe asset the best trade on the board
     this.levels[c.symbol] = Math.max(c.low, Math.min(c.mid * rng.uniform(0.8, 1.2), c.high));
   }
+  /* seeded AFTER the opening levels exist */
+  this.history = {};
+  for (const c of COINS) this.history[c.symbol] = [this.levels[c.symbol]];
 }
+MarketState.prototype.remember = function () {
+  for (const c of COINS) {
+    const past = (this.history[c.symbol] = this.history[c.symbol] || []);
+    past.push(this.levels[c.symbol]);
+    if (past.length > HISTORY_KEPT) past.splice(0, past.length - HISTORY_KEPT);
+  }
+};
 MarketState.prototype.running = function (sym) { return this.trends[sym] || 0; };
 MarketState.prototype.drift = function (rng) {
   for (const c of COINS) {
@@ -211,6 +227,7 @@ MarketState.prototype.drift = function (rng) {
     level *= Math.exp(step + pull);
     this.levels[c.symbol] = Math.max(c.low * 0.4, Math.min(level, c.high * 1.6));
   }
+  this.remember();
 };
 MarketState.prototype.apply = function (symbol, factor, c) {
   const level = this.levels[symbol] * factor;
@@ -1115,6 +1132,10 @@ function saveToDict(g) {
        forgets which way everything was going - a different market wearing the
        same numbers. */
     trends: Object.assign({}, g.state.trends || {}),
+    /* the chart the player has been reading. Dropping it on reload would blank
+       every sparkline mid-run, which looks exactly like a bug. */
+    history: Object.fromEntries(Object.entries(g.state.history || {})
+      .map(([sym, vals]) => [sym, vals.slice()])),
     market: {
       prices: Object.assign({}, g.market.prices),
       shock: g.market.shock ? { symbol: g.market.shock.symbol,
@@ -1152,6 +1173,12 @@ function saveFromDict(data) {
     if (data.levels[c.symbol] === undefined) throw new Error("that save predates " + c.symbol);
   }
   g.state.levels = Object.assign({}, data.levels);
+  const savedHistory = data.history || {};
+  g.state.history = {};
+  for (const c of COINS) {
+    const past = (savedHistory[c.symbol] || []).map(Number).filter(v => v > 0);
+    g.state.history[c.symbol] = past.length ? past : [g.state.levels[c.symbol]];
+  }
   const savedTrends = data.trends || {};
   g.state.trends = {};
   for (const c of COINS) g.state.trends[c.symbol] = Number(savedTrends[c.symbol]) || 0;
@@ -1222,6 +1249,7 @@ if (typeof module !== "undefined") {
                      WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
                      luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
                      stationMarkup, BIAS_COMPRESSION, TREND_FLIP, TREND_STRENGTH,
+                     HISTORY_KEPT, SPARK_DAYS,
                      TIP_CHANCE, TIP_ACCURACY, TIP_MIN_RUN, TIP_FRESH_FOR,
                      RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
                      credit_wheel: creditWheel, WHEEL, WHEEL_LINES,

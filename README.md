@@ -450,6 +450,41 @@ The cost is that the naive strategy gets better: buy-the-cheapest goes from 52%
 to 60% solvent. That's the trade, stated plainly — being stuck for a whole run
 with nothing to do is a worse failure than a strategy being slightly too good.
 
+## You can finally see it
+
+The game recorded your net worth every single day of every run and never drew
+it once, and kept no price history at all. It moved the way it moves and never
+let anyone watch — one number per coin is a trading screen with the chart
+switched off, and a whisper that a coin is *about to run* is unusable if you
+can't check whether it has been.
+
+**Every coin row now carries a fortnight.** A sparkline, recessive for the
+history and accented for the last few days, with a triangle end-marker pointing
+the way it went. And the line that turns a shape into a decision: **a dashed
+line at your average cost**, so "is it up" becomes "is it up *on me*".
+
+**The end screen draws the run as one line** — net worth across thirty days,
+over a labelled break-even line, with a crosshair you can drag to read any day.
+A number tells you the result; a line tells you the story.
+
+The terminal gets the same fortnight in block characters.
+
+**Two things a chart can get wrong, both handled:**
+
+*A sparkline scales its own window to full height.* That's right for a coin
+that moved and a fabrication for one that didn't — USDC wanders 3% around a
+dollar and was being drawn with the same dramatic peaks as a memecoin that
+tripled. Below 5% total movement the line is drawn **flat**, because flat is
+the truth. There's a test for it on both front ends.
+
+*Red and green are the two colours most people can't tell apart.* The chart
+colours are **not** the MTA palette the rest of the page wears: `#34d07a`
+against `#EE352E` clears deuteranope separation at ΔE 13.2 — checked with a
+validator, not an opinion — where the signage green `#00933C` managed only 7.2
+and would have left a red-green trading game unreadable to exactly the people
+most likely to be squinting at it. Direction is never colour alone anyway: the
+end-marker is a triangle and the number beside it carries a sign.
+
 ## Pumps, dumps, and the reverse
 
 A random walk wanders. It does not pump, and it does not dump. So every coin
@@ -564,7 +599,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 251 tests, no install needed
+python3 -m unittest discover -s tests     # 271 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

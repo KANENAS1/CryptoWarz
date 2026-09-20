@@ -79,11 +79,51 @@ def header(game: Game) -> str:
     return f"{left}\n{right}"
 
 
+#: Eight heights of block, which is all the resolution a terminal has and all a
+#: shape needs. The terminal gets the same fortnight the phone draws.
+BLOCKS = "▁▂▃▄▅▆▇█"
+
+
+#: A sparkline scales its own window to full height, which is right for a coin
+#: that moved and a lie for one that did not: USDC wanders 3% around a dollar
+#: and was drawn with the same dramatic peaks as a memecoin that tripled. Below
+#: this much total movement, the line is drawn flat, because flat is the truth.
+FLAT_BELOW = 0.05
+
+
+def spark(values, width: int = 12) -> str:
+    """A fortnight of a coin, in one column of a table."""
+    from .market import SPARK_DAYS
+
+    points = [v for v in list(values)[-min(SPARK_DAYS, width):] if v > 0]
+    if len(points) < 2:
+        return " " * width
+    low, high = min(points), max(points)
+    if high <= 0 or (high - low) / high < FLAT_BELOW:
+        return ("▄" * len(points)).rjust(width)
+    span = high - low
+    drawn = "".join(BLOCKS[min(7, max(0, int((v - low) / span * 7.999)))] for v in points)
+    return drawn.rjust(width)
+
+
+def qty_str(qty: float) -> str:
+    """A holding, at a sensible number of decimals for its size.
+
+    Six decimals on thirteen million SHIB is eighteen characters of false
+    precision that shunts the whole table sideways.
+    """
+    if qty >= 1_000:
+        return f"{qty:,.0f}"
+    if qty >= 1:
+        return f"{qty:,.3f}"
+    return f"{qty:,.6f}"
+
+
 def market_table(game: Game) -> str:
     from .market import station_markup
 
-    rows = [c(f"  {'COIN':<6}{'PRICE':>15}{'YOU HOLD':>18}{'WORTH':>14}{'AVG PAID':>14}"
-              f"  {'MARKET':<7} {'THIS STOP':<10}", GREY)]
+    rows = [c(f"  {'COIN':<6}{'PRICE':>15}{'14 DAYS':>14}{'YOU HOLD':>16}{'WORTH':>13}"
+              f"{'AVG PAID':>13}  {'MARKET':<6}  {'THIS STOP':<10}", GREY)]
     for coin in COINS:
         p = game.market.price(coin.symbol)
         h = game.player.wallet.get(coin.symbol)
@@ -95,24 +135,32 @@ def market_table(game: Game) -> str:
         # turning on them.
         span = coin.high - coin.low
         pos = (p - coin.low) / span if span > 0 else 0.5
+        # six wide, because the heading above it is the six-letter word MARKET
+        # and a format spec never truncates - {'MARKET':<5} is still six chars,
+        # which is exactly how this column came to sit one place off its rows
         if pos <= 0.2:
-            tag, col = "CHEAP", GREEN
+            tag, col = "CHEAP ", GREEN
         elif pos >= 0.8:
-            tag, col = "DEAR ", RED
+            tag, col = "DEAR  ", RED
         else:
-            tag, col = "     ", GREY
+            tag, col = "      ", GREY
         markup = station_markup(game.station, coin.symbol) - 1.0
+        # padded to a fixed width, because a column whose content varies in
+        # length is a column that makes the whole table ragged one row at a time
         if abs(markup) < 0.02:
-            here, here_col = "      ", GREY
-        elif markup > 0:
-            here, here_col = f"{markup:+.0%} here", RED
+            here, here_col = "".ljust(10), GREY
         else:
-            here, here_col = f"{markup:+.0%} here", GREEN
-        held = f"{qty:,.6f}" if qty > 0 else c("-", GREY)
+            here = f"{markup:+.0%} here".ljust(10)
+            here_col = RED if markup > 0 else GREEN
+        held = qty_str(qty) if qty > 0 else c("-", GREY)
+        past = game.state.history.get(coin.symbol, [])
+        trail = spark(past)
+        rising = len(past) >= 2 and past[-1] >= past[-min(len(past), 14)]
         rows.append(
             f"  {c(coin.symbol, WHITE, True):<6}{price(p):>15}"
-            f"{held:>18}{(money(worth) if qty > 0 else '-'):>14}"
-            f"{(price(h.avg_price) if h and qty > 0 else '-'):>14}  {c(tag, col)}"
+            f"  {c(trail, GREEN if rising else RED)}"
+            f"{held:>16}{(money(worth) if qty > 0 else '-'):>13}"
+            f"{(price(h.avg_price) if h and qty > 0 else '-'):>13}  {c(tag, col)}"
             f"  {c(here, here_col)}"
         )
     if game.market.headline:

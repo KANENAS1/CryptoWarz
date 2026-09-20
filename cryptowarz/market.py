@@ -70,6 +70,11 @@ TREND_FLIP = 0.22
 #: days and then rolls over is a thing a player can see coming, be wrong about,
 #: and act on. Noise alone is none of those.
 TREND_STRENGTH = 0.55
+#: How many days of level history to keep per coin. The chart shows a fortnight;
+#: the rest is slack so a reload never draws a shorter line than the player had.
+HISTORY_KEPT = 20
+#: How many of those a sparkline draws.
+SPARK_DAYS = 14
 
 
 class MarketState:
@@ -88,6 +93,14 @@ class MarketState:
             # a risk-free 16%. drift() clamped it every later day; day one did
             # not, so the exploit was only ever available on the first screen.
             self.levels[c.symbol] = max(c.low, min(c.mid * rng.uniform(0.8, 1.2), c.high))
+        #: The last few days of every coin's level - filled AFTER the opening
+        #: levels exist, which the first version of this line did not do. The
+        #: game has always moved like this and never let anyone see it: a market
+        #: game showing one number per coin is a trading screen with the chart
+        #: switched off, and a rumour that a coin is running is unusable if you
+        #: cannot check whether it has been.
+        self.history: Dict[str, List[float]] = {c.symbol: [self.levels[c.symbol]]
+                                                for c in COINS}
 
     def drift(self, rng: random.Random) -> None:
         """One day of movement: a run, some noise, and a pull off the extremes."""
@@ -105,6 +118,15 @@ class MarketState:
             pull = c.pull * math.log(c.mid / level) if level > 0 else 0.0
             level *= math.exp(step + pull)
             self.levels[c.symbol] = max(c.low * 0.4, min(level, c.high * 1.6))
+        self.remember()
+
+    def remember(self) -> None:
+        """Append today's levels to the history, keeping only what a chart needs."""
+        for c in COINS:
+            past = self.history.setdefault(c.symbol, [])
+            past.append(self.levels[c.symbol])
+            if len(past) > HISTORY_KEPT:
+                del past[:len(past) - HISTORY_KEPT]
 
     def running(self, symbol: str) -> float:
         """How hard this coin is currently running, and which way."""
