@@ -463,11 +463,31 @@ history and accented for the last few days, with a triangle end-marker pointing
 the way it went. And the line that turns a shape into a decision: **a dashed
 line at your average cost**, so "is it up" becomes "is it up *on me*".
 
+**The percentage answers whichever question you're actually asking.** Holding
+it, you get **your** number — what you paid against what this stop pays right
+now, labelled `YOU`. That's your sellable profit, and it's the same gap the
+dashed cost line draws on the sparkline. Not holding it, you get the coin's own
+fortnight, labelled `14D` and greyed back, because there is no "since I bought"
+to report. Two different numbers, two different labels: an unlabelled
+percentage that silently changes meaning is worse than no percentage.
+
+Measured against the market *level* would have been the neater-looking number
+and the wrong one — the level is abstract, and what you can actually sell for
+is the station price, which is the figure printed beside it.
+
 **The end screen draws the run as one line** — net worth across thirty days,
 over a labelled break-even line, with a crosshair you can drag to read any day.
 A number tells you the result; a line tells you the story.
 
-The terminal gets the same fortnight in block characters.
+The terminal gets the same fortnight in block characters, and its **AVG PAID**
+column is now **YOUR P/L** — the average price was a number you had to do
+arithmetic on; the profit is the arithmetic.
+
+Percentages are written at a precision that earns its place: `4.4%` because the
+decimal is a real difference from 4%, `179%` because `179.2%` is three
+characters of noise. And the station-markup chip only appears when the stop is
+**8% or more** off the market — at a 2% floor nearly every row carried one,
+which is wallpaper rather than a signal.
 
 **Two things a chart can get wrong, both handled:**
 
@@ -599,7 +619,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 271 tests, no install needed
+python3 -m unittest discover -s tests     # 278 tests, no install needed
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells

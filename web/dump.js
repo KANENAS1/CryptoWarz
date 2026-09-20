@@ -79,6 +79,18 @@ const out = {
           new G.Game(3).state.history.DOGE[0] - new G.Game(3).state.levels.DOGE) < 1e-9,
       };
     })(),
+    /* the percentage beside a held coin must be YOUR profit at THIS stop */
+    profit_reads: (() => {
+      const g = new G.Game(5);
+      g.player.cash = 60000; g.player.capacity = 1e9;
+      g.buy("DOGE", g.maxBuyable("DOGE") * 0.2);
+      const h = g.player.wallet.DOGE;
+      const paid = h.cost / h.qty;
+      return {
+        against_station_price: Math.round((g.market.prices.DOGE / paid - 1) * 1e6) / 1e6,
+        against_level: Math.round((g.state.levels.DOGE / paid - 1) * 1e6) / 1e6,
+      };
+    })(),
     trends_survive_a_reload: (() => {
       const g = new G.Game(7);
       for (let i = 0; i < 6; i++) g.state.drift(g.rng);

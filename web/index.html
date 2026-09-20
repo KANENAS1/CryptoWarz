@@ -161,8 +161,14 @@
   .worthwrap{margin:16px 0 6px;touch-action:pan-y}
   .worthwrap svg{display:block;touch-action:none}
   .spark{display:block;margin:0 0 3px auto;overflow:visible}
-  .move{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;margin-left:6px}
-  .move.up{color:#34d07a} .move.down{color:#EE352E}
+  /* one quiet row of context, one loud line of price - the row was two
+     competing badge rows and a number */
+  .pxline{display:flex;align-items:baseline;justify-content:flex-end;gap:7px}
+  .chips{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;margin-top:3px}
+  .move{font-family:var(--mono);font-size:11px;letter-spacing:.02em;white-space:nowrap}
+  .move i{font-style:normal;font-size:8.5px;letter-spacing:.1em;opacity:.65;margin-left:3px;
+          text-transform:uppercase}
+  .move.up{color:#34d07a} .move.down{color:#EE352E} .move.quiet{color:var(--dim)}
   .tag.over{background:rgba(239,68,68,.16);color:#ff8f8f;border:1px solid rgba(239,68,68,.45)}
   /* The wheel's styles. These were once deleted wholesale by a tidy-up that cut
      a range of CSS by its start and end selectors - the wheel's rules happened
@@ -406,21 +412,46 @@ function tagFor(c, price){
   return "";
 }
 
-/* The number the sparkline is a picture of. Text carries the direction too, so
-   nothing here depends on telling green from red. */
-function moveFor(c){
+/* The percentage answers the question the player is actually asking.
+   HOLDING IT: what you paid against what this stop pays now - your real,
+   sellable profit, and the same gap the dashed cost line draws on the spark.
+   NOT HOLDING IT: the coin's own fortnight, because there is no "since I
+   bought" to report.
+   These are different numbers and they get different labels, since an
+   unlabelled percentage that silently changes meaning is worse than none. */
+/* One decimal only where one decimal means something. "179.2%" is three
+   characters of noise; "4.4%" is a real difference from 4%. */
+function pct(frac){
+  const v = Math.abs(frac * 100);
+  return (v < 10 ? v.toFixed(1) : Math.round(v)) + "%";
+}
+
+function moveFor(c, price, held){
+  if (held && held.qty > 0 && held.cost > 0) {
+    const paid = held.cost / held.qty;
+    const pl = price / paid - 1;
+    if (!isFinite(pl)) return "";
+    const up = pl >= 0;
+    return `<span class="move ${up ? "up" : "down"}" title="since you bought">
+      ${up ? "▲" : "▼"} ${pct(pl)}<i>you</i></span>`;
+  }
   const past = (game.state.history[c.symbol] || []).slice(-SPARK_DAYS);
   if (past.length < 2) return "";
   const change = past[past.length - 1] / past[0] - 1;
   if (!isFinite(change) || Math.abs(change) < 0.005) return "";
   const up = change >= 0;
-  return `<span class="move ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${
-    Math.abs(change * 100).toFixed(0)}%</span>`;
+  return `<span class="move quiet">${up ? "▲" : "▼"} ${pct(change)}<i>14d</i></span>`;
 }
+
+/* Only when this stop is far enough off the market to change a decision. At a
+   2% floor almost every row carried a chip, which is wallpaper rather than a
+   signal - the number is still exact in the terminal table for anyone counting
+   pennies, and the sparkline and your own P/L are the things to read first. */
+const HERE_WORTH_SAYING = 0.08;
 
 function hereFor(c){
   const markup = stationMarkup(game.station, c.symbol) - 1;
-  if (Math.abs(markup) < 0.02) return "";
+  if (Math.abs(markup) < HERE_WORTH_SAYING) return "";
   const pct = (markup > 0 ? "+" : "") + Math.round(markup * 100) + "%";
   return `<span class="tag ${markup > 0 ? "over" : "under"}">${pct} HERE</span>`;
 }
@@ -499,8 +530,8 @@ function render(){
         <div><div class="sym">${c.symbol}</div></div>
         <div><div class="cname">${c.name}</div></div>
         <div class="px">${sparkline(g.state.history[c.symbol] || [], { paid: h.qty > 0 ? h.cost / h.qty : 0 })}
-          <div><b class="num">${fmtPrice(price)}</b>${moveFor(c)}</div>
-          <div>${tagFor(c, price)}${hereFor(c)}</div>${heldLine}</div>
+          <div class="pxline"><b class="num">${fmtPrice(price)}</b>${moveFor(c, price, h)}</div>
+          <div class="chips">${tagFor(c, price)}${hereFor(c)}</div>${heldLine}</div>
       </div>
       <div class="trade">${trade}</div>
     </div>`;

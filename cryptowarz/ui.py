@@ -106,6 +106,16 @@ def spark(values, width: int = 12) -> str:
     return drawn.rjust(width)
 
 
+def pct_str(frac: float) -> str:
+    """A percentage at a precision that earns its place.
+
+    "179.2%" is three characters of noise; "4.4%" is a real difference from 4%.
+    """
+    value = abs(frac) * 100.0
+    body = f"{value:.1f}" if value < 10 else f"{value:.0f}"
+    return f"{'+' if frac >= 0 else '-'}{body}%"
+
+
 def qty_str(qty: float) -> str:
     """A holding, at a sensible number of decimals for its size.
 
@@ -123,7 +133,7 @@ def market_table(game: Game) -> str:
     from .market import station_markup
 
     rows = [c(f"  {'COIN':<6}{'PRICE':>15}{'14 DAYS':>14}{'YOU HOLD':>16}{'WORTH':>13}"
-              f"{'AVG PAID':>13}  {'MARKET':<6}  {'THIS STOP':<10}", GREY)]
+              f"{'YOUR P/L':>13}  {'MARKET':<6}  {'THIS STOP':<10}", GREY)]
     for coin in COINS:
         p = game.market.price(coin.symbol)
         h = game.player.wallet.get(coin.symbol)
@@ -153,6 +163,13 @@ def market_table(game: Game) -> str:
             here = f"{markup:+.0%} here".ljust(10)
             here_col = RED if markup > 0 else GREEN
         held = qty_str(qty) if qty > 0 else c("-", GREY)
+        # what you paid against what this stop pays now - the sellable number,
+        # which is what a player means by "how am I doing on this"
+        if h and qty > 0 and h.cost > 0:
+            move = p / h.avg_price - 1.0
+            pl = c(pct_str(move), GREEN if move >= 0 else RED)
+        else:
+            pl = c("-", GREY)
         past = game.state.history.get(coin.symbol, [])
         trail = spark(past)
         rising = len(past) >= 2 and past[-1] >= past[-min(len(past), 14)]
@@ -160,7 +177,7 @@ def market_table(game: Game) -> str:
             f"  {c(coin.symbol, WHITE, True):<6}{price(p):>15}"
             f"  {c(trail, GREEN if rising else RED)}"
             f"{held:>16}{(money(worth) if qty > 0 else '-'):>13}"
-            f"{(price(h.avg_price) if h and qty > 0 else '-'):>13}  {c(tag, col)}"
+            f"{pl:>13}  {c(tag, col)}"
             f"  {c(here, here_col)}"
         )
     if game.market.headline:

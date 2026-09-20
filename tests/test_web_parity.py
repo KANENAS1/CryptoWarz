@@ -439,6 +439,28 @@ class TestMarketShapeParity(unittest.TestCase):
     def test_the_port_carries_the_run_and_the_chart_through_a_reload(self):
         self.assertTrue(self.js["trends_survive_a_reload"])
 
+    def test_the_port_measures_profit_from_the_station_price(self):
+        """Compared as a RELATIONSHIP, never as a value.
+
+        The two generators produce different markets from one seed, so the
+        actual percentages cannot match and asserting they do only produces a
+        test that fails for the wrong reason. What must hold on both sides is
+        that the number is computed against what this stop pays rather than the
+        abstract market level - so the dump reports both, and they must differ
+        wherever the station has an opinion about the coin.
+        """
+        reads = self.js["profit_reads"]
+        self.assertNotAlmostEqual(reads["against_station_price"], reads["against_level"],
+                                  places=3,
+                                  msg="the port is pricing your bag off the market level")
+
+    def test_the_page_computes_profit_the_way_the_terminal_does(self):
+        """Structural, because the web formula lives in the page, not the port."""
+        html = (WEB / "index.html").read_text()
+        body = html[html.index("function moveFor("):html.index("function hereFor(")]
+        self.assertIn("held.cost / held.qty", body)
+        self.assertIn("price / paid - 1", body)
+
     def test_the_port_keeps_the_same_amount_of_history(self):
         from cryptowarz.market import HISTORY_KEPT, SPARK_DAYS
         self.assertEqual(self.js["history_kept"], HISTORY_KEPT)
