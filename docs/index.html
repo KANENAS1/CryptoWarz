@@ -1,0 +1,3228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="CryptoWarz - buy low, sell high, ride the subway, dodge the SEC.">
+<title>CryptoWarz</title>
+<style>
+  /* One visual world on purpose: MTA station signage. Helvetica has been the
+     subway's typeface since 1989; the ground is signage black and every route
+     bullet below uses its real MTA colour. Single-theme by choice - every
+     colour is painted explicitly so it holds on any host background. */
+  :root{
+    --ink:#0a0a0c; --panel:#16161a; --panel2:#1e1e24; --rule:#2c2c34;
+    --paper:#f2f2f4; --dim:#9a9aa6; --faint:#5e5e6b;
+    --green:#00933C;   /* 4·5·6 */
+    --red:#EE352E;     /* 1·2·3 */
+    --yellow:#FCCC0A;  /* N·Q·R·W */
+    --purple:#B933AD;  /* 7 */
+    --blue:#0039A6;    /* A·C·E, SIR */
+    --orange:#FF6319;  /* B·D·F·M */
+    --grey:#A7A9AC;    /* L */
+    --sans:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{background:var(--ink);color:var(--paper);font-family:var(--sans);
+       font-size:15px;line-height:1.35;overflow:hidden}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  .app{display:flex;flex-direction:column;height:100%;max-width:620px;margin:0 auto}
+
+  /* ---------- signage header ---------- */
+  header{background:#000;border-bottom:2px solid var(--rule);
+         padding:10px 16px 9px;padding-top:calc(10px + env(safe-area-inset-top,0px));flex:none}
+  .stationline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .station{font-size:19px;font-weight:700;letter-spacing:-.015em}
+  .bul{width:21px;height:21px;border-radius:50%;display:inline-flex;align-items:center;
+       justify-content:center;font-size:12px;font-weight:700;color:#fff;flex:none}
+  .bul.dark{color:#000}
+  .bul.sir{font-size:8px;letter-spacing:-.04em}
+  .flavor{color:var(--dim);font-size:12.5px;margin-top:3px}
+  .stats{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap}
+  .stat{display:flex;flex-direction:column;line-height:1.15}
+  .stat span{font-size:9.5px;letter-spacing:.14em;color:var(--dim)}
+  .stat b{font-size:16px;font-weight:700}
+  .up{color:var(--green)} .down{color:var(--red)} .flat{color:var(--paper)}
+  .dayband{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+  .day{font-size:10px;letter-spacing:.2em;color:var(--yellow);font-weight:700}
+  .cap{flex:1;height:5px;background:var(--rule);border-radius:3px;overflow:hidden;max-width:140px}
+  .cap i{display:block;height:100%;background:var(--yellow)}
+
+  /* ---------- scroll body ---------- */
+  main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 8px}
+  .alert{background:var(--yellow);color:#000;font-weight:700;font-size:13px;
+         padding:9px 12px;border-radius:3px;margin:10px 0}
+  .alert.bad{background:var(--red);color:#fff}
+  h2{font-size:10px;letter-spacing:.2em;color:var(--dim);font-weight:700;
+     margin:16px 0 7px;text-transform:uppercase}
+
+  .coin{border-bottom:1px solid var(--rule)}
+  .coinrow{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;
+           padding:11px 2px;cursor:pointer;min-height:52px}
+  .sym{font-weight:700;font-size:15px}
+  .cname{color:var(--faint);font-size:11px;margin-top:1px}
+  .px{text-align:right}
+  .px b{font-size:15px;font-weight:700}
+  .tag{font-size:9px;letter-spacing:.12em;font-weight:700;padding:1px 5px;border-radius:2px;margin-left:6px}
+  .tag.cheap{background:var(--green);color:#fff}
+  .tag.dear{background:var(--red);color:#fff}
+  .held{color:var(--yellow);font-size:11px;margin-top:2px;text-align:right}
+  .trade{padding:4px 2px 13px;display:none}
+  .coin.open .trade{display:block}
+  .coin.open{background:var(--panel)}
+  .btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:7px}
+  button{font-family:var(--sans);font-size:13px;font-weight:700;letter-spacing:.04em;
+         border:1px solid var(--rule);background:var(--panel2);color:var(--paper);
+         border-radius:3px;padding:11px 13px;min-height:44px;cursor:pointer;flex:1;min-width:64px}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.3}
+  button:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+  button.buy{background:var(--green);border-color:var(--green);color:#fff}
+  button.sell{background:var(--red);border-color:var(--red);color:#fff}
+  button.go{background:var(--yellow);border-color:var(--yellow);color:#000}
+  .note{color:var(--faint);font-size:11.5px;margin-top:6px}
+  .alert{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+  .alert .x{flex:none;opacity:.5;font-weight:700}
+
+  .svc{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+  .logbox{margin-top:14px;border-top:1px solid var(--rule);padding-top:9px}
+  .logline{color:var(--dim);font-size:12px;padding:2.5px 0}
+  .logline:first-child{color:var(--paper)}
+
+  /* ---------- bottom bar ---------- */
+  footer{flex:none;background:#000;border-top:2px solid var(--rule);padding:9px 16px;
+         padding-bottom:calc(9px + env(safe-area-inset-bottom,0px));display:flex;gap:9px;align-items:center}
+  footer button{flex:1}
+
+  /* ---------- overlay ---------- */
+  .sheet{position:fixed;inset:0;background:rgba(5,5,7,.96);z-index:50;display:none;
+         flex-direction:column;padding:0 16px;padding-top:calc(14px + env(safe-area-inset-top,0px));
+         padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+  .sheet.on{display:flex}
+  .sheet h3{font-size:12px;letter-spacing:.2em;color:var(--yellow);margin:0 0 12px;font-weight:700}
+  /* min-height:0 is load-bearing. A flex item defaults to min-height:auto,
+     which refuses to shrink below its content - so a long list overflows the
+     sheet and covers the button underneath instead of scrolling. With ten
+     achievements on the goals screen, BACK became unreachable on a phone. */
+  .sheetscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .stop{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;
+        padding:13px 2px;border-bottom:1px solid var(--rule);cursor:pointer;min-height:56px}
+  .stop .nm{font-weight:700;font-size:15px}
+  .stop .meta{display:flex;gap:5px;align-items:center;margin-top:4px;flex-wrap:wrap}
+  .chip{font-size:9px;letter-spacing:.1em;font-weight:700;padding:1px 5px;border-radius:2px;
+        border:1px solid var(--rule);color:var(--dim)}
+  .chip.shark{border-color:var(--red);color:var(--red)}
+  .chip.vault{border-color:var(--blue);color:#6f9bff}
+  .chip.shop{border-color:var(--yellow);color:var(--yellow)}
+  .heat{font-size:9px;letter-spacing:.1em;color:var(--faint)}
+
+  /* ---------- the wire: how close the SEC is ----------
+     The bar count and the word both carry the reading, so colour is a third
+     channel rather than the only one - it stays legible in greyscale and to
+     anyone who cannot separate the red from the green. */
+  .wire{display:flex;gap:10px;align-items:flex-start;background:var(--panel);
+        border:1px solid var(--rule);border-left:3px solid var(--faint);
+        border-radius:7px;padding:9px 11px;margin:0 0 10px}
+  .wire.t2{border-left-color:var(--yellow)}
+  .wire.t3{border-left-color:var(--yellow)}
+  .wire.t4{border-left-color:var(--red)}
+  .wire .bars{font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+              color:var(--faint);flex:none;padding-top:1px}
+  .wire.t1 .bars{color:#34d07a}
+  .wire.t2 .bars,.wire.t3 .bars{color:var(--yellow)}
+  .wire.t4 .bars{color:var(--red)}
+  .wire .who{font-size:9px;letter-spacing:.14em;color:var(--faint);font-weight:700}
+  .wire .lvl{font-size:9px;letter-spacing:.14em;font-weight:700}
+  .wire.t0 .lvl{color:var(--dim)} .wire.t1 .lvl{color:#34d07a}
+  .wire.t2 .lvl,.wire.t3 .lvl{color:var(--yellow)} .wire.t4 .lvl{color:var(--red)}
+  .wire .txt{font-size:12.5px;color:var(--paper);margin-top:2px}
+  .wire .odds{font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px}
+  /* ---------- backup ---------- */
+  .bk{background:var(--panel);border:1px solid var(--rule);border-radius:9px;
+      padding:12px;margin-bottom:12px}
+  .bk h4{margin:0 0 6px;font-size:11px;letter-spacing:.16em;color:var(--yellow)}
+  .bk .d{font-size:12.5px;color:var(--dim);margin-bottom:9px}
+  .bk textarea{width:100%;height:74px;background:#0c0c10;color:var(--paper);
+               border:1px solid var(--rule);border-radius:6px;padding:8px;
+               font-family:var(--mono);font-size:11px;resize:vertical;word-break:break-all}
+  .bk .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  .bk label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);
+            margin-top:9px;cursor:pointer}
+  .bk .ok{color:#34d07a;font-size:12px;margin-top:8px;min-height:16px}
+  .bk .bad{color:var(--red)}
+  .stop .threat{font-size:9px;letter-spacing:.1em;font-family:var(--mono)}
+  .stop .threat.t0{color:var(--faint)} .stop .threat.t1{color:#34d07a}
+  .stop .threat.t2,.stop .threat.t3{color:var(--yellow)}
+  .stop .threat.t4{color:var(--red)}
+  .bullets{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;max-width:130px}
+
+  /* ---------- end screen ---------- */
+  .final{text-align:center;padding:26px 0}
+  .final .big{font-size:40px;font-weight:700;letter-spacing:-.02em}
+  .final .verdict{color:var(--yellow);font-size:15px;margin-top:12px;font-weight:700;text-wrap:balance}
+  .brk{display:flex;flex-direction:column;gap:5px;margin:20px auto 0;max-width:280px}
+  .brk div{display:flex;justify-content:space-between;border-bottom:1px solid var(--rule);padding-bottom:4px}
+  .brk span{color:var(--dim)}
+  /* ---------- setup / trophies ---------- */
+  .pick{border:1px solid var(--rule);border-radius:4px;padding:11px 12px;margin-bottom:7px;
+        cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+  .pick.on{border-color:var(--yellow);background:rgba(252,204,10,.08)}
+  .pick.locked{opacity:.4;cursor:not-allowed}
+  .pick .t{font-weight:700;font-size:14px}
+  .pick .d{color:var(--dim);font-size:11.5px;margin-top:2px}
+  .pick .k{font-size:9px;letter-spacing:.12em;color:var(--faint);text-align:right;max-width:110px}
+  .daily{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:12px;cursor:pointer}
+  .daily .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:12px}
+  .daily .d{color:var(--dim);font-size:11.5px;margin-top:3px}
+  .daily.done{border-color:var(--rule);cursor:default}
+  .trophy{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start;
+          padding:10px 2px;border-bottom:1px solid var(--rule)}
+  .trophy .mark{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;
+                justify-content:center;font-weight:700;font-size:13px;flex:none;
+                background:var(--rule);color:var(--faint)}
+  .trophy.got .mark{background:var(--green);color:#fff}
+  .trophy .t{font-weight:700;font-size:13.5px}
+  .trophy.got .t{color:var(--paper)} .trophy .t{color:var(--dim)}
+  .trophy .d{color:var(--faint);font-size:11.5px;margin-top:1px}
+  .trophy .u{color:var(--yellow);font-size:10px;letter-spacing:.1em;margin-top:3px}
+  .pillrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+  .pill{font-size:9px;letter-spacing:.12em;font-weight:700;padding:2px 7px;border-radius:2px;
+        border:1px solid var(--rule);color:var(--dim)}
+  .pill.tier{border-color:var(--purple);color:#e07ad8}
+  .pill.perk{border-color:var(--yellow);color:var(--yellow)}
+  .pill.luck{border-color:var(--green);color:var(--green)}
+  /* what THIS stop adds or takes off - the thing that used to be invisible */
+  .worthwrap{margin:16px 0 6px;touch-action:pan-y}
+  .worthwrap svg{display:block;touch-action:none}
+  .spark{display:block;margin:0 0 3px auto;overflow:visible}
+  /* one quiet row of context, one loud line of price - the row was two
+     competing badge rows and a number */
+  .pxline{display:flex;align-items:baseline;justify-content:flex-end;gap:7px}
+  .chips{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;margin-top:3px}
+  .move{font-family:var(--mono);font-size:11px;letter-spacing:.02em;white-space:nowrap}
+  .move i{font-style:normal;font-size:8.5px;letter-spacing:.1em;opacity:.65;margin-left:3px;
+          text-transform:uppercase}
+  .move.up{color:#34d07a} .move.down{color:#EE352E} .move.quiet{color:var(--dim)}
+  .tag.over{background:rgba(239,68,68,.16);color:#ff8f8f;border:1px solid rgba(239,68,68,.45)}
+  /* The wheel's styles. These were once deleted wholesale by a tidy-up that cut
+     a range of CSS by its start and end selectors - the wheel's rules happened
+     to sit inside that range, so the wheel kept working and stopped moving. */
+  /* a rumour is information, not an instruction - it looks like something
+     somebody told you, not like a readout */
+  .whisper{border-left:3px solid var(--yellow);background:rgba(252,204,10,.07);
+           border-radius:0 3px 3px 0;padding:9px 12px;margin-bottom:12px}
+  .whisper .t{font-size:9.5px;letter-spacing:.16em;color:var(--yellow);font-weight:700}
+  .whisper .w{font-size:14px;margin-top:4px}
+  .whisper .w b.up{color:var(--green)} .whisper .w b.down{color:var(--red)}
+  .whisper .age{font-size:10px;color:var(--faint);letter-spacing:.08em;margin-top:3px}
+  .wheelbox{border:2px solid var(--purple);border-radius:4px;padding:11px 12px;margin-bottom:12px}
+  .wheelbox .t{color:#e07ad8;font-weight:700;letter-spacing:.14em;font-size:11px}
+  .wheelstage{position:relative;width:186px;height:186px;margin:10px auto 8px}
+  #wheelart{width:186px;height:186px;display:block;
+            transition:transform 3s cubic-bezier(.16,.84,.28,1)}
+  .needle{position:absolute;top:-4px;left:50%;transform:translateX(-50%);
+          width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;
+          border-top:18px solid var(--yellow);filter:drop-shadow(0 1px 3px #000);z-index:2}
+  .wheelresult{text-align:center;margin:4px 0 10px}
+  .wheelresult .big{font-size:26px;font-weight:700;letter-spacing:-.01em;line-height:1.1}
+  .wheelresult .sub{color:var(--dim);font-size:12.5px;margin-top:5px;line-height:1.45}
+  .wheelresult.bust .big{color:var(--dim)}
+  .wheelresult.cash .big{color:var(--green)}
+  .wheelresult.gear .big{color:#c4a2ff}
+  .tag.under{background:rgba(34,197,94,.16);color:#7ee6a0;border:1px solid rgba(34,197,94,.45)}
+  .gearrow{cursor:pointer}
+  .gearrow{display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:start;
+           padding:11px 2px;border-bottom:1px solid var(--rule)}
+  .pips{letter-spacing:2px;font-size:13px;color:var(--faint);white-space:nowrap}
+  .pips b{color:var(--yellow);font-weight:400}
+  .gearrow .t{font-weight:700;font-size:13.5px;color:var(--dim)}
+  .gearrow.on .t{color:var(--paper)}
+  .gearrow .d{color:var(--faint);font-size:11.5px;margin-top:2px}
+  .gearrow .u{color:var(--green);font-size:10.5px;letter-spacing:.06em;margin-top:3px}
+  .gearrow.live{background:rgba(52,208,122,.07);border-left:3px solid #34d07a;padding-left:9px}
+  .nowtag{font-size:8.5px;letter-spacing:.12em;color:#34d07a;border:1px solid #34d07a;
+          border-radius:2px;padding:1px 4px;vertical-align:middle;margin-left:5px}
+  .gearbar{height:4px;border-radius:2px;background:var(--rule);margin:6px 0 4px;overflow:hidden}
+  .gearbar i{display:block;height:100%;background:var(--yellow)}
+  .deal{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:14px}
+  .deal .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:11px}
+  .deal .d{color:var(--dim);font-size:12px;margin:6px 0 10px;line-height:1.45}
+  .deal .d b{color:var(--paper)}
+  /* ---------- grades, the ranked slate, the leaderboard ---------- */
+  .grade{font-size:56px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--yellow)}
+  .grade.f{color:var(--red)} .grade.s{color:var(--green)} .grade.g{color:var(--purple)}
+  .dicebox{border:2px solid var(--purple);border-radius:4px;padding:11px 12px;margin-bottom:12px}
+  .dicebox .t{color:#e07ad8;font-weight:700;letter-spacing:.14em;font-size:11px}
+  /* one row of faces, however many the die has - hardcoding five columns left a
+     six-sided die sitting as five and a lonely one */
+  .dice{display:grid;grid-template-columns:repeat(var(--faces,6),1fr);gap:5px;margin-top:9px}
+  /* min-width:0 is load-bearing, for the second time in this file. Every button
+     carries min-width:64px, and a grid track will not shrink below its item's
+     minimum - so six faces demanded 384px of buttons inside a 340px panel and
+     the sixth simply hung off the edge. 1fr does not mean "fit" on its own. */
+  .dice button{padding:12px 0;font-size:15px;font-weight:700;min-width:0}
+  .ladder{display:flex;gap:5px;margin-top:9px;flex-wrap:wrap}
+  .ladder span{font-size:9px;letter-spacing:.06em;padding:3px 6px;border-radius:2px;
+               border:1px solid var(--rule);color:var(--dim);white-space:nowrap}
+  .ladder span b{color:var(--purple);font-weight:700}
+  .ladder .boost{border-color:var(--green);color:var(--green)}
+  .gradeline{color:var(--dim);font-size:11.5px;letter-spacing:.1em;margin-top:6px}
+  .slate{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:12px}
+  .slate .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:12px}
+  .slate .d{color:var(--dim);font-size:11.5px;margin-top:3px}
+  .slate.spent{border-color:var(--rule)}
+  .slate.spent .t{color:var(--dim)}
+  .run{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+       padding:8px 0;border-top:1px solid var(--rule);font-size:12px}
+  .run .n{color:var(--faint);font-size:10px;letter-spacing:.1em}
+  .run .g{font-weight:700;font-size:15px;color:var(--yellow)}
+  .run.todo .g{color:var(--faint)}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tabs button{flex:1;font-size:10px;letter-spacing:.1em;padding:8px 4px}
+  .tabs button.on{background:var(--yellow);border-color:var(--yellow);color:#000}
+  .lbrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+         padding:11px 2px;border-bottom:1px solid var(--rule)}
+  .lbrow .pos{font-size:11px;letter-spacing:.1em;color:var(--faint);min-width:26px}
+  .lbrow.me{background:rgba(252,204,10,.07)}
+  .lbrow .who{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lbrow .sub{color:var(--faint);font-size:10px;letter-spacing:.08em;margin-top:2px}
+  .lbrow .pts{text-align:right;font-weight:700}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="dayband">
+      <span class="day" id="day">DAY 1 OF 30</span>
+      <span class="pill tier" id="tierpill" hidden>OFF PEAK</span>
+      <span class="pill luck" id="luckpill" hidden>+5% LUCK</span>
+      <div class="cap" aria-label="wallet capacity used"><i id="capbar" style="width:0%"></i></div>
+      <span class="day num" id="capnum" style="color:var(--dim)">$0 / $25,000</span>
+    </div>
+    <div class="stationline">
+      <span class="station" id="station">14 St-Union Sq</span>
+      <span class="bullets" id="bullets"></span>
+    </div>
+    <div class="flavor" id="flavor">Everything connects here.</div>
+    <div class="stats">
+      <div class="stat"><span>CASH</span><b class="num up" id="cash">$2,000.00</b></div>
+      <div class="stat"><span>DEBT</span><b class="num down" id="debt">$5,500.00</b></div>
+      <div class="stat"><span>VAULT</span><b class="num flat" id="vault">$0.00</b></div>
+      <div class="stat"><span>NET WORTH</span><b class="num down" id="net">-$3,500.00</b></div>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wire" id="wire" hidden></div>
+    <div id="alerts"></div>
+    <div class="deadend" id="deadend" hidden>
+      <div class="t">STRANDED</div>
+      <div class="d" id="deadendwhy"></div>
+      <div class="btns">
+        <button class="end" id="giveup">END THE RUN</button>
+        <button id="startover">START OVER</button>
+      </div>
+      <div class="note" id="deadendnote"></div>
+    </div>
+    <div class="wheelbox" id="wheelwrap" hidden>
+      <div class="t">PRIZE WHEEL</div>
+      <div class="note">One spin at every stop you haven't worked yet. Free crypto,
+        and once in a while something you can't buy.</div>
+      <div class="wheelstage">
+        <svg id="wheelart" viewBox="0 0 200 200" aria-hidden="true"></svg>
+        <div class="needle"></div>
+      </div>
+      <div id="wheelsaid"></div>
+      <button class="go" id="spin">SPIN</button>
+    </div>
+    <div class="whisper" id="whisper" hidden></div>
+    <div class="dicebox" id="dicewrap" hidden>
+      <div class="t">DICE ON THE PLATFORM</div>
+      <div class="note" id="dicehow"></div>
+      <div class="ladder" id="diceladder"></div>
+      <div class="dice" id="dice"></div>
+    </div>
+    <h2>Market</h2>
+    <div id="market"></div>
+    <div id="svcwrap" hidden>
+      <h2 id="svctitle">At this station</h2>
+      <div class="svc" id="svc"></div>
+    </div>
+    <div class="logbox">
+      <h2 style="margin-top:0">Platform</h2>
+      <div id="log"></div>
+    </div>
+  </main>
+
+  <footer>
+    <button class="go" id="ride">RIDE THE TRAIN →</button>
+    <button id="trophies" style="flex:0 0 auto;min-width:54px">GEAR</button>
+    <button id="board" style="flex:0 0 auto;min-width:54px">BOARD</button>
+    <button id="newgame" style="flex:0 0 auto;min-width:50px">NEW</button>
+  </footer>
+</div>
+
+<div class="sheet" id="travel">
+  <h3>WHERE TO? — ONE DAY EACH WAY</h3>
+  <div class="sheetscroll" id="stops"></div>
+  <div style="padding-top:10px"><button id="cancel">CANCEL</button></div>
+</div>
+
+<div class="sheet" id="setup">
+  <h3 id="setuptitle">NEW RUN</h3>
+  <div class="sheetscroll">
+    <div id="dailybox"></div>
+    <h2 style="margin-top:2px">HOW HARD</h2>
+    <div id="hardpicks"></div>
+    <h2>THE LADDER</h2>
+    <div id="tierpicks"></div>
+    <h2>CARRY ONE THING</h2>
+    <div id="perkpicks"></div>
+  </div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button id="startrun" class="go">PRACTICE RUN</button>
+    <button id="setupcancel" style="flex:0 0 auto;min-width:90px">BACK</button>
+  </div>
+</div>
+
+<div class="sheet" id="goals">
+  <h3 id="goalstitle">GEAR</h3>
+  <div class="sheetscroll" id="goallist"></div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button id="closegoals">BACK</button>
+    <button id="openbackup" style="flex:0 0 auto;min-width:104px">BACKUP</button>
+  </div>
+</div>
+
+<div class="sheet" id="backup">
+  <h3>BACKUP &amp; RESTORE — TAKE IT WITH YOU</h3>
+  <div class="sheetscroll">
+    <div class="bk">
+      <h4>YOUR PROGRESS, AS ONE LINE</h4>
+      <div class="d">Gear, goals, tiers, best scores. Copy it anywhere — a note,
+        an email to yourself, another phone. Paste it back below on any device,
+        in this page or the terminal version.</div>
+      <textarea id="bkout" readonly spellcheck="false"></textarea>
+      <label><input type="checkbox" id="bkrun"> include the run I'm in the middle of</label>
+      <div class="btns">
+        <button class="go" id="bkcopy">COPY</button>
+        <button id="bksave">SAVE AS A FILE</button>
+      </div>
+      <div class="ok" id="bkmsg"></div>
+    </div>
+    <div class="bk">
+      <h4>PASTE ONE BACK</h4>
+      <div class="d">This replaces the gear and goals stored in this browser with
+        whatever the line says. Copy your current one first if you want it.</div>
+      <textarea id="bkin" spellcheck="false" placeholder="CW1.…"></textarea>
+      <div class="btns">
+        <button class="go" id="bkload">RESTORE</button>
+        <button id="bkfile">LOAD A FILE</button>
+        <input type="file" id="bkpick" accept=".txt,.json,text/plain" hidden>
+      </div>
+      <div class="ok" id="bkinmsg"></div>
+    </div>
+  </div>
+  <div style="padding-top:10px"><button id="bkclose">BACK</button></div>
+</div>
+
+<div class="sheet" id="scores">
+  <h3 id="scorestitle">LEADERBOARD</h3>
+  <div class="tabs">
+    <button data-tab="today" class="on">TODAY</button>
+    <button data-tab="alltime">ALL TIME</button>
+    <button data-tab="mine">YOUR RUNS</button>
+  </div>
+  <div class="sheetscroll" id="scorelist"></div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button id="closescores" class="go">BACK</button>
+    <button id="rename" style="flex:0 0 auto;min-width:88px">NAME</button>
+  </div>
+</div>
+
+<div class="sheet" id="over">
+  <div class="sheetscroll">
+    <div class="final">
+      <h3 style="margin-bottom:18px">THIRTY DAYS LATER</h3>
+      <div class="grade" id="fgrade">F</div>
+      <div class="gradeline" id="fpoints"></div>
+      <div class="big num" id="fscore" style="font-size:30px;margin-top:14px">$0</div>
+      <div class="verdict" id="fverdict"></div>
+      <div class="brk num" id="fbreak"></div>
+    </div>
+  </div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button class="go" id="again">RIDE AGAIN</button>
+    <button id="toboard" style="flex:0 0 auto;min-width:92px">BOARD</button>
+  </div>
+</div>
+
+<script>
+/* CryptoWarz game logic - a faithful port of the Python package.
+   Kept deliberately separate from the UI so it can be diffed against
+   cryptowarz/*.py and balance-tested with the same strategy bots. */
+
+/* ---- seeded RNG: mulberry32 + Box-Muller, mirroring random.Random's API ---- */
+function RNG(seed) {
+  // the counter is a property rather than a closure variable so the whole
+  // generator state can be serialised - a save that could not restore the
+  // dice would let a reload reroll a bad day
+  this._a = (seed >>> 0) || 1;
+  this._spare = null;
+}
+RNG.prototype._next = function () {
+  this._a = (this._a + 0x6D2B79F5) | 0;
+  let t = Math.imul(this._a ^ (this._a >>> 15), 1 | this._a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+RNG.prototype.getState = function () { return { a: this._a, spare: this._spare }; };
+RNG.prototype.setState = function (s) { this._a = s.a | 0; this._spare = s.spare === undefined ? null : s.spare; };
+RNG.prototype.random = function () { return this._next(); };
+RNG.prototype.uniform = function (a, b) { return a + (b - a) * this._next(); };
+RNG.prototype.gauss = function (mu, sigma) {
+  if (this._spare !== null) { const s = this._spare; this._spare = null; return mu + sigma * s; }
+  let u = 0, v = 0, s = 0;
+  do { u = this._next() * 2 - 1; v = this._next() * 2 - 1; s = u * u + v * v; } while (s >= 1 || s === 0);
+  const f = Math.sqrt(-2 * Math.log(s) / s);
+  this._spare = v * f;
+  return mu + sigma * u * f;
+};
+RNG.prototype.choice = function (arr) { return arr[Math.floor(this._next() * arr.length)]; };
+RNG.prototype.choices = function (arr, weights) {
+  const total = weights.reduce((x, y) => x + y, 0);
+  let r = this._next() * total;
+  for (let i = 0; i < arr.length; i++) { r -= weights[i]; if (r <= 0) return arr[i]; }
+  return arr[arr.length - 1];
+};
+
+/* ------------------------------ coins.py ------------------------------ */
+/* A spread of SPEEDS, not just of prices: `vol` is how fast the real market
+   moves under every station, `meme` is how silly the local price gets from stop
+   to stop. A coin can be a serious asset and still rip. */
+const COINS = [
+  { symbol: "SHIB", name: "Shiba Inu", low: 8e-06, high: 7.5e-05,
+    meme: true, vol: 0.3, pull: 0.18,
+    note: "fractions of a cent, whole lot of hope" },
+  { symbol: "PEPE", name: "Pepe", low: 2e-06, high: 3.1e-05,
+    meme: true, vol: 0.3, pull: 0.18,
+    note: "pure vibes, no roadmap" },
+  { symbol: "BONK", name: "Bonk", low: 9e-06, high: 0.000105,
+    meme: true, vol: 0.42, pull: 0.11,
+    note: "moves like a firework - lit at one stop, gone by the next" },
+  { symbol: "DOGE", name: "Dogecoin", low: 0.06, high: 0.71,
+    meme: true, vol: 0.3, pull: 0.18,
+    note: "started as a joke, still is" },
+  { symbol: "WIF", name: "Dogwifhat", low: 0.22, high: 4.8,
+    meme: true, vol: 0.45, pull: 0.1,
+    note: "the fastest thing on the board, in both directions" },
+  { symbol: "XRP", name: "Ripple", low: 0.38, high: 3.4,
+    meme: false, vol: 0.13, pull: 0.18,
+    note: "perpetually in court" },
+  { symbol: "SUI", name: "Sui", low: 0.45, high: 6.2,
+    meme: false, vol: 0.24, pull: 0.12,
+    note: "a real chain that trades like a rumour" },
+  { symbol: "USDC", name: "USD Coin", low: 0.97, high: 1.03,
+    meme: false, vol: 0.01, pull: 0.18,
+    note: "a dollar, mostly - park cash here when it gets hot" },
+  { symbol: "SOL", name: "Solana", low: 18.0, high: 260.0,
+    meme: false, vol: 0.13, pull: 0.18,
+    note: "fast chain, frequent outages" },
+  { symbol: "AVAX", name: "Avalanche", low: 9.0, high: 78.0,
+    meme: false, vol: 0.2, pull: 0.14,
+    note: "serious money that still can't sit still" },
+  { symbol: "ETH", name: "Ethereum", low: 1100.0, high: 4900.0,
+    meme: false, vol: 0.13, pull: 0.18,
+    note: "gas fees will eat you alive" },
+  { symbol: "BTC", name: "Bitcoin", low: 21000.0, high: 109000.0,
+    meme: false, vol: 0.11, pull: 0.18,
+    note: "the original, and the heaviest to carry" },
+];
+COINS.forEach(c => { c.mid = (c.low + c.high) / 2; });
+const COIN = Object.fromEntries(COINS.map(c => [c.symbol, c]));
+
+/* ---------------------------- stations.py ----------------------------- */
+const STATIONS = [
+  { name: "Wall Street", lines: ["4", "5"], borough: "Manhattan",
+    flavor: "Suits everywhere. Someone is explaining an ETF to a tourist.",
+    bias: { BTC: 1.3, ETH: 1.22, AVAX: 1.16, USDC: 1.02, SUI: 1.06, DOGE: 0.62, SHIB: 0.55, PEPE: 0.5, BONK: 0.48, WIF: 0.44 },
+    heat: 0.85, shark: false, vault: true, shop: false, wheel: false },
+  { name: "Jefferson St", lines: ["L"], borough: "Brooklyn",
+    flavor: "Bushwick. Three people in this car are launching a token this week.",
+    bias: { WIF: 1.88, PEPE: 1.75, BONK: 1.7, SHIB: 1.62, DOGE: 1.45, SOL: 1.14, SUI: 1.12, BTC: 0.8 },
+    heat: 0.55, shark: false, vault: false, shop: true, wheel: false },
+  { name: "Times Sq-42 St", lines: ["N", "Q", "R", "W", "1", "2", "3", "7", "S"], borough: "Manhattan",
+    flavor: "Tourist money. Everything here costs more and everyone knows it.",
+    bias: { BTC: 1.18, ETH: 1.15, SOL: 1.2, DOGE: 1.25, XRP: 1.15, WIF: 1.32, BONK: 1.24, SUI: 1.18, AVAX: 1.12 },
+    heat: 0.8, shark: false, vault: false, shop: false, wheel: false },
+  { name: "Coney Island-Stillwell Av", lines: ["D", "F", "N", "Q"], borough: "Brooklyn",
+    flavor: "End of the line. Salt air, dead arcade, suspiciously cheap everything.",
+    bias: { SHIB: 0.45, PEPE: 0.42, BONK: 0.4, WIF: 0.38, DOGE: 0.58, XRP: 0.7, SOL: 0.82, SUI: 0.72, AVAX: 0.8 },
+    heat: 0.3, shark: false, vault: false, shop: false, wheel: false },
+  { name: "125 St", lines: ["4", "5", "6"], borough: "Manhattan",
+    flavor: "Harlem. A man with a folding table will sell you anything.",
+    bias: { DOGE: 1.3, XRP: 1.34, SHIB: 1.2, WIF: 1.36, BONK: 1.28, SUI: 1.12, ETH: 0.88 },
+    heat: 0.6, shark: true, vault: false, shop: false, wheel: false },
+  { name: "Grand Central-42 St", lines: ["4", "5", "6", "7", "S"], borough: "Manhattan",
+    flavor: "Commuters moving with purpose. Liquidity, but no bargains.",
+    bias: { BTC: 1.08, ETH: 1.1, USDC: 1.01, SOL: 1.05, AVAX: 1.07, SUI: 1.04 },
+    heat: 0.7, shark: false, vault: true, shop: false, wheel: false },
+  { name: "Flushing-Main St", lines: ["7"], borough: "Queens",
+    flavor: "The busiest station outside Manhattan. Cash moves fast here.",
+    bias: { XRP: 0.62, USDC: 0.98, SOL: 0.86, ETH: 0.92, SUI: 0.66, AVAX: 0.88, WIF: 0.78 },
+    heat: 0.45, shark: false, vault: false, shop: false, wheel: false },
+  { name: "161 St-Yankee Stadium", lines: ["4", "B", "D"], borough: "Bronx",
+    flavor: "Game day. Everyone is up, everyone is buying, nobody is reading.",
+    bias: { DOGE: 1.52, SHIB: 1.4, PEPE: 1.38, WIF: 1.6, BONK: 1.48, SUI: 1.22, BTC: 0.92 },
+    heat: 0.65, shark: true, vault: false, shop: false, wheel: false },
+  { name: "St George", lines: ["SIR"], borough: "Staten Island",
+    flavor: "Off the ferry. Quiet, cheap, and a long way from anywhere.",
+    bias: { BTC: 0.78, ETH: 0.8, SOL: 0.74, USDC: 0.99, AVAX: 0.76, SUI: 0.7, WIF: 0.72, BONK: 0.74 },
+    heat: 0.2, shark: false, vault: false, shop: true, wheel: false },
+  { name: "14 St-Union Sq", lines: ["4", "5", "6", "L", "N", "Q", "R", "W"], borough: "Manhattan",
+    flavor: "Everything connects here. Fair prices, which is its own kind of trap.",
+    bias: {  },
+    heat: 0.5, shark: false, vault: true, shop: true, wheel: false },
+  { name: "Bedford Av", lines: ["L"], borough: "Brooklyn",
+    flavor: "Williamsburg. Every third person here has a podcast about this.",
+    bias: { WIF: 1.72, BONK: 1.58, PEPE: 1.5, SOL: 1.18, SUI: 1.16, BTC: 0.86, ETH: 0.9 },
+    heat: 0.58, shark: false, vault: false, shop: false, wheel: true },
+  { name: "Atlantic Av-Barclays Ctr", lines: ["2", "3", "4", "5", "B", "D", "N", "Q", "R"], borough: "Brooklyn",
+    flavor: "Nine lines and a arena. Everybody is going somewhere else.",
+    bias: { BTC: 1.12, ETH: 1.09, AVAX: 1.1, DOGE: 1.18, SUI: 1.08, USDC: 1.01 },
+    heat: 0.72, shark: true, vault: false, shop: false, wheel: true },
+  { name: "Roosevelt Av-Jackson Hts", lines: ["7", "E", "F", "M", "R"], borough: "Queens",
+    flavor: "Five lines, forty languages, and a remittance shop on every corner.",
+    bias: { XRP: 1.3, USDC: 1.02, SOL: 1.08, AVAX: 1.04, SHIB: 1.12, BTC: 0.9 },
+    heat: 0.62, shark: false, vault: true, shop: false, wheel: true },
+  { name: "Canal St", lines: ["6", "J", "N", "Q", "R", "W", "Z"], borough: "Manhattan",
+    flavor: "Chinatown. Cash only, and everything is a slightly better price.",
+    bias: { USDC: 0.99, BTC: 0.84, ETH: 0.86, SOL: 0.8, XRP: 0.76, SUI: 0.78, AVAX: 0.82 },
+    heat: 0.68, shark: false, vault: false, shop: true, wheel: true },
+  { name: "Woodlawn", lines: ["4"], borough: "Bronx",
+    flavor: "The top of the 4. A cemetery, a golf course, and nobody watching.",
+    bias: { SHIB: 0.52, PEPE: 0.5, BONK: 0.48, WIF: 0.46, DOGE: 0.66, ETH: 0.88 },
+    heat: 0.18, shark: false, vault: false, shop: false, wheel: true },
+  { name: "Far Rockaway-Mott Av", lines: ["A"], borough: "Queens",
+    flavor: "Ninety minutes from Midtown. The board here has not been updated in a while.",
+    bias: { WIF: 0.44, BONK: 0.46, SUI: 0.68, AVAX: 0.74, SOL: 0.78, XRP: 1.28, USDC: 1.02 },
+    heat: 0.22, shark: true, vault: false, shop: false, wheel: true },
+];
+const bias = (st, sym) => (st.bias[sym] !== undefined ? st.bias[sym] : 1.0);
+/* How much of a stop's raw opinion reaches the price. Compressed toward 1.0 so
+   no single stop is a money printer. */
+const BIAS_COMPRESSION = 0.62;
+/* What THIS stop adds to, or takes off, the market price. 1.0 is fair.
+   The single biggest thing that happens to a player's money, and it used to be
+   invisible: buying WIF where it is loved and selling anywhere else loses 60%
+   with the market completely still. A player who cannot see that experiences
+   their own overpaying as the coin turning on them. */
+function stationMarkup(st, sym) { return 1 + (bias(st, sym) - 1) * BIAS_COMPRESSION; }
+
+/* ----------------------------- market.py ------------------------------ */
+const CRASHES = [
+  ["{name} rugged - devs deleted the repo", 0.34],
+  ["Exchange delists {name} without warning", 0.46],
+  ["{name} bridge drained overnight", 0.38],
+  ["Influencer who shilled {name} deletes the account", 0.55],
+];
+const PUMPS = [
+  ["{name} trending #1 - the normies are buying", 2.10],
+  ["Major fund announces a {name} allocation", 1.75],
+  ["{name} listed everywhere at once", 1.95],
+  ["Somebody's grandma asks about {name} on TV", 1.60],
+];
+const MEME_PUMPS = [
+  ["A billionaire tweets a dog picture - {name} goes vertical", 3.10],
+  ["{name} adopted by an entire subreddit", 2.45],
+];
+
+/* How often a coin's run re-rolls, and how hard it pushes as a multiple of the
+   coin's daily volatility. A pure random walk wanders; it does not pump and it
+   does not dump. This is the term that gives a chart SHAPES - a climb that
+   builds over four days and then rolls over is something a player can see
+   coming, be wrong about, and act on. Noise alone is none of those. */
+const TREND_FLIP = 0.22, TREND_STRENGTH = 0.55;
+/* How many days of level history to keep per coin, and how many a sparkline
+   draws. The game has always moved like this and never let anyone SEE it - a
+   market game showing one number per coin is a trading screen with the chart
+   switched off, and a rumour that a coin is running is unusable if you cannot
+   check whether it has been. */
+const HISTORY_KEPT = 20, SPARK_DAYS = 14;
+
+function MarketState(rng) {
+  this.levels = {};
+  /* the current run for each coin: a daily push that persists a few days */
+  this.trends = {};
+  for (const c of COINS) this.trends[c.symbol] = 0;
+  for (const c of COINS) {
+    // clamped to the coin's own range - an unclamped USDC opened as low as
+    // $0.78, which made the safe asset the best trade on the board
+    this.levels[c.symbol] = Math.max(c.low, Math.min(c.mid * rng.uniform(0.8, 1.2), c.high));
+  }
+  /* seeded AFTER the opening levels exist */
+  this.history = {};
+  for (const c of COINS) this.history[c.symbol] = [this.levels[c.symbol]];
+}
+MarketState.prototype.remember = function () {
+  for (const c of COINS) {
+    const past = (this.history[c.symbol] = this.history[c.symbol] || []);
+    past.push(this.levels[c.symbol]);
+    if (past.length > HISTORY_KEPT) past.splice(0, past.length - HISTORY_KEPT);
+  }
+};
+MarketState.prototype.running = function (sym) { return this.trends[sym] || 0; };
+MarketState.prototype.drift = function (rng) {
+  for (const c of COINS) {
+    let level = this.levels[c.symbol];
+    if (c.symbol === "USDC") {
+      this.levels.USDC = Math.max(0.97, Math.min(1.03, level * rng.uniform(0.997, 1.003)));
+      continue;
+    }
+    // the run re-rolls now and then; the rest of the time it carries on, which
+    // is what turns a walk into a pump and then a dump
+    if (rng.random() < TREND_FLIP) this.trends[c.symbol] = rng.gauss(0, c.vol * TREND_STRENGTH);
+    const step = this.trends[c.symbol] + rng.gauss(0, c.vol);
+    const pull = level > 0 ? c.pull * Math.log(c.mid / level) : 0;
+    level *= Math.exp(step + pull);
+    this.levels[c.symbol] = Math.max(c.low * 0.4, Math.min(level, c.high * 1.6));
+  }
+  this.remember();
+};
+MarketState.prototype.apply = function (symbol, factor, c) {
+  const level = this.levels[symbol] * factor;
+  this.levels[symbol] = Math.max(c.low * 0.15, Math.min(level, c.high * 2.2));
+};
+
+function stationPrice(c, level, st, rng) {
+  const b = stationMarkup(st, c.symbol);
+  const noise = c.meme ? rng.uniform(0.94, 1.06) : rng.uniform(0.975, 1.025);
+  const price = level * b * noise;
+  if (c.symbol === "USDC") return Math.max(c.low, Math.min(price, c.high));
+  return Math.max(c.low * 0.1, price);
+}
+
+/* `luck` maps a symbol to how far the crash/pump coin-flip tilts toward a pump
+   for it. It moves the threshold on a draw that already happens rather than
+   adding one; the flip is the same flip, weighted differently. */
+function generate(st, rng, state, shockChance, luck) {
+  if (shockChance === undefined) shockChance = 0.24;
+  let shock = null;
+  if (rng.random() < shockChance) {
+    const pool = COINS.filter(c => c.symbol !== "USDC");
+    const target = rng.choice(pool);
+    const crashOdds = 0.5 - ((luck || {})[target.symbol] || 0);
+    let entry;
+    if (rng.random() < crashOdds) entry = rng.choice(CRASHES);
+    else entry = rng.choice(target.meme ? MEME_PUMPS.concat(PUMPS) : PUMPS);
+    shock = { symbol: target.symbol, headline: entry[0].replace("{name}", target.name),
+              factor: entry[1], crash: entry[1] < 1.0 };
+    state.apply(target.symbol, entry[1], target);
+  }
+  const prices = {};
+  for (const c of COINS) prices[c.symbol] = stationPrice(c, state.levels[c.symbol], st, rng);
+  return { station: st, prices, shock, headline: shock ? shock.headline : null };
+}
+
+/* ------------------------------ game.py ------------------------------- */
+const DAYS = 30, START_CASH = 2000, START_DEBT = 5500, START_CAPACITY = 25000;
+const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
+// reserving the fare exactly is not enough: rounding leaves $2.8999999999 and
+// a player who cannot afford the fare the reserve was protecting
+const FARE_BUFFER = 0.01;
+
+/* -------------------------------- a word ------------------------------
+   How often the man on the dice has heard something, and how often he is right
+   ABOUT THE RUN. Measured against what the price really does over the next
+   three days, tips land about 59% - a run pushes at roughly half a coin's daily
+   noise, so three days of noise can bury it. A real edge, wrong often enough
+   that believing one stays a decision. */
+const TIP_CHANCE = 0.6, TIP_ACCURACY = 0.85;
+const TIP_MIN_RUN = 0.5, TIP_FRESH_FOR = 3;
+
+/* ------------------------------ the wheel -----------------------------
+   Somebody has a prize wheel on the mezzanine at some stops. ONE SPIN PER STOP
+   PER RUN, which is the whole design: it pays for going somewhere you have not
+   been, not for bouncing between two stations. Without that it is a lever you
+   pull instead of a map you explore, and a bigger map earns nothing.
+
+   [label, weight, cash, gives gear] */
+const WHEEL = [
+  ["BUST", 24.0, 0.0, false],
+  ["SMALL", 30.0, 300.0, false],
+  ["MIDDLE", 22.0, 750.0, false],
+  ["BIG", 13.0, 1600.0, false],
+  ["JACKPOT", 7.0, 3400.0, false],
+  ["GEAR", 4.0, 0.0, true]
+];
+const WHEEL_LINES = {
+  BUST: "It lands between two wedges. The man shrugs.",
+  SMALL: "A small one. He counts it out slowly, to make it last.",
+  MIDDLE: "A decent wedge. He looks mildly disappointed for you.",
+  BIG: "The crowd makes a noise. He stops smiling.",
+  JACKPOT: "JACKPOT. He looks at the wheel, then at you, then at the wheel.",
+  GEAR: "The wheel stops on the wedge nobody ever hits."
+};
+
+/* ------------------------------- the dice ------------------------------
+   Somebody runs dice on the platform every few rides. There is no stake: the
+   worst outcome is nothing, so this is a flourish rather than a decision, and
+   deliberately not a way to gamble out of a bad run. */
+const DICE_EVERY = 4, DICE_SIDES = 6, DICE_TOP_PRIZE = 1450.0;
+/* How close you got, and what share of the top prize that is worth. Binary
+   hit-or-miss made nine calls in ten pay nothing, which is a slot machine
+   rather than a call. Graded by distance, most calls pay something and the
+   number you say out loud starts to matter.
+
+   Tuned so the worst call is worth roughly what the old version averaged and
+   the best about 40% more. A quiet consequence worth leaving in: middle numbers
+   beat 1 and 10, because a call at the edge has nowhere to be close on one
+   side - $541 an offer against $381. Exact arithmetic, and small enough that it
+   is a detail to notice rather than a headline. */
+const DICE_LADDER = [
+  [0, "DEAD ON", 1.0],
+  [1, "ONE OFF", 0.4],
+  [2, "CLOSE", 0.18],
+  [3, "WARM", 0.06],
+];
+function diceTier(distance) {
+  const hit = DICE_LADDER.find(([reach]) => distance <= reach);
+  return hit ? { label: hit[1], share: hit[2] } : { label: "", share: 0 };
+}
+/* Opening calls that put a player on a streak, and what a streak pays. Not
+   every ride and not the same amount: a fixed payment on a metronome stopped
+   being a windfall by the third station and started being a salary. */
+const HOT_HAND = [4, 2];
+const HOT_HAND_CHANCE = 0.75, HOT_HAND_MIN = 250, HOT_HAND_MAX = 10000;
+
+
+function Game(seed, tier, perk, gear, difficulty) {
+  // kept so a save records which run this was - the RNG state is what restores
+  // the dice, but the seed is what lets you tell someone else to try it
+  this.seed = (seed === undefined || seed === null) ? (Math.random() * 1e9) | 0 : seed;
+  this.tier = tier || 1;
+  this.perk = perk || null;
+  this.gear = gear || {};                  // {coin class: level}; see gear.py
+  const t = TIER_BY_LEVEL[this.tier] || TIER_BY_LEVEL[1];
+  const hard = difficultyOf(difficulty);
+  this.difficulty = hard.key;              // normalised; an unknown key is Express
+  this.days = t.days;
+  this.heatMult = t.heat * hard.heatMult;  // the two axes multiply
+  this.rng = new RNG(this.seed);
+  this.day = 1;
+  this.finished = false;
+  this.station = STATIONS[9];              // 14 St-Union Sq
+  this.player = { cash: START_CASH + hard.cash, debt: t.debt * hard.debtMult, vault: 0,
+                  capacity: t.capacity, vpn: 0, wallet: {} };
+  if (this.perk === "seed_round") this.player.cash += 2000;
+  if (this.perk === "cold_storage") this.player.capacity += 15000;
+  this.stats = { stations: [this.station.name], raids: 0, peak_worth: 0,
+                 best_multiple: 0, worth_by_day: [],
+                 dice_picks: [], dice_days: [], hot_hand: false };
+  this.hotHand = false;
+  this.wheelAward = null;                  // a gear class for the caller to bank
+  this.gearAward = null;                   // the same, bought from a dealer
+  this.log = [];
+  this.state = new MarketState(this.rng);
+  this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
+  this.markStats();
+  this.say(`Day 1. You're at ${this.station.name} with $${Math.round(this.player.cash).toLocaleString()} and a $${Math.round(this.player.debt).toLocaleString()} problem.`);
+  if (this.market.headline) this.say(this.market.headline);
+}
+Game.prototype.markStats = function () {
+  const worth = this.netWorth();
+  this.stats.peak_worth = Math.max(this.stats.peak_worth, worth);
+  this.stats.worth_by_day.push(Math.round(worth * 100) / 100);
+};
+Object.defineProperty(Game.prototype, "fare", {
+  get() { return this.perk === "metrocard" ? 0 : SUBWAY_FARE; } });
+/* The difficulty's rate, less the Fixer's discount. The discount is a ratio so
+   it is worth the same everywhere; at Express it still lands on exactly 8.5%. */
+Object.defineProperty(Game.prototype, "sharkRate", {
+  get() {
+    const rate = difficultyOf(this.difficulty).shark;
+    return this.perk === "fixer" ? rate * 0.85 : rate;
+  } });
+/* The best gear bonus you are holding for right now, 0 to 0.15. */
+Object.defineProperty(Game.prototype, "luck", {
+  get() { return bestLuck(this.gear, this.player.wallet); } });
+Game.prototype.luckBySymbol = function () { return luckBySymbol(this.gear, this.player.wallet); };
+
+/* ------------------------------- dead end ---------------------------- */
+/* The game can genuinely corner you: a raid takes the bags, a gas spike takes
+   the cash, and you are standing on a platform with no Shark and no vault and
+   $1.40 in your pocket. Every other loss here is a decision that went wrong.
+   This one is a wall, and a wall the player cannot see is just a frozen screen
+   with a working button bar. */
+Object.defineProperty(Game.prototype, "stranded", {
+  get() {
+    if (this.finished || this.player.cash + 1e-9 >= this.fare) return false;
+    if (Object.values(this.player.wallet).some(h => h.qty > 0)) return false;
+    if (this.station.vault && this.player.vault > 0) return false;
+    if (this.station.shark && this.borrowable() > 0) return false;
+    return true;
+  } });
+/* Deliberately not a way to erase the run: it finishes, so it is graded,
+   recorded, and if it was ranked it spends the slot. Walking away from a bad
+   position is allowed. Pretending it never happened is not. */
+Game.prototype.giveUp = function () {
+  if (this.finished) return [];
+  this.finished = true;
+  const message = `You give up the run at ${this.station.name} on day ${this.day}. That's it.`;
+  this.say(message);
+  return [message];
+};
+
+/* -------------------------------- a word ----------------------------- */
+Object.defineProperty(Game.prototype, "tip", {
+  get() {
+    const rumour = this.stats.tip;
+    if (!rumour) return null;
+    return (this.day - (rumour.day || 0)) > TIP_FRESH_FOR ? null : rumour;
+  } });
+/* The man on the dice passes on what he heard. Sometimes it is true. */
+Game.prototype.hearSomething = function () {
+  if (this.rng.random() > TIP_CHANCE) return [];
+  const running = COINS
+    .filter(c => c.symbol !== "USDC"
+                 && Math.abs(this.state.running(c.symbol)) >= c.vol * TIP_MIN_RUN)
+    .map(c => [c.symbol, this.state.running(c.symbol)]);
+  if (!running.length) return [];
+  const [symbol, trend] = running.reduce((a, b) => Math.abs(b[1]) > Math.abs(a[1]) ? b : a);
+  const truthful = this.rng.random() < TIP_ACCURACY;
+  const goingUp = truthful ? trend > 0 : trend <= 0;
+  this.stats.tip = { symbol: symbol, up: goingUp, day: this.day };
+  const word = goingUp ? "about to run" : "about to fall over";
+  return [`"Word is ${COIN[symbol].name} is ${word}." He might be wrong. He usually isn't.`];
+};
+
+/* -------------------------------- broker ----------------------------- */
+Game.prototype.buyGear = function () {
+  const cls = brokerOffer(this);
+  if (cls === null) {
+    if (this.stats.gear_bought) throw new Error("he only has the one, and you bought it");
+    if (!this.station.shop) throw new Error("nobody's dealing here. Try a stop with a shop");
+    throw new Error(`he wants ${BROKER_PRICE.toLocaleString()} in cash, and not a dollar less`);
+  }
+  this.player.cash -= BROKER_PRICE;
+  this.stats.gear_bought = true;
+  this.gearAward = cls;
+  const message = `A million dollars, in a station. He hands over the `
+    + `${GEAR_BY_KEY[cls].name} and is gone before you turn around.`;
+  this.say(message);
+  return [message];
+};
+
+/* ------------------------------ the wheel ---------------------------- */
+Object.defineProperty(Game.prototype, "wheelReady", {
+  get() {
+    return !!this.station.wheel && !(this.stats.wheels || []).includes(this.station.name);
+  } });
+/* Sets wheelAward to a gear class on the rare wedge; the caller banks it,
+   because the Game does not own the profile. */
+Game.prototype.spinWheel = function () {
+  if (!this.wheelReady) throw new Error("no wheel here, or you've already had your spin");
+  this.wheelAward = null;
+  (this.stats.wheels = this.stats.wheels || []).push(this.station.name);
+  const label = this.rng.choices(WHEEL.map(w => w[0]), WHEEL.map(w => w[1]));
+  const wedge = WHEEL.find(w => w[0] === label);
+  const cash = wedge[2], givesGear = wedge[3];
+  const messages = [`You spin. ${WHEEL_LINES[label]}`];
+  if (cash > 0) messages.push(...this.gift(cash * (1 + this.luck), `Wheel - ${label}`));
+  if (givesGear) {
+    if (!countsForProgress(this)) {
+      messages.push("It would have been a piece of gear. This run keeps nothing.");
+    } else {
+      // the class you are actually carrying, so the wheel reinforces a style
+      const cls = winningClass(this) || this.rng.choice(GEAR.map(g => g.key));
+      this.wheelAward = cls;
+      messages.push(`${GEAR_BY_KEY[cls].name}. That is a win banked toward it, `
+                    + `and they are not given away.`);
+    }
+  } else if (!cash) {
+    messages.push("Nothing. It cost you nothing either.");
+  }
+  messages.forEach(m => this.say(m));
+  return messages;
+};
+
+/* ------------------------------- the dice ---------------------------- */
+/* Measured from the last roll rather than off the calendar: a signal delay
+   costs two days instead of one, and a plain `day % 4` offer silently skipped
+   every time one landed on the wrong day. Counting from the last roll also
+   means an offer you ignore keeps standing. */
+Object.defineProperty(Game.prototype, "diceReady", {
+  get() {
+    const days = this.stats.dice_days || [];
+    return this.day - (days.length ? days[days.length - 1] : 0) >= DICE_EVERY;
+  } });
+/* Fair value rather than zero cost on purpose: a bag with no cost basis would
+   take up no wallet room and make every sale an infinite multiple. Free means
+   you did not pay cash for it, not that it weighs nothing. */
+Game.prototype.gift = function (value, why) {
+  const target = this.rng.choice(COINS.filter(c => c.symbol !== "USDC"));
+  const price = this.market.prices[target.symbol];
+  if (price <= 0) return [];
+  const room = this.freeCapacity();
+  if (room < 1) return [`${why} - and your wallet is full. It goes to somebody else.`];
+  value = Math.min(value, room);
+  const h = this.holding(target.symbol);
+  h.qty += value / price;
+  h.cost += value;
+  return [`${why}: ${fmtQty(value / price)} ${target.symbol} (~$${value.toFixed(2)}).`];
+};
+/* Sometimes, and never the same amount twice. The draw is squared, which pulls
+   most payouts down toward the floor and leaves the ceiling rare - a flat draw
+   made five figures ordinary, and a windfall you can count on is not one. */
+Game.prototype.streakGift = function () {
+  if (this.rng.random() > HOT_HAND_CHANCE) return [];
+  const draw = this.rng.random() ** 2;
+  return this.gift(HOT_HAND_MIN + (HOT_HAND_MAX - HOT_HAND_MIN) * draw,
+                   "The turnstile blesses you");
+};
+Game.prototype.rollDice = function (pick) {
+  if (!this.diceReady) throw new Error("nobody's running dice right now");
+  pick = parseInt(pick, 10);
+  if (!(pick >= 1 && pick <= DICE_SIDES)) throw new Error(`call a number from 1 to ${DICE_SIDES}`);
+  (this.stats.dice_days = this.stats.dice_days || []).push(this.day);
+  const picks = (this.stats.dice_picks = this.stats.dice_picks || []);
+  picks.push(pick);
+  const rolled = 1 + Math.floor(this.rng.random() * DICE_SIDES);
+  const distance = Math.abs(rolled - pick);
+  const tier = diceTier(distance);
+  const messages = [`You call ${pick}. The dice come up ${rolled}.`];
+  if (tier.share > 0) {
+    // gear pays out here too: a bag you are geared for is what makes the
+    // platform friendlier, and the dice are on the platform
+    const value = DICE_TOP_PRIZE * tier.share * (1 + this.luck);
+    const bonus = this.luck > 0 ? ` (+${Math.round(this.luck * 100)}% on your gear)` : "";
+    messages.push(...this.gift(value,
+      `${tier.label} - ${Math.round(tier.share * 100)}% of the pot${bonus}`));
+  } else {
+    messages.push(`Off by ${distance}. Nothing, and it was free to play.`);
+  }
+  messages.push(...this.checkStreak(picks));
+  messages.forEach(m => this.say(m));
+  return messages;
+};
+Game.prototype.checkStreak = function (picks) {
+  if (this.hotHand || picks.length < HOT_HAND.length) return [];
+  if (!HOT_HAND.every((n, i) => picks[i] === n)) return [];
+  this.hotHand = true;
+  this.stats.hot_hand = true;
+  return ["The dice stop mid-air.",
+          "GOD MODE. The turnstile swings open for you from now on - free crypto every ride.",
+          "This run is a sandbox now: it posts nothing and unlocks nothing."];
+};
+Game.prototype.finalise = function () {
+  const held = Object.entries(this.player.wallet).filter(([, h]) => h.qty > 0).map(([s]) => s);
+  this.stats.meme_only_finish = held.length > 0 && held.every(s => COIN[s].meme);
+  this.markStats();
+};
+Game.prototype.say = function (m) { this.log.push(m); if (this.log.length > 200) this.log.shift(); };
+Game.prototype.holding = function (sym) {
+  if (!this.player.wallet[sym]) this.player.wallet[sym] = { qty: 0, cost: 0 };
+  return this.player.wallet[sym];
+};
+Game.prototype.dropEmpty = function () {
+  // an empty bag is not a holding - keeps saved and live wallets identical
+  for (const [sym, h] of Object.entries(this.player.wallet)) {
+    if (h.qty <= 1e-12 && h.cost <= 1e-12) delete this.player.wallet[sym];
+  }
+};
+Game.prototype.usedCapacity = function () {
+  return Object.values(this.player.wallet).reduce((s, h) => s + h.cost, 0);
+};
+Game.prototype.freeCapacity = function () {
+  return Math.max(0, this.player.capacity - this.usedCapacity());
+};
+Game.prototype.portfolioValue = function () {
+  let v = 0;
+  for (const [sym, h] of Object.entries(this.player.wallet)) if (h.qty > 0) v += h.qty * this.market.prices[sym];
+  return v;
+};
+Game.prototype.netWorth = function () {
+  return this.player.cash + this.player.vault + this.portfolioValue() - this.player.debt;
+};
+Game.prototype.maxBuyable = function (sym) {
+  const p = this.market.prices[sym];
+  if (!(p > 0)) return 0;
+  const spendable = Math.max(0, this.player.cash - this.fare - FARE_BUFFER);
+  return Math.max(0, Math.min(spendable / p, this.freeCapacity() / p));
+};
+Game.prototype.buy = function (sym, qty) {
+  if (!COIN[sym]) throw new Error(`nobody here trades ${sym}`);
+  if (!(qty > 0)) throw new Error("buy how much?");
+  const price = this.market.prices[sym], cost = price * qty;
+  if (cost > this.player.cash + 1e-9) throw new Error(`that costs $${cost.toFixed(2)} and you have $${this.player.cash.toFixed(2)}`);
+  if (cost > this.freeCapacity() + 1e-9) throw new Error(`your wallet only has $${this.freeCapacity().toFixed(2)} of room left`);
+  const h = this.holding(sym);
+  h.qty += qty; h.cost += cost; this.player.cash -= cost;
+  return { text: `Bought ${fmtQty(qty)} ${sym} for $${cost.toFixed(2)}`, good: true };
+};
+Game.prototype.sell = function (sym, qty) {
+  const h = this.holding(sym);
+  if (!(qty > 0)) throw new Error("sell how much?");
+  if (qty > h.qty + 1e-12) throw new Error(`you only hold ${fmtQty(h.qty)} ${sym}`);
+  const price = this.market.prices[sym], proceeds = price * qty;
+  const released = h.qty > 0 ? h.cost * (qty / h.qty) : 0;
+  if (released > 0) this.stats.best_multiple = Math.max(this.stats.best_multiple, proceeds / released);
+  const profit = proceeds - released;
+  h.qty -= qty; h.cost -= released;
+  if (h.qty <= 1e-12) { h.qty = 0; h.cost = 0; }
+  this.dropEmpty();
+  this.player.cash += proceeds;
+  return { text: `Sold ${fmtQty(qty)} ${sym} for $${proceeds.toFixed(2)} (${profit >= 0 ? "made" : "lost"} $${Math.abs(profit).toFixed(2)})`,
+           good: profit >= 0, profit };
+};
+// measured against what The Shark could seize, not net worth - net worth
+// already subtracts the debt, so the ceiling sat below the opening loan and
+// borrowing was refused every time a player first tried it
+Game.prototype.borrowLimit = function () {
+  // twice the opening loan: any lower and the Shark is dead UI, since a $6,000
+  // ceiling already sits below day two's $6,050 of debt
+  return Math.max(START_DEBT * 2, (this.player.cash + this.player.vault + this.portfolioValue()) * 2);
+};
+Game.prototype.borrowable = function () {
+  return Math.max(0, this.borrowLimit() - this.player.debt);
+};
+Game.prototype.borrow = function (amount) {
+  if (!this.station.shark) throw new Error("The Shark doesn't work this station");
+  if (!(amount > 0)) throw new Error("borrow how much?");
+  if (this.player.debt + amount > this.borrowLimit())
+    throw new Error(`The Shark looks you up and down. Not a chance over $${this.borrowable().toFixed(0)}`);
+  this.player.debt += amount; this.player.cash += amount;
+  return { text: `Borrowed $${amount.toFixed(2)}. The Shark smiles. That's never good.`, good: false };
+};
+Game.prototype.repay = function (amount) {
+  if (!this.station.shark) throw new Error("The Shark doesn't work this station");
+  amount = Math.min(amount, this.player.debt, this.player.cash);
+  if (!(amount > 0)) throw new Error("nothing to repay, or nothing to repay it with");
+  this.player.debt -= amount; this.player.cash -= amount;
+  return { text: `Repaid $${amount.toFixed(2)}.${this.player.debt <= 0 ? " Debt cleared. You can breathe." : ""}`, good: true };
+};
+Game.prototype.deposit = function (amount) {
+  if (!this.station.vault) throw new Error("no vault at this station");
+  amount = Math.min(amount, this.player.cash);
+  if (!(amount > 0)) throw new Error("deposit how much?");
+  this.player.cash -= amount; this.player.vault += amount;
+  return { text: `Deposited $${amount.toFixed(2)}. It earns 4% a day in there.`, good: true };
+};
+Game.prototype.withdraw = function (amount) {
+  if (!this.station.vault) throw new Error("no vault at this station");
+  amount = Math.min(amount, this.player.vault);
+  if (!(amount > 0)) throw new Error("withdraw how much?");
+  this.player.vault -= amount; this.player.cash += amount;
+  return { text: `Withdrew $${amount.toFixed(2)}.`, good: true };
+};
+Game.prototype.upgradeCost = function () {
+  const steps = Math.round((this.player.capacity - START_CAPACITY) / 25000);
+  return 3500 * Math.pow(1.7, steps);
+};
+Game.prototype.vpnCost = function () { return 2200 * Math.pow(2, this.player.vpn); };
+Game.prototype.buyCapacity = function () {
+  if (!this.station.shop) throw new Error("nowhere to buy hardware here");
+  const price = this.upgradeCost();
+  if (this.player.cash < price) throw new Error(`a bigger cold wallet costs $${price.toFixed(2)}`);
+  this.player.cash -= price; this.player.capacity += 25000;
+  return { text: `New cold wallet. Capacity now $${this.player.capacity.toLocaleString()}.`, good: true };
+};
+Game.prototype.buyVpn = function () {
+  if (!this.station.shop) throw new Error("nowhere to buy hardware here");
+  if (this.player.vpn >= 3) throw new Error("you are already as invisible as this gets");
+  const price = this.vpnCost();
+  if (this.player.cash < price) throw new Error(`that VPN costs $${price.toFixed(2)}`);
+  this.player.cash -= price; this.player.vpn += 1;
+  return { text: `VPN level ${this.player.vpn}. You draw less attention now.`, good: true };
+};
+Game.prototype.travel = function (index) {
+  const wasReady = this.diceReady;         // so the offer is announced once
+  const target = STATIONS[index];
+  if (target.name === this.station.name) throw new Error("you're already here");
+  if (this.player.cash + 1e-9 < this.fare) throw new Error(`you can't even make the $${this.fare.toFixed(2)} fare`);
+  this.player.cash -= this.fare;
+  this.station = target;
+  if (!this.stats.stations.includes(target.name)) this.stats.stations.push(target.name);
+  this.day += 1;
+  this.player.debt *= (1 + this.sharkRate);
+  this.player.vault *= (1 + VAULT_RATE);
+  this.state.drift(this.rng);
+  this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
+  const messages = [`Day ${this.day}. ${target.name}.`, target.flavor];
+  if (this.market.headline) messages.push(this.market.headline);
+  if (this.hotHand) for (const m of this.streakGift()) messages.push(m);
+  for (const m of rollEvent(this)) messages.push(m);
+  if (this.wheelReady) messages.push("There's a prize wheel set up on the mezzanine here. "
+    + "One spin, and only at stops you haven't worked yet.");
+  if (this.diceReady && !wasReady) {
+    messages.push(`Somebody's running dice on the platform. Call a number, 1 to ${DICE_SIDES}.`);
+    for (const m of this.hearSomething()) messages.push(m);
+  }
+  this.markStats();
+  messages.forEach(m => this.say(m));
+  if (this.day > this.days) { this.finished = true; messages.push("That's the run."); }
+  return messages;
+};
+Game.prototype.finalScore = function () { return this.netWorth(); };
+Game.prototype.verdict = function () {
+  const s = this.finalScore();
+  if (this.player.debt > this.player.cash + this.player.vault + this.portfolioValue())
+    return "The Shark owns you. Try a smaller loan next time.";
+  if (s < START_CASH) return "You went thirty days and finished poorer. The subway still got its fare.";
+  if (s < 25000) return "A living. Barely.";
+  if (s < 100000) return "Respectable. You could do this for real. Please don't.";
+  if (s < 500000) return "You cleaned up. Somebody is going to ask questions.";
+  return "Legendary. They'll name a station after you.";
+};
+
+/* ----------------------------- events.py ------------------------------ */
+function confiscate(game, fraction) {
+  let removed = 0;
+  for (const h of Object.values(game.player.wallet)) {
+    if (h.qty <= 0) continue;
+    h.qty -= h.qty * fraction; removed += h.cost * fraction; h.cost -= h.cost * fraction;
+  }
+  return removed;
+}
+const hasCoins = g => Object.values(g.player.wallet).some(h => h.qty > 0);
+/* Take cash, but never the last fare: stripped to nothing with an empty
+   wallet a player cannot buy, sell or travel - a dead end, not a hard spot. */
+function takeCash(g, amount) {
+  const spendable = Math.max(0, g.player.cash - SUBWAY_FARE);
+  const taken = Math.min(amount, spendable);
+  g.player.cash -= taken;
+  return taken;
+}
+
+function secRaid(g) {
+  if (!hasCoins(g)) {
+    g.stats.raids += 1;
+    const fine = takeCash(g, 400 + g.rng.random() * 900);
+    return [`SEC agents stop you at the turnstile. Nothing to seize, so they write you a $${fine.toFixed(2)} fine instead.`];
+  }
+  g.stats.raids += 1;
+  const f = g.rng.uniform(0.18, 0.42), lost = confiscate(g, f);
+  return [`SEC raid on the platform. They seize ${Math.round(f * 100)}% of your wallet - $${lost.toFixed(2)} at cost.`];
+}
+function phishing(g) {
+  if (!hasCoins(g)) return ["A DM offers you a free NFT. You ignore it. Small victories."];
+  const lost = confiscate(g, g.rng.uniform(0.08, 0.22));
+  return [`You signed something you shouldn't have. A drainer takes $${lost.toFixed(2)} of your bags.`];
+}
+function gasSpike(g) {
+  const fee = takeCash(g, 120 + g.rng.random() * 700);
+  return [`Network congestion. Gas eats $${fee.toFixed(2)} just to move your own money.`];
+}
+function airdrop(g) {
+  const target = g.rng.choice(COINS.filter(c => c.symbol !== "USDC"));
+  const value = 300 + g.rng.random() * 2600;
+  if (g.freeCapacity() < value)
+    return [`An ${target.symbol} airdrop lands, but your wallet is full. It expires unclaimed.`];
+  const qty = value / g.market.prices[target.symbol];
+  const h = g.holding(target.symbol);
+  h.qty += qty; h.cost += value;
+  return [`Airdrop: ${fmtQty(qty)} ${target.symbol} (~$${value.toFixed(2)}) for a wallet you forgot you'd connected.`];
+}
+function foundWallet(g) {
+  const found = 250 + g.rng.random() * 1800;
+  g.player.cash += found;
+  return [`A seed phrase on the back of a MetroCard. It still had $${found.toFixed(2)} on it.`];
+}
+function sharkVisit(g) {
+  if (g.player.debt <= 0) return ["A large man studies you on the platform, decides you're nobody, and goes back to his phone."];
+  const demand = Math.min(Math.max(0, g.player.cash - SUBWAY_FARE), g.player.debt * 0.25);
+  if (demand < 50) return ["The Shark's associate finds you. You have nothing. He is patient. That's worse."];
+  g.player.cash -= demand; g.player.debt -= demand;
+  return [`The Shark's associate takes $${demand.toFixed(2)} off you on the platform.`];
+}
+function whaleOffer(g) {
+  const held = Object.entries(g.player.wallet).filter(([, h]) => h.qty > 0);
+  if (!held.length) return ["A whale wallet DMs you asking what you're holding. Nothing. Awkward."];
+  const [sym, h] = g.rng.choice(held);
+  const premium = g.rng.uniform(1.25, 1.85);
+  const proceeds = h.qty * g.market.prices[sym] * premium;
+  g.player.cash += proceeds; h.qty = 0; h.cost = 0; g.dropEmpty();
+  return [`A whale takes your entire ${sym} bag at ${Math.round(premium * 100)}% of market - $${proceeds.toFixed(2)}.`];
+}
+function delayEvent(g) {
+  if (g.perk === "metrocard") {
+    return ["Signal problems at Chambers St. You know the workaround and reroute without losing the day."];
+  }
+  g.day += 1; g.player.debt *= (1 + g.sharkRate);
+  return ["Signal problems at Chambers St. You lose a day on a stopped train while your debt keeps compounding."];
+}
+const quiet = () => [];
+
+const EVENTS = [
+  [secRaid, 10, true], [phishing, 8, true], [gasSpike, 9, false], [sharkVisit, 7, false],
+  [delayEvent, 5, false], [airdrop, 8, false], [foundWallet, 6, false], [whaleOffer, 6, false],
+  [quiet, 34, false],
+];
+
+/* ---------------------------- enforcement ---------------------------- */
+/* Days the SEC leaves you alone at the start of a run. Losing a third of your
+   bags on day three is not a hard position, it is a coin flip that decides the
+   run before you have made a decision worth judging. The pressure is not
+   removed, it is moved: RAID_RAMP_TO puts it in the back half, where you
+   actually have something worth taking. */
+const RAID_GRACE = 15;
+const RAID_RAMP_TO = 1.8;
+
+function raidPressure(game, day) {
+  const d = (day === undefined || day === null) ? game.day : day;
+  if (d <= RAID_GRACE) return 0;
+  const span = Math.max(1, (game.days || 30) - RAID_GRACE);
+  return 1 + (RAID_RAMP_TO - 1) * Math.min(1, (d - RAID_GRACE) / span);
+}
+
+/* The weight of every event for an arrival, in EVENTS order. The threat meter
+   reads THIS, so a forecast can never disagree with the roll. */
+function eventWeights(game, station, day) {
+  const stop = station || game.station;
+  const heat = Math.min(1, stop.heat * (game.heatMult || 1));
+  let shelter = 1.0 - Math.min(0.66, 0.22 * game.player.vpn);
+  if (game.perk === "burner") shelter *= 0.66;
+  // gear you are currently holding for; the best piece, never the sum
+  shelter *= 1 - game.luck;
+  const pressure = raidPressure(game, day);
+  return EVENTS.map(([fn, w, scales]) => {
+    let out = scales ? w * (0.35 + 1.4 * heat) * shelter : w;
+    if (fn === secRaid) out *= pressure;
+    return out;
+  });
+}
+
+/* The exact probability the SEC turns up on one arrival. Never a guess. */
+function raidChance(game, station, day) {
+  const weights = eventWeights(game, station, day);
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0) return 0;
+  return weights[EVENTS.findIndex(e => e[0] === secRaid)] / total;
+}
+
+/* Five readings and how many bars each fills. Cut points read off the real
+   chance: at Express with no VPN the map spans LOW to HIGH the day the grace
+   ends and WATCH to SEVERE by day thirty, and two VPN levels pull it back to
+   LOW and WATCH - which is the point of showing any of it. */
+const THREAT = [[0.185, "SEVERE", 4], [0.130, "HIGH", 3], [0.085, "WATCH", 2], [0.0, "LOW", 1]];
+const THREAT_BARS = 4;
+const WIRE_LINES = {
+  QUIET: ["Enforcement is still working last quarter's cases. Nobody downtown knows your name.",
+          "The regulator's press office is talking about something else entirely.",
+          "Nothing on the wire. It will not last, and everybody knows it."],
+  LOW: ["A subcommittee asks for documents. Nothing moves fast in Washington.",
+        "An enforcement notice goes out to somebody else. You read it twice anyway.",
+        "Quiet, but the tone has changed. They are writing things down."],
+  WATCH: ["Two agents were seen at {station} this week. They were not commuting.",
+          "The {borough} field office has been busy. Ask anyone on the platform.",
+          "Somebody at {station} got stopped on Tuesday. Nobody has seen him since."],
+  HIGH: ["Word on the platform: the feds are working this line. A day or two, maybe less.",
+         "They have a van on the street above {station}. It has not moved since Monday.",
+         "Three seizures in {borough} this week. {station} is next, if you believe the wire."],
+  SEVERE: ["They are at {station}. The only question left is who they stop.",
+           "{station} is crawling. Turnstiles, mezzanine, both platforms.",
+           "If you are carrying anything, {station} is the worst place in the city today."],
+};
+
+/* The stop's own reputation, in bars, for use while the grace holds: during
+   the first fifteen days every stop reads QUIET, which is true and useless. */
+function standingHeat(station) {
+  return Math.max(0, Math.min(THREAT_BARS, Math.round(station.heat * THREAT_BARS)));
+}
+
+function threatLevel(chance) {
+  if (chance <= 0) return ["QUIET", 0];
+  for (const [floor, label, bars] of THREAT) if (chance >= floor) return [label, bars];
+  return ["QUIET", 0];
+}
+
+/* The threat reading for a stop, as a news post the page can draw. The line is
+   picked by day and station rather than by a die: a headline that re-rolls on
+   every redraw reads as noise, and drawing here would move the run's stream. */
+function wire(game, station, day) {
+  const stop = station || game.station;
+  const when = (day === undefined || day === null) ? game.day : day;
+  const chance = raidChance(game, stop, day);
+  const [label, bars] = threatLevel(chance);
+  const lines = WIRE_LINES[label];
+  const text = lines[(when + stop.name.length) % lines.length]
+    .replace(/\{station\}/g, stop.name).replace(/\{borough\}/g, stop.borough);
+  return { label: label, bars: bars, of: THREAT_BARS, chance: chance,
+           two_stops: 1 - Math.pow(1 - chance, 2),
+           grace_left: Math.max(0, RAID_GRACE - when), text: text };
+}
+
+function rollEvent(game) {
+  const weights = eventWeights(game);
+  return game.rng.choices(EVENTS.map(e => e[0]), weights)(game);
+}
+
+/* ------------------------------- gear.py ------------------------------ */
+/* Perks are a choice you make before a run. Gear is the opposite: you earn it
+   by WINNING while holding something, and it then quietly favours that same
+   kind of holding forever after. It rewards having a style, not grinding - a
+   win credits only the class you were actually holding at the end.
+
+   Luck is deliberately small (15% at full level, only on coins in the wallet
+   right now), never a sum (your best piece, not all of them), and it re-weights
+   decisions that already exist rather than adding new rolls. Gear is written
+   into the save, so a reloaded run carries the same luck and replays as it
+   would have. */
+const CLASSES = {
+  meme:   ["SHIB", "PEPE", "BONK", "DOGE", "WIF"],
+  alt:    ["XRP", "SUI", "SOL"],
+  major:  ["AVAX", "ETH", "BTC"],
+  stable: ["USDC"],
+};
+const CLASS_OF = {};
+for (const [cls, syms] of Object.entries(CLASSES)) for (const s of syms) CLASS_OF[s] = cls;
+
+const GEAR = [
+  { key: "meme",   name: "Platform Rat Charm",
+    blurb: "Found on the roadbed at Canal St. The jokes go your way.",
+    covers: "SHIB · PEPE · DOGE" },
+  { key: "alt",    name: "Brass Subway Token",
+    blurb: "Minted before the turnstiles took cards. Older money, better odds.",
+    covers: "XRP · SOL" },
+  { key: "major",  name: "Cold-Storage Watch",
+    blurb: "Heavy, unfashionable, and it has never lost a key.",
+    covers: "ETH · BTC" },
+  { key: "stable", name: "Laminated MetroCard",
+    blurb: "Nothing much happens to somebody holding dollars.",
+    covers: "USDC" },
+];
+const GEAR_BY_KEY = Object.fromEntries(GEAR.map(g => [g.key, g]));
+const MAX_LEVEL = 3, WINS_FOR_LEVEL = [1, 3, 7], LUCK_PER_LEVEL = 0.05, WIN_AT = 2000;
+/* What a private dealer wants for a piece, in cash, during a run. Absurd on
+   purpose: a sink for a run that went enormous, and a REAL decision, because
+   the million comes straight off your net worth and therefore off your score.
+   You trade this run's place on the board for something you keep. */
+const BROKER_PRICE = 1000000;
+/* The class a dealer would sell you here, or null if there is no deal. */
+function brokerOffer(g) {
+  if (!countsForProgress(g)) return null;
+  if (!g.station.shop || g.stats.gear_bought) return null;
+  if (g.player.cash < BROKER_PRICE) return null;
+  return winningClass(g) || "meme";
+}
+
+/* Moving a banked win costs two to give one: free respec would make four
+   pieces one piece with a dropdown, and a punitive rate means nobody uses it. */
+const RETUNE_COST = 2, MAX_NAME = 22;
+
+function displayName(profile, piece) {
+  const custom = (profile && profile.gear_names || {})[piece.key];
+  return custom ? custom : piece.name;
+}
+function cleanName(name) { return String(name).split(/\s+/).filter(Boolean).join(" ").slice(0, MAX_NAME); }
+function renameGear(profile, key, name) {
+  if (!GEAR_BY_KEY[key]) throw new Error(`no such gear ${key}`);
+  if (!profile.gear_names) profile.gear_names = {};
+  if (levelFor((profile.gear_wins || {})[key] || 0) < 1) {
+    throw new Error(`you haven't earned the ${GEAR_BY_KEY[key].name} yet`);
+  }
+  const cleaned = cleanName(name);
+  if (!cleaned) { delete profile.gear_names[key]; return `Back to ${GEAR_BY_KEY[key].name}.`; }
+  profile.gear_names[key] = cleaned;
+  return `${GEAR_BY_KEY[key].name} is now ${cleaned}.`;
+}
+/* How gear gets customised rather than merely accumulated: a player whose style
+   moved from memecoins to majors carries some of what they earned across. */
+function retuneGear(profile, source, target) {
+  for (const key of [source, target]) if (!GEAR_BY_KEY[key]) throw new Error(`no such gear ${key}`);
+  if (source === target) throw new Error("that is where it already is");
+  if (!profile.gear_wins) profile.gear_wins = {};
+  if (!profile.gear_names) profile.gear_names = {};
+  const have = profile.gear_wins[source] || 0;
+  if (have < RETUNE_COST) {
+    throw new Error(`${GEAR_BY_KEY[source].name} has ${have} win(s); moving one costs ${RETUNE_COST}`);
+  }
+  profile.gear_wins[source] = have - RETUNE_COST;
+  profile.gear_wins[target] = (profile.gear_wins[target] || 0) + 1;
+  if (profile.gear_wins[source] <= 0) {
+    delete profile.gear_wins[source];
+    delete profile.gear_names[source];        // an unearned piece keeps no name
+  }
+  return `Moved a win from ${GEAR_BY_KEY[source].name} to ${GEAR_BY_KEY[target].name}. `
+       + `It cost ${RETUNE_COST}.`;
+}
+
+function levelFor(wins) { return WINS_FOR_LEVEL.filter(n => wins >= n).length; }
+function levelsFromWins(wins) {
+  const out = {};
+  for (const key of Object.keys(CLASSES)) if (wins && wins[key]) out[key] = levelFor(wins[key]);
+  return out;
+}
+function luckOf(levels, cls) {
+  return LUCK_PER_LEVEL * Math.min(MAX_LEVEL, (levels && levels[cls]) || 0);
+}
+/* Gear you own but are not holding for does nothing: the bonus follows the bag. */
+function luckBySymbol(levels, wallet) {
+  const out = {};
+  for (const [sym, h] of Object.entries(wallet || {})) {
+    const cls = CLASS_OF[sym];
+    if (h.qty > 0 && cls) { const l = luckOf(levels, cls); if (l > 0) out[sym] = l; }
+  }
+  return out;
+}
+function bestLuck(levels, wallet) {
+  const vals = Object.values(luckBySymbol(levels, wallet));
+  return vals.length ? Math.max(...vals) : 0;
+}
+/* None when they finished holding nothing - gear is earned by HOLDING through
+   the finish, so cashing out entirely earns nothing. */
+function winningClass(g) {
+  const totals = {};
+  for (const [sym, h] of Object.entries(g.player.wallet)) {
+    if (h.qty <= 0 || !CLASS_OF[sym]) continue;
+    totals[CLASS_OF[sym]] = (totals[CLASS_OF[sym]] || 0) + h.qty * g.market.prices[sym];
+  }
+  const best = Object.entries(totals).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
+}
+/* Returns [piece, levelBefore, levelAfter] or null. */
+/* Same bank as a real win, deliberately: two parallel progress tracks for the
+   same four pieces would be a UI problem pretending to be a feature. */
+function creditWheel(profile, cls) {
+  if (!GEAR_BY_KEY[cls]) return null;
+  if (!profile.gear_wins) profile.gear_wins = {};
+  const before = levelFor(profile.gear_wins[cls] || 0);
+  profile.gear_wins[cls] = (profile.gear_wins[cls] || 0) + 1;
+  return [GEAR_BY_KEY[cls], before, levelFor(profile.gear_wins[cls])];
+}
+
+function creditWin(profile, g) {
+  if (!countsForProgress(g) || g.finalScore() <= WIN_AT) return null;
+  const cls = winningClass(g);
+  if (cls === null) return null;
+  if (!profile.gear_wins) profile.gear_wins = {};
+  const before = levelFor(profile.gear_wins[cls] || 0);
+  profile.gear_wins[cls] = (profile.gear_wins[cls] || 0) + 1;
+  return [GEAR_BY_KEY[cls], before, levelFor(profile.gear_wins[cls])];
+}
+
+/* ---------------------------- progress.py ----------------------------- */
+/* Mirrors cryptowarz/progress.py. A lost run has to leave something behind,
+   or the thirtieth loss looks exactly like the first. */
+const ACHIEVEMENTS = [
+  { key: "first_run",    name: "Off Peak",            blurb: "Finish a run, any run.",
+    test: g => true },
+  { key: "in_the_black", name: "In the Black",        blurb: "Finish worth more than you started.",
+    test: g => g.finalScore() > 2000 },
+  { key: "debt_free",    name: "Paid in Full",        blurb: "Clear the Shark completely.",
+    test: g => g.player.debt <= 0 },
+  { key: "whale",        name: "Whale Watching",      blurb: "Be worth $100,000 at any point.",
+    test: g => (g.stats.peak_worth || 0) >= 100000 },
+  { key: "tourist",      name: "The Whole Map",       blurb: "Visit every station in one run.",
+    test: g => (g.stats.stations || []).length >= STATIONS.length },
+  { key: "untouchable",  name: "Untouchable",         blurb: "Thirty days, no SEC raid.",
+    test: g => (g.stats.raids || 0) === 0 && g.day > 25 },
+  { key: "moonshot",     name: "Moonshot",            blurb: "Triple your money on one trade.",
+    test: g => (g.stats.best_multiple || 0) >= 3.0 },
+  { key: "degen",        name: "Nothing but Vibes",   blurb: "Finish in profit holding only memecoins.",
+    test: g => g.finalScore() > 2000 && !!g.stats.meme_only_finish },
+  { key: "six_figures",  name: "Six Figures",         blurb: "Finish above $100,000.",
+    test: g => g.finalScore() >= 100000 },
+  { key: "legend",       name: "They Named a Station", blurb: "Finish above $500,000.",
+    test: g => g.finalScore() >= 500000 },
+];
+
+const PERKS = [
+  { key: "metrocard",    name: "Unlimited MetroCard", blurb: "Rides are free, and signal delays never cost you a day.", by: "first_run" },
+  { key: "seed_round",   name: "Seed Round",          blurb: "Start with $2,000 more.",                                  by: "in_the_black" },
+  { key: "burner",       name: "Burner Phone",        blurb: "Trouble finds you a third less often.",                    by: "untouchable" },
+  { key: "cold_storage", name: "Cold Storage",        blurb: "+$15,000 wallet capacity.",                                by: "whale" },
+  { key: "fixer",        name: "The Fixer",           blurb: "The Shark charges 8.5% a day, not 10%.",                   by: "debt_free" },
+  { key: "insider",      name: "Insider",             blurb: "The map shows which coin each station pays most for.",     by: "tourist" },
+];
+
+/* Tuned by simulation: starting debt compounds daily while profit scales with
+   capacity, so leaning on debt made the top tier unwinnable. Capacity and heat
+   carry the ladder instead. */
+const TIERS = [
+  { level: 1, name: "Off Peak",   blurb: "The standard thirty days.",           debt: 5500,  capacity: 25000, heat: 1.00, days: 30, mult: 1.00 },
+  { level: 2, name: "Rush Hour",  blurb: "A bigger loan and more eyes on you.", debt: 6800,  capacity: 21000, heat: 1.25, days: 30, mult: 1.30 },
+  { level: 3, name: "Track Work", blurb: "Deeper in, carrying less.",           debt: 7800,  capacity: 17000, heat: 1.50, days: 30, mult: 1.65 },
+  { level: 4, name: "Last Train", blurb: "Four fewer days to do it in.",        debt: 7800,  capacity: 15000, heat: 1.60, days: 26, mult: 2.00 },
+  { level: 5, name: "Blackout",   blurb: "Everything at once.",                 debt: 9000,  capacity: 13000, heat: 1.80, days: 26, mult: 2.40 },
+];
+const TIER_BY_LEVEL = Object.fromEntries(TIERS.map(t => [t.level, t]));
+/* How hard the city is playing - a second axis, free to choose on any run.
+   A tier is progression you unlock; a difficulty is a dial you can turn on
+   day one. Both pay the board honestly: the multipliers multiply. */
+const DIFFICULTIES = [
+  { key: "easy",   name: "Local",      blurb: "Every stop, no hurry. The city is not paying attention.",
+    cash: 1500, debtMult: 0.85, shark: 0.075, heatMult: 0.80, mult: 0.70 },
+  { key: "normal", name: "Express",    blurb: "The game as it is meant to be played.",
+    cash: 0,    debtMult: 1.00, shark: 0.100, heatMult: 1.00, mult: 1.00 },
+  { key: "hard",   name: "Third Rail", blurb: "Bigger loan, worse rate, and everybody is looking.",
+    cash: 0,    debtMult: 1.25, shark: 0.125, heatMult: 1.30, mult: 1.50 },
+];
+const DIFFICULTY_BY_KEY = Object.fromEntries(DIFFICULTIES.map(d => [d.key, d]));
+const DEFAULT_DIFFICULTY = "normal";
+/* Falls back rather than throwing: a save from an older build carries no
+   difficulty at all, and a run that refuses to load is worse than Express. */
+function difficultyOf(key) {
+  return DIFFICULTY_BY_KEY[key || DEFAULT_DIFFICULTY] || DIFFICULTY_BY_KEY[DEFAULT_DIFFICULTY];
+}
+function difficultyMult(key) { return difficultyOf(key).mult; }
+const PERK_BY_KEY = Object.fromEntries(PERKS.map(p => [p.key, p]));
+const PROGRESS_KEY = "cryptowarz.progress.v1";
+const PROGRESS_VERSION = 3;
+
+/* ---------------------------- grading -------------------------------- */
+/* Three ranked runs a day, each a full thirty-day market, each graded on what
+   it was finally worth weighted by the tier it was played on. A leaderboard
+   needs a fixed slate or it just ranks patience. */
+const RUNS_PER_DAY = 3;
+const GRADES = [
+  [750000, "S+", "They'll name a station after you."],
+  [300000, "S",  "Somebody is going to ask questions."],
+  [100000, "A",  "Six figures. Quit while you're ahead."],
+  [35000,  "B",  "A real score."],
+  [10000,  "C",  "Out of the hole and then some."],
+  [2000,   "D",  "You finished. Barely."],
+  [0,      "F",  "The Shark got paid. You didn't."],
+];
+/* Shown instead of a letter for a run that is not eligible to be ranked. */
+const UNRANKED_GRADE = "G";
+/* A run handed money it did not earn may not touch the board, the goals or the
+   ladder: posting it would end the leaderboard, and unlocking from it would
+   hand somebody the whole progression for nothing. It costs nothing either -
+   the ranked slot stays unspent. */
+function countsForProgress(g) { return !(g && g.hotHand); }
+function runGrade(g) { return countsForProgress(g) ? gradeFor(runPoints(g)) : UNRANKED_GRADE; }
+function tierMult(tier) { return (TIER_BY_LEVEL[tier] || TIERS[0]).mult; }
+/* Floored at zero: a board that can be dragged down is one where the safe play
+   is not to play. */
+function difficultyMultOf(g) { return difficultyMult(g.difficulty || DEFAULT_DIFFICULTY); }
+function runPoints(g) {
+  return Math.max(0, g.finalScore()) * tierMult(g.tier || 1) * difficultyMultOf(g);
+}
+function gradeFor(points) { return (GRADES.find(r => points >= r[0]) || GRADES[GRADES.length - 1])[1]; }
+function gradeBlurb(points) { return (GRADES.find(r => points >= r[0]) || GRADES[GRADES.length - 1])[2]; }
+/* Per slot, so run two is a new market rather than run one replayed with the
+   answers; per date, so everyone plays the same three today. */
+function dailySeeds(when) {
+  const day = dailySeed(when);
+  return [0, 1, 2].map(slot => day * 10 + slot);
+}
+
+function blankProfile() {
+  return { version: PROGRESS_VERSION, runs: 0, achievements: [], best_net: 0,
+           best_tier_cleared: 0, daily_day: null, daily_runs: [],
+           best_daily: 0, best_daily_day: null, gear_wins: {}, gear_names: {},
+           updated_at: 0 };
+}
+function readProfile() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "null");
+    // a version 1 profile predates ranked runs; its achievements were still
+    // earned, so it migrates rather than being thrown away
+    if (!raw || ![1, 2, PROGRESS_VERSION].includes(raw.version)) return blankProfile();
+    const known = new Set(ACHIEVEMENTS.map(a => a.key));
+    raw.achievements = (raw.achievements || []).filter(k => known.has(k));
+    if (!Array.isArray(raw.daily_runs)) raw.daily_runs = [];
+    if (!raw.gear_wins || typeof raw.gear_wins !== "object") raw.gear_wins = {};
+    if (!raw.gear_names || typeof raw.gear_names !== "object") raw.gear_names = {};
+    delete raw.daily_seed; delete raw.daily_net;
+    return Object.assign(blankProfile(), raw, { version: PROGRESS_VERSION });
+  } catch (e) { return blankProfile(); }   // a profile is a reward, never a blocker
+}
+/* Point the profile at today's slate, clearing yesterday's. Nothing is lost by
+   missing a day - the old slate simply is not today's any more. */
+function rollDay(p, day) {
+  day = day === undefined ? dailySeed() : day;
+  if (p.daily_day !== day) { p.daily_day = day; p.daily_runs = []; }
+  return day;
+}
+function runsToday(p, day) {
+  day = day === undefined ? dailySeed() : day;
+  return p.daily_day === day ? p.daily_runs.slice() : [];
+}
+function nextSlot(p, day) {
+  const done = new Set(runsToday(p, day).map(r => r.slot));
+  for (let i = 0; i < RUNS_PER_DAY; i++) if (!done.has(i)) return i;
+  return null;
+}
+function dailyTotal(p, day) {
+  return runsToday(p, day).reduce((a, r) => a + (r.points || 0), 0);
+}
+/* Re-recording a slot is ignored rather than overwriting: three ranked runs
+   only means something if each market is played once. */
+function recordDaily(p, g, slot, day) {
+  day = rollDay(p, day);
+  if (!countsForProgress(g)) {          // the slot is not spent either
+    return { slot: slot, points: 0, net: Math.round(g.finalScore() * 100) / 100,
+             grade: UNRANKED_GRADE, tier: g.tier || 1, at: Date.now() / 1000 };
+  }
+  const points = runPoints(g);
+  const entry = { slot: slot, points: Math.round(points * 100) / 100,
+                  net: Math.round(g.finalScore() * 100) / 100,
+                  grade: gradeFor(points), tier: g.tier || 1, at: Date.now() / 1000 };
+  if (p.daily_runs.some(r => r.slot === slot)) return entry;
+  p.daily_runs.push(entry);
+  p.daily_runs.sort((a, b) => a.slot - b.slot);
+  const total = dailyTotal(p, day);
+  if (total > p.best_daily) { p.best_daily = total; p.best_daily_day = day; }
+  return entry;
+}
+function writeProfile(p) {
+  p.updated_at = Date.now() / 1000;
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch (e) {}
+  return p;
+}
+function unlockedPerks(p) {
+  const earned = new Set(p.achievements);
+  return PERKS.filter(x => earned.has(x.by));
+}
+function maxTier(p) { return Math.max(1, Math.min(TIERS.length, (p.best_tier_cleared || 0) + 1)); }
+
+/* Today's date as YYYYMMDD - the key the ranked slate hangs on. Not a streak:
+   miss a day and nothing is taken away, there is simply a new slate waiting. */
+function dailySeed(when) {
+  const d = new Date(when === undefined ? Date.now() : when);
+  return Number(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`);
+}
+
+function award(profile, g) {
+  if (!countsForProgress(g)) return [];
+  const earned = [];
+  for (const a of ACHIEVEMENTS) {
+    if (profile.achievements.includes(a.key)) continue;
+    let hit = false;
+    try { hit = !!a.test(g); } catch (e) { hit = false; }
+    if (hit) { profile.achievements.push(a.key); earned.push(a); }
+  }
+  profile.runs += 1;
+  profile.best_net = Math.max(profile.best_net, g.finalScore());
+  if (g.finalScore() > 2000 && g.tier > profile.best_tier_cleared) profile.best_tier_cleared = g.tier;
+  return earned;
+}
+
+/* ------------------------------ save.js ------------------------------- */
+/* Mirrors cryptowarz/save.py, including the decision that matters: the RNG
+   state is saved, so reloading replays the same dice. A game of raids and rug
+   pulls where a reload rerolls is a game where the risk is optional.
+
+   localStorage is per-browser and can throw (private mode, blocked site data),
+   so every read and write is guarded and the game plays fine without it. */
+const SAVE_VERSION = 1;
+/* -------------------------- taking it with you -----------------------
+   The save and the profile live in whatever browser you happened to play in.
+   That is fine until a new phone, a cleared cache or a page saved to disk -
+   and the gear you spent twenty runs earning is simply gone. So the game hands
+   you the bytes: one line of text that both front ends read and write, so a
+   run started here can be finished in the terminal and the other way round.
+
+   Text rather than a file, because a download is blocked or awkward in half
+   the places this game runs. With a checksum, because a half-copied paste that
+   silently loaded would overwrite a good profile with a broken one - the exact
+   failure a backup exists to prevent. Not a cheat guard: it is base64, not a
+   lock, and the leaderboard is protected where it always was. */
+const BACKUP_VERSION = 1, BACKUP_PREFIX = "CW1";
+
+/* 32-bit FNV-1a: four lines in every language, so the two ports cannot drift
+   on it. It catches truncation and transcription, which is all it is for. */
+function fnv1a(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i) & 0xff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+function backupEncode(payload) {
+  const raw = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(raw);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  const body = btoa(bin);
+  return `${BACKUP_PREFIX}.${fnv1a(body).toString(16).padStart(8, "0")}.${body}`;
+}
+function backupDecode(text) {
+  const parts = String(text).replace(/\s+/g, "").split(".");
+  if (parts.length !== 3 || parts[0] !== BACKUP_PREFIX) {
+    throw new Error("that doesn't look like a CryptoWarz backup line");
+  }
+  const [, checksum, body] = parts;
+  if (fnv1a(body).toString(16).padStart(8, "0") !== checksum.toLowerCase()) {
+    throw new Error("that backup is damaged or was only half copied - copy the whole "
+                    + "line, including the CW1 at the front");
+  }
+  let payload;
+  try {
+    const bin = atob(body);
+    const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+    payload = JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) { throw new Error(`that backup could not be read (${e.message})`); }
+  if (!payload || typeof payload !== "object") throw new Error("that backup is not a backup");
+  return payload;
+}
+/* A backup line for a profile, optionally with a run in progress. */
+function makeBackup(profile, save, scores) {
+  const payload = { v: BACKUP_VERSION, profile: profile };
+  if (save) payload.save = save;
+  if (scores && scores.length) payload.scores = scores;
+  return backupEncode(payload);
+}
+/* {profile, save, scores} from a line. The profile goes through the same
+   reader a stored one does, so an older backup migrates identically. */
+function readBackup(text) {
+  const payload = backupDecode(text);
+  const version = payload.v | 0;
+  if (version > BACKUP_VERSION) {
+    throw new Error(`that backup was written by a newer build (version ${version}; `
+                    + `this one reads ${BACKUP_VERSION})`);
+  }
+  let profile = null;
+  if (payload.profile) {
+    const known = new Set(ACHIEVEMENTS.map(a => a.key));
+    const raw = Object.assign({}, payload.profile);
+    raw.achievements = (raw.achievements || []).filter(k => known.has(k));
+    if (!Array.isArray(raw.daily_runs)) raw.daily_runs = [];
+    if (!raw.gear_wins || typeof raw.gear_wins !== "object") raw.gear_wins = {};
+    if (!raw.gear_names || typeof raw.gear_names !== "object") raw.gear_names = {};
+    profile = Object.assign(blankProfile(), raw, { version: PROGRESS_VERSION });
+  }
+  return { profile: profile, save: payload.save || null, scores: payload.scores || null };
+}
+
+const SAVE_KEY = "cryptowarz.save.v1";
+const SCORE_KEY = "cryptowarz.scores.v1";
+const MAX_SCORES = 25;
+
+function saveToDict(g) {
+  const wallet = {};
+  for (const [sym, h] of Object.entries(g.player.wallet)) {
+    if (h.qty > 0 || h.cost > 0) wallet[sym] = { qty: h.qty, cost: h.cost };
+  }
+  return {
+    save_version: SAVE_VERSION,
+    saved_at: Date.now() / 1000,
+    seed: g.seed,
+    tier: g.tier,
+    /* added after version 1 shipped and read with a default, so a save from an
+       older build still loads - it simply resumes on Express */
+    difficulty: g.difficulty || DEFAULT_DIFFICULTY,
+    perk: g.perk,
+    /* the gear the run started with, so a reload keeps the same luck */
+    gear: Object.assign({}, g.gear || {}),
+    /* which ranked run of today this is, or null for practice. Added after
+       version 1 shipped and read with a default, so an in-progress save from
+       the older build still loads - it simply resumes as practice. */
+    daily_slot: g.dailySlot === undefined ? null : g.dailySlot,
+    stats: g.stats,
+    day: g.day,
+    finished: g.finished,
+    station: g.station.name,
+    player: { cash: g.player.cash, debt: g.player.debt, vault: g.player.vault,
+              capacity: g.player.capacity, vpn: g.player.vpn, wallet },
+    levels: Object.assign({}, g.state.levels),
+    /* the run each coin is on. Without it a reloaded game keeps the prices and
+       forgets which way everything was going - a different market wearing the
+       same numbers. */
+    trends: Object.assign({}, g.state.trends || {}),
+    /* the chart the player has been reading. Dropping it on reload would blank
+       every sparkline mid-run, which looks exactly like a bug. */
+    history: Object.fromEntries(Object.entries(g.state.history || {})
+      .map(([sym, vals]) => [sym, vals.slice()])),
+    market: {
+      prices: Object.assign({}, g.market.prices),
+      shock: g.market.shock ? { symbol: g.market.shock.symbol,
+                                headline: g.market.shock.headline,
+                                factor: g.market.shock.factor } : null,
+    },
+    rng: g.rng.getState(),
+    log: g.log.slice(-40),
+  };
+}
+
+function saveFromDict(data) {
+  if (!data || data.save_version !== SAVE_VERSION) {
+    throw new Error("that save is from a different version of the game");
+  }
+  const g = new Game(data.seed === undefined ? 0 : data.seed, data.tier || 1,
+                     data.perk || null, data.gear || {},
+                     data.difficulty || DEFAULT_DIFFICULTY);
+  g.rng.setState(data.rng);
+  g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
+  g.isDaily = g.dailySlot !== null;
+  if (data.stats) g.stats = data.stats;
+  // carried in stats, so it reloads with the run and a reload cannot shake it
+  g.hotHand = !!(g.stats && g.stats.hot_hand);
+  g.day = data.day;
+  g.finished = !!data.finished;
+  g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
+  g.log = (data.log || []).slice();
+  const p = data.player;
+  g.player = { cash: p.cash, debt: p.debt, vault: p.vault, capacity: p.capacity,
+               vpn: p.vpn || 0, wallet: {} };
+  for (const [sym, h] of Object.entries(p.wallet || {})) {
+    if (COIN[sym]) g.player.wallet[sym] = { qty: h.qty, cost: h.cost };
+  }
+  for (const c of COINS) {
+    if (data.levels[c.symbol] === undefined) throw new Error("that save predates " + c.symbol);
+  }
+  g.state.levels = Object.assign({}, data.levels);
+  const savedHistory = data.history || {};
+  g.state.history = {};
+  for (const c of COINS) {
+    const past = (savedHistory[c.symbol] || []).map(Number).filter(v => v > 0);
+    g.state.history[c.symbol] = past.length ? past : [g.state.levels[c.symbol]];
+  }
+  const savedTrends = data.trends || {};
+  g.state.trends = {};
+  for (const c of COINS) g.state.trends[c.symbol] = Number(savedTrends[c.symbol]) || 0;
+  g.market = { station: g.station, prices: Object.assign({}, data.market.prices),
+               shock: data.market.shock ? Object.assign({ crash: data.market.shock.factor < 1 },
+                                                        data.market.shock) : null,
+               headline: data.market.shock ? data.market.shock.headline : null };
+  return g;
+}
+
+function writeSave(g) {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveToDict(g))); return true; }
+  catch (e) { return false; }
+}
+function readSave() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    return saveFromDict(JSON.parse(raw));
+  } catch (e) { clearSave(); return null; }
+}
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+function readScores() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SCORE_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(r => r && typeof r.net_worth === "number")
+              .sort((a, b) => b.net_worth - a.net_worth);
+  } catch (e) { return []; }
+}
+/* Used by a restore: the board a backup carried, put back as it came. */
+function writeScores(scores) {
+  const kept = (Array.isArray(scores) ? scores : [])
+    .filter(r => r && typeof r.net_worth === "number")
+    .sort((a, b) => b.net_worth - a.net_worth)
+    .slice(0, MAX_SCORES);
+  try { localStorage.setItem(SCORE_KEY, JSON.stringify(kept)); } catch (e) {}
+  return kept;
+}
+function recordScore(g) {
+  const scores = readScores();
+  if (!countsForProgress(g)) return scores;   // an ineligible run is not a result
+  scores.push({ net_worth: g.finalScore(), day: Math.min(g.day, DAYS),
+                verdict: g.verdict(), finished_at: Date.now() / 1000, seed: g.seed });
+  scores.sort((a, b) => b.net_worth - a.net_worth);
+  const kept = scores.slice(0, MAX_SCORES);
+  try { localStorage.setItem(SCORE_KEY, JSON.stringify(kept)); } catch (e) {}
+  return kept;
+}
+
+/* ------------------------------ helpers ------------------------------- */
+function fmtQty(q) {
+  if (q >= 1000) return q.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (q >= 1) return q.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  return q.toFixed(6);
+}
+function fmtPrice(v) {
+  if (v >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (v >= 1) return v.toFixed(2);
+  if (v >= 0.001) return v.toFixed(4);
+  return v.toFixed(8);
+}
+function fmtMoney(v) {
+  const s = Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (v < 0 ? "-$" : "$") + s;
+}
+
+if (false) {
+  module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
+                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
+                     BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
+                     makeBackup, readBackup, writeScores,
+                     ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
+                     unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
+                     DIFFICULTIES, DIFFICULTY_BY_KEY, DEFAULT_DIFFICULTY,
+                     difficultyOf, difficultyMult,
+                     RAID_GRACE, RAID_RAMP_TO, raidPressure, eventWeights, raidChance,
+                     THREAT, THREAT_BARS, WIRE_LINES, threatLevel, standingHeat, wire, EVENTS,
+                     runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
+                     runsToday, nextSlot, dailyTotal, recordDaily,
+                     PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,
+                     WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
+                     luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
+                     stationMarkup, BIAS_COMPRESSION, TREND_FLIP, TREND_STRENGTH,
+                     HISTORY_KEPT, SPARK_DAYS,
+                     TIP_CHANCE, TIP_ACCURACY, TIP_MIN_RUN, TIP_FRESH_FOR,
+                     RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
+                     creditWheel, WHEEL, WHEEL_LINES,
+                     BROKER_PRICE, brokerOffer,
+                     DICE_EVERY, DICE_SIDES, DICE_TOP_PRIZE, DICE_LADDER, diceTier,
+                     HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
+                     HOT_HAND_MAX, UNRANKED_GRADE,
+                     countsForProgress, runGrade };
+}
+
+</script>
+<script>
+/* Real MTA route colours - the detail that makes this the subway rather than
+   a generic dark UI. Yellow and grey take black text for contrast. */
+const LINE_COLOR = {
+  "1":"--red","2":"--red","3":"--red",
+  "4":"--green","5":"--green","6":"--green",
+  "7":"--purple",
+  "A":"--blue","C":"--blue","E":"--blue","SIR":"--blue",
+  "B":"--orange","D":"--orange","F":"--orange","M":"--orange",
+  "N":"--yellow","Q":"--yellow","R":"--yellow","W":"--yellow",
+  "L":"--grey","S":"--grey",
+};
+const DARK_TEXT = new Set(["N","Q","R","W","L","S"]);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+
+function bullet(line){
+  const c = css(LINE_COLOR[line] || "--grey");
+  const cls = "bul" + (DARK_TEXT.has(line) ? " dark" : "") + (line === "SIR" ? " sir" : "");
+  return `<span class="${cls}" style="background:${c}">${line}</span>`;
+}
+
+let game, openCoin = null;
+
+/* Two different facts, which one tag used to run together: where the MARKET has
+   this coin, and what THIS STOP is adding on top. A player who only sees the
+   first experiences their own overpaying as the coin turning on them. */
+function tagFor(c, price){
+  const pos = (price - c.low) / (c.high - c.low);
+  if (pos <= 0.2) return '<span class="tag cheap">CHEAP</span>';
+  if (pos >= 0.8) return '<span class="tag dear">DEAR</span>';
+  return "";
+}
+
+/* The percentage answers the question the player is actually asking.
+   HOLDING IT: what you paid against what this stop pays now - your real,
+   sellable profit, and the same gap the dashed cost line draws on the spark.
+   NOT HOLDING IT: the coin's own fortnight, because there is no "since I
+   bought" to report.
+   These are different numbers and they get different labels, since an
+   unlabelled percentage that silently changes meaning is worse than none. */
+/* One decimal only where one decimal means something. "179.2%" is three
+   characters of noise; "4.4%" is a real difference from 4%. */
+function pct(frac){
+  const v = Math.abs(frac * 100);
+  return (v < 10 ? v.toFixed(1) : Math.round(v)) + "%";
+}
+
+function moveFor(c, price, held){
+  if (held && held.qty > 0 && held.cost > 0) {
+    const paid = held.cost / held.qty;
+    const pl = price / paid - 1;
+    if (!isFinite(pl)) return "";
+    const up = pl >= 0;
+    return `<span class="move ${up ? "up" : "down"}" title="since you bought">
+      ${up ? "▲" : "▼"} ${pct(pl)}<i>you</i></span>`;
+  }
+  const past = (game.state.history[c.symbol] || []).slice(-SPARK_DAYS);
+  if (past.length < 2) return "";
+  const change = past[past.length - 1] / past[0] - 1;
+  if (!isFinite(change) || Math.abs(change) < 0.005) return "";
+  const up = change >= 0;
+  return `<span class="move quiet">${up ? "▲" : "▼"} ${pct(change)}<i>14d</i></span>`;
+}
+
+/* Only when this stop is far enough off the market to change a decision. At a
+   2% floor almost every row carried a chip, which is wallpaper rather than a
+   signal - the number is still exact in the terminal table for anyone counting
+   pennies, and the sparkline and your own P/L are the things to read first. */
+const HERE_WORTH_SAYING = 0.08;
+
+function hereFor(c){
+  const markup = stationMarkup(game.station, c.symbol) - 1;
+  if (Math.abs(markup) < HERE_WORTH_SAYING) return "";
+  const pct = (markup > 0 ? "+" : "") + Math.round(markup * 100) + "%";
+  return `<span class="tag ${markup > 0 ? "over" : "under"}">${pct} HERE</span>`;
+}
+
+function render(){
+  const g = game, p = g.player;
+  const net = g.netWorth();
+  $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
+  const tierInfo = TIER_BY_LEVEL[g.tier];
+  const pill = $("tierpill");
+  $("luckpill").hidden = g.luck <= 0;
+  $("luckpill").textContent = `+${Math.round(g.luck * 100)}% LUCK`;
+  pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.hotHand;
+  pill.textContent = [g.hotHand ? "GOD MODE" : null,
+    g.isDaily && !g.hotHand ? `RANKED ${g.dailySlot + 1}/${RUNS_PER_DAY}` : null, g.tier > 1 ? tierInfo.name.toUpperCase() : null,
+                      g.perk ? PERK_BY_KEY[g.perk].name.toUpperCase() : null].filter(Boolean).join(" · ");
+  $("station").textContent = g.station.name;
+  $("bullets").innerHTML = g.station.lines.map(bullet).join("");
+  $("flavor").textContent = g.station.flavor;
+  $("cash").textContent = fmtMoney(p.cash);
+  $("cash").className = "num " + (p.cash > 0 ? "up" : "down");
+  $("debt").textContent = fmtMoney(p.debt);
+  $("debt").className = "num " + (p.debt > 0 ? "down" : "flat");
+  $("vault").textContent = fmtMoney(p.vault);
+  $("net").textContent = fmtMoney(net);
+  $("net").className = "num " + (net >= 0 ? "up" : "down");
+  const used = g.usedCapacity();
+  $("capbar").style.width = Math.min(100, used / p.capacity * 100) + "%";
+  $("capnum").textContent = `$${Math.round(used).toLocaleString()} / $${Math.round(p.capacity).toLocaleString()}`;
+
+  // render() used to rebuild this wholesale, which erased anything flash() had
+  // put there a moment earlier - the reason messages seemed to disappear even
+  // faster than their own timeout. The headline is now its own row.
+  const head = g.market.headline
+    ? `<div class="alert ${g.market.shock.crash ? "bad" : ""}" data-headline="1">
+         <span>${esc(g.market.headline)}</span><b class="x" aria-hidden="true">×</b></div>`
+    : "";
+  const existing = $("alerts").querySelector("[data-headline]");
+  if (existing) existing.remove();
+  $("alerts").insertAdjacentHTML("beforeend", head);
+
+  $("market").innerHTML = COINS.map(c => {
+    const price = g.market.prices[c.symbol];
+    const h = p.wallet[c.symbol] || { qty: 0, cost: 0 };
+    const open = openCoin === c.symbol;
+    const canBuy = g.maxBuyable(c.symbol);
+    const heldLine = h.qty > 0
+      ? `<div class="held num">${fmtQty(h.qty)} · ${fmtMoney(h.qty * price)}</div>` : "";
+    let trade = "";
+    if (open) {
+      const rows = [];
+      if (canBuy > 0) rows.push(`<div class="btns">
+        <button class="buy" data-buy="${c.symbol}" data-frac="0.25">BUY 25%</button>
+        <button class="buy" data-buy="${c.symbol}" data-frac="0.5">BUY 50%</button>
+        <button class="buy" data-buy="${c.symbol}" data-frac="1">BUY MAX</button></div>`);
+      else rows.push(`<div class="note">No room or no cash for ${c.symbol} right now.</div>`);
+      if (h.qty > 0) rows.push(`<div class="btns">
+        <button class="sell" data-sell="${c.symbol}" data-frac="0.5">SELL HALF</button>
+        <button class="sell" data-sell="${c.symbol}" data-frac="1">SELL ALL</button></div>`);
+      rows.push(`<div class="note">${c.note}${h.qty > 0 ? ` · you paid ${fmtPrice(h.cost / h.qty)} avg` : ""}</div>`);
+      trade = rows.join("");
+    }
+    // Insider: name the station that pays most for this coin
+    const insider = (open && game.perk === "insider")
+      ? (() => {
+          let best = null;
+          for (const st of STATIONS) {
+            const b = st.bias[c.symbol] === undefined ? 1 : st.bias[c.symbol];
+            if (!best || b > best[1]) best = [st.name, b];
+          }
+          return `<div class="note">Insider: ${best[0]} pays the most for ${c.symbol}.</div>`;
+        })() : "";
+    trade += insider;
+    return `<div class="coin${open ? " open" : ""}">
+      <div class="coinrow" data-coin="${c.symbol}" role="button" tabindex="0">
+        <div><div class="sym">${c.symbol}</div></div>
+        <div><div class="cname">${c.name}</div></div>
+        <div class="px">${sparkline(g.state.history[c.symbol] || [], { paid: h.qty > 0 ? h.cost / h.qty : 0 })}
+          <div class="pxline"><b class="num">${fmtPrice(price)}</b>${moveFor(c, price, h)}</div>
+          <div class="chips">${tagFor(c, price)}${hereFor(c)}</div>${heldLine}</div>
+      </div>
+      <div class="trade">${trade}</div>
+    </div>`;
+  }).join("");
+
+  // The wire: the real odds of a raid at this stop, on this day, as news.
+  // Drawn from the same weight table the roll uses, so it cannot disagree.
+  const w = wire(g);
+  const wireEl = $("wire");
+  wireEl.hidden = false;
+  wireEl.className = "wire t" + w.bars;
+  wireEl.innerHTML = `<div class="bars">${"\u25ae".repeat(w.bars)}${
+      "\u25af".repeat(w.of - w.bars)}</div>
+    <div><div><span class="who">THE WIRE</span> <span class="lvl">${w.label}</span></div>
+      <div class="txt">${esc(w.text)}</div>
+      <div class="odds">${w.chance > 0
+        ? `1 in ${Math.round(1 / w.chance)} per stop · ${Math.round(w.two_stops * 100)}% over the next two`
+        : `no raids for ${w.grace_left} more day${w.grace_left === 1 ? "" : "s"}`}</div></div>`;
+
+  const st = g.station, svc = [];
+  if (st.shark) {
+    // offer what he will actually lend, and say so plainly when that is nothing
+    const available = Math.min(2500, game.borrowable());
+    svc.push(available >= 100
+      ? `<button data-act="borrow">BORROW ${fmtMoney(available)}</button>`
+      : `<button disabled title="The Shark won't extend you further">SHARK WON'T LEND</button>`);
+    if (p.debt > 0 && p.cash > 0)
+      svc.push(`<button data-act="repay">REPAY ${fmtMoney(Math.min(p.cash, p.debt))}</button>`);
+  }
+  if (st.vault) {
+    svc.push(`<button data-act="deposit">VAULT HALF</button>`);
+    if (p.vault > 0) svc.push(`<button data-act="withdraw">TAKE ALL OUT</button>`);
+  }
+  if (st.shop) {
+    svc.push(`<button data-act="capacity">+$25K WALLET · ${fmtMoney(g.upgradeCost())}</button>`);
+    if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
+    // the rarest thing in the game should not sit two taps deep on the one run
+    // in a hundred where a player can actually afford it
+    if (brokerOffer(g)) svc.push(`<button data-act="dealer" class="go">A DEALER · ${fmtMoney(BROKER_PRICE)}</button>`);
+  }
+  renderWhisper();
+  renderDeadEnd();
+  renderWheel();
+  $("dicewrap").hidden = !g.diceReady;
+  if (g.diceReady) {
+    if (!$("dice").firstChild) {
+      $("dice").style.setProperty("--faces", DICE_SIDES);
+      $("dice").innerHTML = Array.from({ length: DICE_SIDES },
+        (_, i) => `<button data-dice="${i + 1}">${i + 1}</button>`).join("");
+    }
+    // the payout ladder is shown BEFORE the call, not after it: a prize table
+    // you only learn by losing is a slot machine
+    const boost = 1 + g.luck;
+    $("dicehow").textContent = `Call a number, 1 to ${DICE_SIDES}. `
+      + "Free to play - the closer you land, the bigger the cut.";
+    $("diceladder").innerHTML = DICE_LADDER.map(([reach, label, share]) =>
+      `<span><b>${reach === 0 ? "EXACT" : "±" + reach}</b> ${label} · ${
+        fmtMoney(DICE_TOP_PRIZE * share * boost)}</span>`).join("")
+      + (g.luck > 0
+        ? `<span class="boost">+${Math.round(g.luck * 100)}% GEAR</span>` : "");
+  }
+
+  $("svcwrap").hidden = svc.length === 0;
+  $("svc").innerHTML = svc.join("");
+
+  $("log").innerHTML = g.log.slice(-7).reverse()
+    .map(l => `<div class="logline">${l}</div>`).join("");
+}
+
+/* -------------------------------- charts ------------------------------ */
+/* Two single-series charts, so neither needs a legend - the row or the heading
+   names it. Colours are chart colours, NOT the MTA palette the rest of the page
+   wears: #34d07a against #EE352E clears deuteranope separation (delta-E 13.2,
+   checked with a validator rather than an opinion), where the signage green
+   #00933C only managed 7.2 and would have left a red-green trading game
+   unreadable to the people most likely to be looking at it.
+   Direction is never colour alone either: the end marker is a triangle that
+   points the way the price went, and the number beside it carries a sign. */
+const UP = "#34d07a", DOWN = "#EE352E", QUIET = "#5e5e6b";
+/* Below this much total movement across the window, draw it flat. */
+const FLAT_BELOW = 0.05;
+
+function sparkline(values, opts){
+  const o = opts || {};
+  const w = o.w || 62, h = o.h || 22, pad = 3;
+  const pts = values.slice(-SPARK_DAYS);
+  if (pts.length < 2) return "";
+  const lo = Math.min(...pts), hi = Math.max(...pts);
+  // A sparkline scales its window to full height, which is right for a coin
+  // that moved and a lie for one that did not: USDC wanders 3% around a dollar
+  // and was drawn with the same dramatic peaks as a memecoin that tripled.
+  if (hi <= 0 || (hi - lo) / hi < FLAT_BELOW) {
+    const mid = (h / 2).toFixed(1);
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"
+                 role="img" aria-label="flat"><line x1="${pad}" x2="${w - pad}"
+                 y1="${mid}" y2="${mid}" stroke="${QUIET}" stroke-width="2"
+                 stroke-linecap="round"/></svg>`;
+  }
+  const span = (hi - lo) || Math.abs(hi) || 1;
+  const x = i => pad + i * (w - pad * 2) / (pts.length - 1);
+  const y = v => h - pad - ((v - lo) / span) * (h - pad * 2);
+  const rising = pts[pts.length - 1] >= pts[0];
+  const hue = rising ? UP : DOWN;
+  const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  // the last few days in the accent, the rest recessive. Drawn as its own path
+  // over its own points: a dash-offset trick highlighted the FIRST segment
+  // instead, which quietly told the player the opposite of what happened.
+  const from = Math.max(0, pts.length - 4);
+  const recent = pts.slice(from)
+    .map((v, i) => `${i ? "L" : "M"}${x(from + i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const ex = x(pts.length - 1), ey = y(pts[pts.length - 1]);
+  // your average cost, if you hold any - the one line that turns a shape into a
+  // decision, because "is it up" matters far less than "is it up on ME"
+  let mine = "";
+  if (o.paid > 0 && o.paid >= lo && o.paid <= hi) {
+    mine = `<line x1="${pad}" x2="${w - pad}" y1="${y(o.paid).toFixed(1)}"
+                  y2="${y(o.paid).toFixed(1)}" stroke="#f2f2f4" stroke-width="1"
+                  stroke-dasharray="2 2" opacity=".55"/>`;
+  }
+  const tri = rising
+    ? `${ex},${(ey - 3.4).toFixed(1)} ${(ex - 3).toFixed(1)},${(ey + 2.2).toFixed(1)} ${(ex + 3).toFixed(1)},${(ey + 2.2).toFixed(1)}`
+    : `${ex},${(ey + 3.4).toFixed(1)} ${(ex - 3).toFixed(1)},${(ey - 2.2).toFixed(1)} ${(ex + 3).toFixed(1)},${(ey - 2.2).toFixed(1)}`;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"
+               role="img" aria-label="${pts.length} day trend, ${rising ? "up" : "down"}">
+    ${mine}
+    <path d="${line}" fill="none" stroke="${QUIET}" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${recent}" fill="none" stroke="${hue}" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+    <polygon points="${tri}" fill="${hue}" stroke="var(--panel)" stroke-width="2"
+             stroke-linejoin="round" paint-order="stroke"/>
+  </svg>`;
+}
+
+/* The run, as one line. A single series, so the heading names it and no legend
+   is needed; the zero line is the only other thing drawn, because "did I ever
+   get above water" is the question the chart exists to answer. */
+function worthChart(values){
+  const w = 320, h = 132, padL = 6, padR = 6, padT = 10, padB = 18;
+  const pts = values.filter(v => isFinite(v));
+  if (pts.length < 2) return "";
+  const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts);
+  const span = (hi - lo) || 1;
+  const x = i => padL + i * (w - padL - padR) / (pts.length - 1);
+  const y = v => padT + (1 - (v - lo) / span) * (h - padT - padB);
+  const end = pts[pts.length - 1];
+  const hue = end >= 0 ? UP : DOWN;
+  const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const wash = `${line}L${x(pts.length - 1).toFixed(1)},${y(0).toFixed(1)}L${x(0).toFixed(1)},${y(0).toFixed(1)}Z`;
+  return `<svg id="worthart" viewBox="0 0 ${w} ${h}" width="100%" height="${h}"
+               role="img" aria-label="net worth across ${pts.length} days, ending ${fmtMoney(end)}">
+    <path d="${wash}" fill="${hue}" opacity=".10"/>
+    <line x1="${padL}" x2="${w - padR}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"
+          stroke="#2c2c34" stroke-width="1"/>
+    <text x="${padL}" y="${(y(0) - 4).toFixed(1)}" fill="#5e5e6b" font-size="9"
+          letter-spacing=".08em">BROKE EVEN</text>
+    <path d="${line}" fill="none" stroke="${hue}" stroke-width="2"
+          stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${x(pts.length - 1).toFixed(1)}" cy="${y(end).toFixed(1)}" r="4"
+            fill="${hue}" stroke="#0a0a0c" stroke-width="2"/>
+    <text x="${padL}" y="${h - 5}" fill="#5e5e6b" font-size="9" letter-spacing=".08em">DAY 1</text>
+    <text x="${w - padR}" y="${h - 5}" fill="#5e5e6b" font-size="9" letter-spacing=".08em"
+          text-anchor="end">DAY ${pts.length}</text>
+    <g id="worthcross" style="display:none">
+      <line stroke="#f2f2f4" stroke-width="1" opacity=".4" y1="${padT}" y2="${h - padB}"/>
+      <circle r="4" fill="#f2f2f4" stroke="#0a0a0c" stroke-width="2"/>
+    </g>
+  </svg>
+  <div class="note" id="worthread">Drag across to read any day.</div>`;
+}
+
+/* A line chart on a phone still gets a hover layer - it is just a finger. */
+function wireWorthChart(values){
+  const art = $("worthart");
+  if (!art) return;
+  const pts = values.filter(v => isFinite(v));
+  const move = e => {
+    const box = art.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    const frac = Math.max(0, Math.min(1, (touch.clientX - box.left) / box.width));
+    const i = Math.round(frac * (pts.length - 1));
+    const w = 320, padL = 6, padR = 6, padT = 10, padB = 18, h = 132;
+    const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = (hi - lo) || 1;
+    const cx = padL + i * (w - padL - padR) / (pts.length - 1);
+    const cy = padT + (1 - (pts[i] - lo) / span) * (h - padT - padB);
+    const cross = $("worthcross");
+    cross.style.display = "";
+    cross.querySelector("line").setAttribute("x1", cx);
+    cross.querySelector("line").setAttribute("x2", cx);
+    cross.querySelector("circle").setAttribute("cx", cx);
+    cross.querySelector("circle").setAttribute("cy", cy);
+    $("worthread").textContent = `Day ${i + 1} · ${fmtMoney(pts[i])}`;
+    if (e.cancelable) e.preventDefault();
+  };
+  art.addEventListener("pointermove", move);
+  art.addEventListener("pointerdown", move);
+  art.addEventListener("touchmove", move, { passive: false });
+}
+
+/* ------------------------------- a whisper ---------------------------- */
+function renderWhisper(){
+  const tip = game.tip;
+  $("whisper").hidden = !tip;
+  if (!tip) return;
+  const age = game.day - (tip.day || 0);
+  $("whisper").innerHTML = `<div class="t">WORD ON THE PLATFORM</div>
+    <div class="w">${esc(COIN[tip.symbol].name)} is
+      <b class="${tip.up ? "up" : "down"}">${tip.up ? "about to run" : "about to fall over"}</b>.</div>
+    <div class="age">${age <= 0 ? "JUST HEARD" : age + " DAY" + (age > 1 ? "S" : "") + " OLD"}
+      · HE MIGHT BE WRONG</div>`;
+}
+
+/* ------------------------------ the wheel ----------------------------- */
+/* The wedges are drawn from the same weighted table the game scores against, so
+   the picture cannot flatter or lie about the odds: a wedge's slice of the
+   circle IS its chance. A wheel whose art disagrees with its maths is the
+   oldest trick in this particular book, and not one worth reproducing. */
+const WEDGE_FILL = { BUST: "#2a2a33", SMALL: "#1f6f42", MIDDLE: "#2f8f55",
+                     BIG: "#c7902a", JACKPOT: "#d94f4f", GEAR: "#8b5cf6" };
+let wheelSpinning = false, wheelTurns = 0, wheelResult = null;
+
+function wheelGeometry(){
+  const total = WHEEL.reduce((a, w) => a + w[1], 0);
+  let at = 0;
+  return WHEEL.map(([label, weight]) => {
+    const start = at / total * 360;
+    at += weight;
+    return { label, start, end: at / total * 360, mid: (start + at / total * 360) / 2 };
+  });
+}
+
+function drawWheel(){
+  const parts = wheelGeometry();
+  const arc = (a) => [100 + 92 * Math.cos((a - 90) * Math.PI / 180),
+                      100 + 92 * Math.sin((a - 90) * Math.PI / 180)];
+  $("wheelart").innerHTML = parts.map(p => {
+    const [x1, y1] = arc(p.start), [x2, y2] = arc(p.end);
+    const big = p.end - p.start > 180 ? 1 : 0;
+    const [tx, ty] = arc(p.mid).map((v, i) => 100 + (v - 100) * 0.62);
+    return `<path d="M100,100 L${x1},${y1} A92,92 0 ${big},1 ${x2},${y2} Z"
+                  fill="${WEDGE_FILL[p.label]}" stroke="#050507" stroke-width="1.5"/>
+      <text x="${tx}" y="${ty}" fill="#fff" font-size="9" font-weight="700"
+            text-anchor="middle" dominant-baseline="middle"
+            transform="rotate(${p.mid} ${tx} ${ty})">${p.label}</text>`;
+  }).join("") + `<circle cx="100" cy="100" r="13" fill="#050507" stroke="#8b5cf6" stroke-width="2"/>`;
+}
+
+function renderWheel(){
+  // The result used to be written into a box that render() had already hidden,
+  // because the spin makes wheelReady false - so the wheel paid out and the
+  // player never saw what they had won. It stays until they ride or tap it away.
+  const on = game.wheelReady && !wheelSpinning;
+  $("wheelwrap").hidden = !(game.wheelReady || wheelSpinning || wheelResult);
+  if ($("wheelwrap").hidden) return;
+  if (!$("wheelart").firstChild) drawWheel();
+  $("wheelsaid").innerHTML = wheelResult
+    ? `<div class="wheelresult ${wheelResult.kind}">
+         <div class="big">${esc(wheelResult.headline)}</div>
+         <div class="sub">${esc(wheelResult.detail)}</div></div>`
+    : "";
+  $("spin").disabled = !on && !wheelResult;
+  $("spin").textContent = wheelSpinning ? "spinning…" : (wheelResult ? "GOT IT" : "SPIN");
+}
+
+$("spin").addEventListener("click", () => {
+  if (wheelSpinning) return;
+  if (wheelResult) { wheelResult = null; return render(); }   // "GOT IT"
+  if (!game.wheelReady) return;
+  wheelSpinning = true;
+  $("spin").disabled = true;
+  $("wheelsaid").textContent = "";
+
+  // resolve first, then point the wheel at the answer - the picture follows the
+  // game, never the other way round
+  let said;
+  try { said = game.spinWheel(); }
+  catch (err) { wheelSpinning = false; return flash(err.message, false); }
+  const label = (said[0].match(/You spin\. (.*)/) || [])[1];
+  const landed = wheelGeometry().find(p => WHEEL_LINES[p.label] === label)
+              || wheelGeometry()[0];
+  wheelTurns += 4;
+  $("wheelart").style.transform = `rotate(${wheelTurns * 360 - landed.mid}deg)`;
+
+  setTimeout(() => {
+    wheelSpinning = false;
+    const detail = said.slice(1).join(" ") || "Better luck at the next stop.";
+    wheelResult = {
+      kind: game.wheelAward ? "gear" : (landed.label === "BUST" ? "bust" : "cash"),
+      headline: landed.label === "BUST" ? "NOTHING" : landed.label,
+      detail: detail,
+    };
+    if (game.wheelAward) {
+      profile = readProfile();
+      const banked = creditWheel(profile, game.wheelAward);
+      writeProfile(profile);
+      game.gear = levelsFromWins(profile.gear_wins);
+      if (banked && banked[2] > banked[1]) {
+        wheelResult.detail += ` ${banked[0].name} is now level ${banked[2]}.`;
+      }
+      game.wheelAward = null;
+    }
+    // also in the message strip, which now keeps things, so the result survives
+    // even if they tap the wheel away before reading it
+    flash(`${wheelResult.headline}. ${wheelResult.detail}`, true);   // never bad news
+    render();
+    persist();
+  }, 3100);
+});
+
+/* ------------------------------- dead end ----------------------------- */
+/* Two honest exits, never a quiet third one. Ending the run scores it for what
+   it is; starting over throws it away - and on a ranked run you have actually
+   played, throwing it away still spends the slot, because the daily markets are
+   the same three for everybody and a free retry with foreknowledge would make
+   the leaderboard meaningless. Backing out on day one costs nothing. */
+function rankedAndPlayed(g){
+  return g && !g.hotHand && g.dailySlot !== null && g.dailySlot !== undefined && g.day > 1;
+}
+
+function renderDeadEnd(){
+  const g = game, on = g.stranded;
+  $("deadend").hidden = !on;
+  if (!on) return;
+  $("deadendwhy").textContent =
+    `${fmtMoney(g.player.cash)} in your pocket, nothing left to sell, and no way to `
+    + `raise the ${fmtMoney(g.fare)} fare at ${g.station.name}. The run can't go on.`;
+  $("deadendnote").textContent = rankedAndPlayed(g)
+    ? `This is ranked run ${g.dailySlot + 1}. Either way it's spent - you've played it.`
+    : "Starting over costs you nothing here.";
+}
+
+$("giveup").addEventListener("click", () => {
+  game.giveUp();
+  render();
+  showFinal();
+});
+
+$("startover").addEventListener("click", () => {
+  // a played ranked run is recorded even when it is thrown away, so the slot
+  // cannot be re-rolled against a market the player has already seen
+  if (rankedAndPlayed(game)) {
+    game.finalise();
+    profile = readProfile();
+    recordDaily(profile, game, game.dailySlot);
+    writeProfile(profile);
+    postDaily(profile);
+  }
+  clearSave();
+  openSetup();
+});
+
+/* Messages STAY. They used to vanish after 3.2 seconds, which is not long
+   enough to read a sentence, let alone one that just cost you money - and the
+   things this game says are the only record of what happened to you. They clear
+   when you tap one, or when you ride, because a new station is a new situation.
+   Three at a time, newest first, so a busy arrival cannot bury the screen. */
+function flash(msg, good){
+  if (!msg) return;
+  const div = document.createElement("div");
+  div.className = "alert" + (good ? "" : " bad");
+  div.innerHTML = `<span>${esc(msg)}</span><b class="x" aria-hidden="true">×</b>`;
+  div.title = "tap to dismiss";
+  $("alerts").prepend(div);
+  while ($("alerts").children.length > 3) $("alerts").lastElementChild.remove();
+}
+$("alerts").addEventListener("click", e => {
+  const alert = e.target.closest(".alert");
+  if (alert) alert.remove();
+});
+
+function act(fn){
+  try { const r = fn(); if (r && r.text) { game.say(r.text); flash(r.text, r.good !== false); } }
+  catch (e) { flash(e.message, false); }
+  render();
+  persist();
+}
+
+$("main").addEventListener("click", e => {
+  const row = e.target.closest("[data-coin]");
+  if (row && !e.target.closest("button")) {
+    openCoin = openCoin === row.dataset.coin ? null : row.dataset.coin;
+    return render();
+  }
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.dice) {
+    // rollDice logs its own lines, so this flashes them rather than re-saying them
+    try { flash(game.rollDice(+b.dataset.dice).filter(Boolean).join(" "), true); }
+    catch (err) { flash(err.message, false); }
+    render();
+    persist();
+    return;
+  }
+  if (b.dataset.buy) {
+    const sym = b.dataset.buy, frac = parseFloat(b.dataset.frac);
+    return act(() => game.buy(sym, game.maxBuyable(sym) * frac));
+  }
+  if (b.dataset.sell) {
+    const sym = b.dataset.sell, frac = parseFloat(b.dataset.frac);
+    return act(() => game.sell(sym, (game.player.wallet[sym]?.qty || 0) * frac));
+  }
+  if (b.dataset.act === "dealer") return showGoals();
+  const a = b.dataset.act;
+  if (a === "borrow") return act(() => game.borrow(Math.min(2500, game.borrowable())));
+  if (a === "repay") return act(() => game.repay(Math.min(game.player.cash, game.player.debt)));
+  if (a === "deposit") return act(() => game.deposit(game.player.cash / 2));
+  if (a === "withdraw") return act(() => game.withdraw(game.player.vault));
+  if (a === "capacity") return act(() => game.buyCapacity());
+  if (a === "vpn") return act(() => game.buyVpn());
+});
+
+$("main").addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.dataset.coin) {
+    e.preventDefault(); e.target.click();
+  }
+});
+
+$("ride").addEventListener("click", () => {
+  $("stops").innerHTML = STATIONS.map((s, i) => {
+    if (s.name === game.station.name) return "";
+    const chips = [
+      s.shark ? '<span class="chip shark">SHARK</span>' : "",
+      s.vault ? '<span class="chip vault">VAULT</span>' : "",
+      s.shop ? '<span class="chip shop">SHOP</span>' : "",
+    ].join("");
+    // the day you would ARRIVE, not the day you are leaving - the fare buys a
+    // day, and the threat you are choosing between is tomorrow's
+    const t = wire(game, s, game.day + 1);
+    // still in the grace: show what the stop is LIKE rather than sixteen
+    // identical QUIETs, labelled so the two readings can never be confused
+    const bars = t.bars || standingHeat(s);
+    const threat = `<span class="threat t${t.bars}">${"▮".repeat(bars)}${
+      "▯".repeat(t.of - bars)} ${t.bars ? t.label : "HEAT"}</span>`;
+    return `<div class="stop" data-go="${i}" role="button" tabindex="0">
+      <div><div class="nm">${s.name}</div><div class="meta">${chips}</div>
+        <div class="meta">${threat}</div></div>
+      <div class="bullets">${s.lines.map(bullet).join("")}</div></div>`;
+  }).join("");
+  openSheet("travel");
+});
+$("cancel").addEventListener("click", closeSheets);
+$("stops").addEventListener("click", e => {
+  const s = e.target.closest("[data-go]");
+  if (!s) return;
+  closeSheets();
+  openCoin = null;
+  $("alerts").innerHTML = "";          // a new station is a new situation
+  wheelResult = null;
+  try {
+    const msgs = game.travel(parseInt(s.dataset.go, 10));
+    render();
+    // every consequence of the ride, not just the first one - they stay now, so
+    // there is no reason to pick one and throw the rest away
+    for (const line of msgs.slice(2).filter(Boolean).slice(0, 3).reverse()) {
+      flash(line, !/SEC|drainer|Gas|Signal|Shark's|gone|full/.test(line));
+    }
+  } catch (err) { flash(err.message, false); }
+  persist();
+  if (game.finished) showFinal();
+});
+
+function showFinal(){
+  const g = game, p = g.player, score = g.finalScore();
+  g.finalise();
+  const board = recordScore(g);
+  clearSave();
+  profile = readProfile();
+  const earned = award(profile, g);
+  const levelled = creditWin(profile, g);
+  const points = runPoints(g), letter = runGrade(g);
+  const counts = countsForProgress(g);
+  const ranked = counts && g.dailySlot !== null && g.dailySlot !== undefined;
+  if (ranked) recordDaily(profile, g, g.dailySlot);
+  writeProfile(profile);
+
+  const rank = board.findIndex(s => Math.abs(s.net_worth - score) < 1e-9);
+  $("fgrade").textContent = letter;
+  $("fgrade").className = "grade " + (!counts ? "g" : letter === "F" ? "f" : letter[0] === "S" ? "s" : "");
+  $("fpoints").textContent = counts
+    ? `${Math.round(points).toLocaleString()} PTS · TIER ${g.tier} ×${tierMult(g.tier).toFixed(2)}`
+      + (ranked ? ` · RANKED RUN ${g.dailySlot + 1}` : " · PRACTICE")
+    : "GOD MODE · UNRANKED";
+  $("fscore").textContent = fmtMoney(score);
+  $("fscore").className = "big num " + (score >= 0 ? "up" : "down");
+  $("fverdict").textContent = counts
+    ? gradeBlurb(points)
+    : "You found the turnstile. None of this counts, and it never did.";
+  $("fbreak").innerHTML = [
+    ["cash", fmtMoney(p.cash)], ["vault", fmtMoney(p.vault)],
+    ["holdings", fmtMoney(g.portfolioValue())],
+    ["debt", p.debt > 0.005 ? "-" + fmtMoney(p.debt).replace("-", "") : fmtMoney(0)],
+  ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
+
+  // only crow about a personal best that is actually worth having - "a new
+  // best run" above "the Shark owns you" reads like the game is mocking you
+  const gearNote = (levelled && levelled[2] > levelled[1])
+    ? `<div class="note" style="text-align:center;margin-top:16px;color:var(--green)">
+         <b>${esc(levelled[0].name)} — level ${levelled[2]}</b><br>
+         +${Math.round(levelled[2] * LUCK_PER_LEVEL * 100)}% luck while you're holding
+         ${esc(levelled[0].covers)}</div>`
+    : "";
+  const unlocks = earned.map(a => PERKS.find(p => p.by === a.key)).filter(Boolean);
+  const left = ranked ? RUNS_PER_DAY - runsToday(profile).length : 0;
+  const slotsLeft = counts ? nextSlot(profile) : null;
+  const today = ranked
+    ? `<div class="note" style="text-align:center;margin-top:14px">
+         Today: <b>${Math.round(dailyTotal(profile)).toLocaleString()} pts</b> across
+         ${runsToday(profile).length} of ${RUNS_PER_DAY} ranked runs${left
+           ? ` · ${left} left` : " · that's the slate. Back tomorrow."}</div>
+       <div class="note" id="fsave" style="text-align:center;margin-top:6px">Saving to the board…</div>`
+    : `<div class="note" style="text-align:center;margin-top:14px">${counts
+         ? "Practice run - it doesn't touch the board."
+           + (slotsLeft !== null
+              ? ` You still have ranked run ${slotsLeft + 1} of ${RUNS_PER_DAY} today.` : "")
+         : "This run posts nothing and unlocks nothing - and it didn't spend a ranked run either."}</div>`;
+  // the run as a picture, above the accounting - a number tells you the result,
+  // a line tells you the story, and the story is the thing worth another go
+  const story = g.stats.worth_by_day || [];
+  $("fscore").insertAdjacentHTML("afterend",
+    story.length > 2 ? `<div class="worthwrap">${worthChart(story)}</div>` : "");
+  $("fbreak").insertAdjacentHTML("afterend", today + gearNote + (earned.length
+    ? `<div class="pillrow" style="justify-content:center;margin-top:16px" id="earned">
+         ${earned.map(a => `<span class="pill perk">${a.name.toUpperCase()}</span>`).join("")}
+       </div>
+       ${unlocks.length ? `<div class="note" style="text-align:center;margin-top:8px">
+         Unlocked: ${unlocks.map(p => p.name).join(", ")}</div>` : ""}`
+    : ""));
+  // the board write is the one thing here that can fail for reasons outside the
+  // game, so it reports back rather than disappearing
+  if (ranked) {
+    postDaily(profile).then(status => {
+      const note = $("fsave");
+      if (!note) return;
+      note.textContent = status === "saved"
+        ? "Saved to the leaderboard."
+        : status === "unavailable"
+          ? "The shared board only runs on the published page, signed in. Your score is kept on this device."
+          : "Couldn't reach the board just now. Your score is kept on this device - open BOARD to try again.";
+    });
+  }
+
+  if (!counts) { /* no personal-best crowing over free money */ }
+  else if (rank === 0 && score > 0 && board.length > 1) {
+    $("fverdict").textContent = "A new best run. " + $("fverdict").textContent;
+  } else if (rank > 0 && rank < 5 && score > 0) {
+    $("fverdict").textContent = `Number ${rank + 1} on your board. ` + $("fverdict").textContent;
+  }
+  openSheet("over");
+  wireWorthChart(story);
+}
+
+/* ------------------------- progression & setup ------------------------- */
+/* One function owns which overlay is visible. Opening a sheet without closing
+   the others left two stacked full-screen panels, and the one later in the
+   document silently swallowed every tap meant for the one beneath it. */
+const SHEETS = ["setup", "goals", "scores", "travel", "over", "backup"];
+function openSheet(id){
+  SHEETS.forEach(s => $(s).classList.toggle("on", s === id));
+}
+function closeSheets(){ SHEETS.forEach(s => $(s).classList.remove("on")); }
+
+let profile = readProfile();
+let pickedTier = 1, pickedPerk = null;
+/* The difficulty is remembered between runs: somebody who plays Third Rail
+   wants Third Rail again, and re-picking it every time is friction. */
+let pickedHard = (() => {
+  try { return difficultyOf(localStorage.getItem("cryptowarz.difficulty")).key; }
+  catch (e) { return DEFAULT_DIFFICULTY; }
+})();
+
+/* --------------------------- who you are ------------------------------ */
+/* A board needs a stable identity. There is no login here, so the page mints
+   one per browser and keeps it locally - the name is whatever you type, and
+   nothing about you leaves the device except the name and the score. */
+const IDENT_KEY = "cryptowarz.player.v1";
+function identity(){
+  let me = null;
+  try { me = JSON.parse(localStorage.getItem(IDENT_KEY) || "null"); } catch (e) {}
+  if (!me || !me.id) {
+    const raw = (crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : String(Math.random()).slice(2) + Date.now().toString(36);
+    me = { id: raw.replace(/[^a-z0-9]/gi, "").slice(0, 24), name: "" };
+    try { localStorage.setItem(IDENT_KEY, JSON.stringify(me)); } catch (e) {}
+  }
+  return me;
+}
+function setName(name){
+  const me = identity();
+  me.name = String(name).replace(/\s+/g, " ").trim().slice(0, 18);
+  try { localStorage.setItem(IDENT_KEY, JSON.stringify(me)); } catch (e) {}
+  return me;
+}
+
+/* ---------------------------- the board ------------------------------- */
+/* The shared leaderboard rides the artifact's db capability, which exists only
+   on the published page. Everything below degrades to your own scores when it
+   is absent - a game that breaks when the network does is a worse game. */
+let dbPromise = null;
+function store(){
+  if (!dbPromise) {
+    dbPromise = ((window.claude && claude.use) ? claude.use("db") : Promise.resolve(null))
+      .catch(() => null);
+  }
+  return dbPromise;
+}
+/* Today's runs are finished but not yet on the board. A post can fail for
+   reasons that have nothing to do with the player - offline, signed out, the
+   local file - and a score that vanishes silently is worse than one that never
+   saved, so the flag survives the attempt and the board sheet retries. */
+let boardDirty = false;
+
+/* One document per player, rewritten when a ranked run lands: the board stays
+   a few hundred rows instead of growing by one document per run forever.
+   Resolves "saved", "unavailable", "failed" or "empty" - never throws, and
+   never fails quietly. */
+async function postDaily(prof){
+  const d = await store();
+  if (!d) { boardDirty = true; return "unavailable"; }
+  const me = identity(), runs = runsToday(prof), total = dailyTotal(prof);
+  if (!runs.length) return "empty";
+  try {
+    await d.doc("leaderboard/" + me.id).set({
+      name: me.name || "Straphanger",
+      day: prof.daily_day || dailySeed(),
+      points: Math.round(total),
+      runs: runs.length,
+      grade: gradeFor(total / RUNS_PER_DAY),
+      best_run: Math.round(runs.reduce((a, r) => Math.max(a, r.points || 0), 0)),
+      tier: runs.reduce((a, r) => Math.max(a, r.tier || 1), 1),
+      best: Math.round(prof.best_daily || 0),
+      best_day: prof.best_daily_day || null,
+      at: Date.now() / 1000,
+    });
+    boardDirty = false;
+    return "saved";
+  } catch (e) {
+    boardDirty = true;                   // a failed board is never a blocker
+    return "failed";
+  }
+}
+async function fetchBoard(mode){
+  const d = await store();
+  if (!d) return null;
+  const c = d.collection("leaderboard");
+  const q = mode === "today"
+    ? c.where("day", "==", dailySeed()).orderBy("points", "desc").limit(50)
+    : c.orderBy("best", "desc").limit(50);
+  try {
+    return (await q.get()).docs.map(doc => Object.assign({ id: doc.id }, doc.data()));
+  } catch (e) { return null; }
+}
+/* Rows come from other people. Nothing from the store reaches innerHTML raw. */
+const esc = t => String(t == null ? "" : t)
+  .replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+/* ------------------------------- setup -------------------------------- */
+
+function renderSetup(){
+  profile = readProfile();
+  rollDay(profile);
+  const runs = runsToday(profile), open = nextSlot(profile), total = dailyTotal(profile);
+  const rows = [];
+  for (let i = 0; i < RUNS_PER_DAY; i++) {
+    const r = runs.find(x => x.slot === i);
+    rows.push(r
+      ? `<div class="run"><span class="n">RUN ${i + 1}</span>
+           <span class="${r.net >= 0 ? "num up" : "num down"}">${fmtMoney(r.net)}
+           <span class="n"> · ${Math.round(r.points).toLocaleString()} pts</span></span>
+           <span class="g">${esc(r.grade)}</span></div>`
+      : `<div class="run todo"><span class="n">RUN ${i + 1}</span>
+           <span class="n">not played</span>
+           <button data-slot="${i}" style="padding:5px 10px;font-size:10px">PLAY</button></div>`);
+  }
+  $("dailybox").innerHTML = `<div class="slate${open === null ? " spent" : ""}">
+      <div class="t">TODAY'S RANKED RUNS</div>
+      <div class="d">Three markets, the same three for everyone today. One go at each -
+        your grade is what you finish holding, weighted by the tier you played.</div>
+      ${rows.join("")}
+      <div class="d" style="margin-top:9px">Today <b>${Math.round(total).toLocaleString()} pts</b>
+        · grade ${gradeFor(total / RUNS_PER_DAY)}${open === null
+          ? " · slate complete, new markets tomorrow" : ""}
+        · best day ${Math.round(profile.best_daily || 0).toLocaleString()}</div>
+    </div>`;
+
+  $("hardpicks").innerHTML = DIFFICULTIES.map(d => {
+    const bits = [];
+    if (d.cash) bits.push(`+$${d.cash.toLocaleString()} to start`);
+    if (d.debtMult !== 1) bits.push(`${Math.round(d.debtMult * 100)}% debt`);
+    bits.push(`${(d.shark * 100).toFixed(1)}% a day`);
+    if (d.heatMult !== 1) bits.push(`${Math.round(d.heatMult * 100)}% heat`);
+    return `<div class="pick${d.key === pickedHard ? " on" : ""}" data-hard="${d.key}">
+      <div><div class="t">${d.name}</div><div class="d">${d.blurb}</div>
+      <div class="d">${bits.join(" · ")} · ×${d.mult.toFixed(2)} score</div></div>
+      <div class="k">${d.key === DEFAULT_DIFFICULTY ? "DEFAULT" : "OPEN"}</div></div>`;
+  }).join("");
+
+  const top = maxTier(profile);
+  $("tierpicks").innerHTML = TIERS.map(t => {
+    const locked = t.level > top;
+    return `<div class="pick${t.level === pickedTier ? " on" : ""}${locked ? " locked" : ""}"
+                 data-tier="${locked ? "" : t.level}">
+      <div><div class="t">${t.name}</div><div class="d">${t.blurb}</div>
+      <div class="d">$${t.debt.toLocaleString()} debt · $${t.capacity.toLocaleString()} wallet
+        · ${t.days} days · ×${t.mult.toFixed(2)} score</div></div>
+      <div class="k">${locked ? "CLEAR TIER " + (t.level - 1) : "TIER " + t.level}</div></div>`;
+  }).join("");
+
+  const got = unlockedPerks(profile);
+  $("perkpicks").innerHTML =
+    `<div class="pick${pickedPerk === null ? " on" : ""}" data-perk="">
+       <div><div class="t">Nothing</div><div class="d">Just you and the map.</div></div>
+       <div class="k">ALWAYS</div></div>` +
+    PERKS.map(p => {
+      const have = got.some(x => x.key === p.key);
+      const need = ACHIEVEMENTS.find(a => a.key === p.by);
+      return `<div class="pick${pickedPerk === p.key ? " on" : ""}${have ? "" : " locked"}"
+                   data-perk="${have ? p.key : ""}">
+        <div><div class="t">${p.name}</div><div class="d">${p.blurb}</div></div>
+        <div class="k">${have ? "READY" : (need ? need.name.toUpperCase() : "LOCKED")}</div></div>`;
+    }).join("");
+}
+
+$("setup").addEventListener("click", e => {
+  const slot = e.target.closest("[data-slot]");
+  if (slot) { closeSheets(); return start(dailySeeds()[+slot.dataset.slot], pickedTier, pickedPerk, +slot.dataset.slot, pickedHard); }
+  const h = e.target.closest("[data-hard]");
+  if (h && h.dataset.hard) {
+    pickedHard = h.dataset.hard;
+    try { localStorage.setItem("cryptowarz.difficulty", pickedHard); } catch (err) {}
+    return renderSetup();
+  }
+  const t = e.target.closest("[data-tier]");
+  if (t && t.dataset.tier) { pickedTier = +t.dataset.tier; return renderSetup(); }
+  const p = e.target.closest("[data-perk]");
+  if (p && p.classList.contains("pick") && !p.classList.contains("locked")) {
+    pickedPerk = p.dataset.perk || null; return renderSetup();
+  }
+});
+$("setupcancel").addEventListener("click", closeSheets);
+$("startrun").addEventListener("click", () => {
+  closeSheets();
+  start(Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, null, pickedHard);
+});
+
+/* ------------------------------ backup -------------------------------
+   The one screen whose job is to make sure nothing here is trapped in this
+   browser. Everything it offers has a fallback, because every mechanism it
+   could use - the clipboard API, a file download, a file picker - is blocked
+   somewhere this game runs. The text in the box always works. */
+function renderBackup(){
+  const withRun = $("bkrun").checked && game && !game.finished;
+  let line;
+  try {
+    line = makeBackup(readProfile(), withRun ? saveToDict(game) : null, readScores());
+  } catch (e) { line = ""; }
+  $("bkout").value = line;
+  $("bkmsg").textContent = line
+    ? `${line.length.toLocaleString()} characters${withRun ? ", with your run in it" : ""}`
+    : "nothing to back up yet";
+  $("bkmsg").className = "ok";
+}
+function bkSay(id, text, bad){
+  const el = $(id);
+  el.textContent = text;
+  el.className = "ok" + (bad ? " bad" : "");
+}
+$("openbackup").addEventListener("click", () => {
+  $("bkin").value = "";
+  bkSay("bkinmsg", "");
+  renderBackup();
+  openSheet("backup");
+});
+$("bkclose").addEventListener("click", () => openSheet("goals"));
+$("bkrun").addEventListener("change", renderBackup);
+
+$("bkcopy").addEventListener("click", async () => {
+  const text = $("bkout").value;
+  if (!text) return;
+  // the clipboard API is blocked in plenty of frames, so selecting the text is
+  // the fallback - and it is also the instruction, because a player who can
+  // see it selected knows what to do next
+  try {
+    await navigator.clipboard.writeText(text);
+    bkSay("bkmsg", "Copied. Paste it somewhere safe.");
+    return;
+  } catch (e) {}
+  $("bkout").focus();
+  $("bkout").select();
+  try { document.execCommand("copy"); bkSay("bkmsg", "Copied. Paste it somewhere safe."); }
+  catch (e) { bkSay("bkmsg", "Selected — press copy on your keyboard or long-press."); }
+});
+
+/* A download works from a file on disk and from a normal page; inside a
+   sandboxed frame it does not, and the artifact runtime has its own way. Try
+   both, and never leave the player with nothing. */
+async function offerFile(name, text){
+  try {
+    if (window.claude && typeof window.claude.use === "function") {
+      const downloads = await window.claude.use("downloads");
+      if (downloads) { await downloads.save({ filename: name, data: text }); return true; }
+    }
+  } catch (e) {}
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    return true;
+  } catch (e) { return false; }
+}
+$("bksave").addEventListener("click", async () => {
+  const text = $("bkout").value;
+  if (!text) return;
+  const ok = await offerFile("cryptowarz-backup.txt", text);
+  bkSay("bkmsg", ok ? "Saved. Keep it with your photos, not your downloads."
+                    : "This browser won't save files here — copy the line instead.", !ok);
+});
+
+$("bkload").addEventListener("click", () => {
+  const text = $("bkin").value.trim();
+  if (!text) return bkSay("bkinmsg", "Paste a backup line first.", true);
+  let read;
+  try { read = readBackup(text); }
+  catch (e) { return bkSay("bkinmsg", e.message, true); }
+  if (!read.profile) return bkSay("bkinmsg", "That line has no progress in it.", true);
+  profile = writeProfile(read.profile);
+  if (read.scores) writeScores(read.scores);
+  let note = `Restored. ${profile.runs} run${profile.runs === 1 ? "" : "s"}, ${
+    Object.values(levelsFromWins(profile.gear_wins)).reduce((a, b) => a + b, 0)} gear levels.`;
+  if (read.save) {
+    try {
+      game = saveFromDict(read.save);
+      writeSave(game);
+      note += " Your run came back too.";
+      openCoin = null;
+      render();
+    } catch (e) { note += " The run in it could not be read, but your progress is back."; }
+  } else if (game) {
+    // the run in progress keeps playing, but with the gear the new profile has
+    game.gear = levelsFromWins(profile.gear_wins);
+    render();
+  }
+  bkSay("bkinmsg", note);
+  renderBackup();
+});
+
+$("bkfile").addEventListener("click", () => $("bkpick").click());
+$("bkpick").addEventListener("change", e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { $("bkin").value = String(reader.result || "").trim(); $("bkload").click(); };
+  reader.onerror = () => bkSay("bkinmsg", "That file could not be read.", true);
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+function showGoals(){
+  profile = readProfile();
+  const got = new Set(profile.achievements);
+  const levels = levelsFromWins(profile.gear_wins);
+  const total = Object.values(levels).reduce((a, b) => a + b, 0);
+  $("goalstitle").textContent = `GEAR — ${total} OF ${GEAR.length * MAX_LEVEL} LEVELS`;
+  $("goallist").innerHTML = gearList() + `<h3 style="margin:26px 0 4px">GOALS — ${
+    got.size} OF ${ACHIEVEMENTS.length}</h3>` + ACHIEVEMENTS.map(a => {
+    const perk = PERKS.find(p => p.by === a.key);
+    return `<div class="trophy${got.has(a.key) ? " got" : ""}">
+      <div class="mark">${got.has(a.key) ? "✓" : "·"}</div>
+      <div><div class="t">${a.name}</div><div class="d">${a.blurb}</div>
+      ${perk ? `<div class="u">UNLOCKS · ${perk.name.toUpperCase()}</div>` : ""}</div></div>`;
+  }).join("") + `<div class="note" style="padding:14px 2px">
+      ${profile.runs} run${profile.runs === 1 ? "" : "s"} played · best ${fmtMoney(profile.best_net)}
+      · tier ${maxTier(profile)} unlocked</div>`;
+  openSheet("goals");
+}
+/* Gear is earned, never chosen, so it belongs next to the goals rather than on
+   the setup screen where a player would look for something to pick. */
+function gearList(){
+  const held = game ? game.luckBySymbol() : {};
+  const offer = game ? brokerOffer(game) : null;
+  const deal = offer
+    ? `<div class="deal">
+         <div class="t">SOMEBODY IS DEALING</div>
+         <div class="d">A million in cash, right now, for the
+           <b>${esc(displayName(profile, GEAR_BY_KEY[offer]))}</b>. It comes off your
+           net worth and therefore off your score — you are buying something you
+           keep with something you were being ranked on.</div>
+         <button class="go" id="buygear">BUY IT · ${fmtMoney(BROKER_PRICE)}</button>
+       </div>`
+    : (game && game.stats.gear_bought
+        ? `<div class="note">You already bought from him this run. He only had the one.</div>`
+        : `<div class="note">A dealer turns up at stops with a shop, if you are
+             carrying ${fmtMoney(BROKER_PRICE)} in cash. Most runs never see him.</div>`);
+
+  return deal + GEAR.map(piece => {
+    const wins = (profile.gear_wins && profile.gear_wins[piece.key]) || 0;
+    const level = levelFor(wins);
+    const next = WINS_FOR_LEVEL.find(n => n > wins);
+    const active = Object.keys(held).some(sym => CLASS_OF[sym] === piece.key);
+    // how far to the next level, so the bar answers "how close am I"
+    const floor = level > 0 ? WINS_FOR_LEVEL[level - 1] : 0;
+    const frac = next ? Math.max(0, Math.min(1, (wins - floor) / (next - floor))) : 1;
+    return `<div class="gearrow${level ? " on" : ""}${active ? " live" : ""}" data-gear="${piece.key}">
+      <div class="pips"><b>${"●".repeat(level)}</b>${"○".repeat(MAX_LEVEL - level)}</div>
+      <div><div class="t">${esc(displayName(profile, piece))}${
+        active ? ` <span class="nowtag">ACTIVE</span>` : ""}</div>
+        <div class="d">${esc(piece.covers)} · ${esc(piece.blurb)}</div>
+        ${level ? `<div class="u">+${Math.round(level * LUCK_PER_LEVEL * 100)}% luck while holding${
+          active ? " — and you are" : ""}</div>` : ""}
+        <div class="gearbar"><i style="width:${(frac * 100).toFixed(0)}%"></i></div>
+        <div class="d">${next
+          ? `${wins} win${wins === 1 ? "" : "s"} · ${next - wins} more for level ${level + 1}`
+          : `${wins} wins · fully levelled`} · tap to rename or move a win</div></div></div>`;
+  }).join("");
+}
+
+/* Everything you can do to a piece of gear, in one place. This handler was
+   lost once to a range-delete that cut from a function's name to the next
+   listener and took the listener with it; the buy button and the rename tap
+   both silently became decoration. */
+$("goallist").addEventListener("click", e => {
+  if (e.target.closest("#buygear")) {
+    try {
+      const said = game.buyGear();
+      profile = readProfile();
+      const banked = creditWheel(profile, game.gearAward);
+      writeProfile(profile);
+      game.gear = levelsFromWins(profile.gear_wins);
+      game.gearAward = null;
+      let line = said[0];
+      if (banked && banked[2] > banked[1]) line += ` ${banked[0].name} is now level ${banked[2]}.`;
+      flash(line, true);
+      showGoals();
+      render();
+      persist();
+    } catch (err) { flash(err.message, false); }
+    return;
+  }
+  const row = e.target.closest("[data-gear]");
+  if (!row) return;
+  const key = row.dataset.gear, piece = GEAR_BY_KEY[key];
+  profile = readProfile();
+  if (levelFor((profile.gear_wins || {})[key] || 0) < 1) {
+    return flash(`Win a run holding ${piece.covers} to earn it first.`, false);
+  }
+  const wanted = prompt(
+    `Name your ${piece.name}.\n\nLeave it empty to go back to the original.\n\n`
+    + `To move a win to another piece instead, type: move <${Object.keys(CLASSES).join("|")}>`
+    + `\n(it costs ${RETUNE_COST} wins to give 1)`,
+    displayName(profile, piece));
+  if (wanted === null) return;
+  try {
+    const mv = wanted.trim().match(/^move\s+(\w+)$/i);
+    const said = mv ? retuneGear(profile, key, mv[1].toLowerCase())
+                    : renameGear(profile, key, wanted);
+    writeProfile(profile);
+    if (game && !game.finished) game.gear = levelsFromWins(profile.gear_wins);
+    flash(said, true);
+    showGoals();
+    render();
+  } catch (err) { flash(err.message, false); }
+});
+
+$("trophies").addEventListener("click", showGoals);
+$("luckpill").addEventListener("click", showGoals);
+$("luckpill").style.cursor = "pointer";
+$("closegoals").addEventListener("click", closeSheets);
+
+/* ------------------------------ persistence ---------------------------- */
+/* The run is written after every move, so closing the tab mid-game loses
+   nothing. The saved RNG state means reopening replays the same dice - you
+   cannot close the tab to dodge a raid you have already walked into. */
+function persist(){ if (game && !game.finished) writeSave(game); }
+
+let lbTab = "today";
+function showScores(){
+  openSheet("scores");
+  renderBoard();
+}
+function renderBoard(){
+  const me = identity();
+  // a post that failed earlier gets another go the moment the player looks
+  if (boardDirty && runsToday(profile).length) postDaily(profile);
+  document.querySelectorAll("#scores .tabs button")
+    .forEach(b => b.classList.toggle("on", b.dataset.tab === lbTab));
+  if (lbTab === "mine") return renderOwnRuns();
+  $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">Loading the board…</div>`;
+  const want = lbTab;
+  fetchBoard(want).then(rows => {
+    if (want !== lbTab) return;                       // the player switched tabs
+    if (!rows) {
+      $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">
+        The shared board lives on the published page and needs you signed in.
+        Your own runs are under YOUR RUNS.</div>`;
+      return;
+    }
+    if (!rows.length) {
+      $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">
+        ${want === "today" ? "Nobody has posted a ranked run today. Be first."
+                           : "No runs posted yet."}</div>`;
+      return;
+    }
+    $("scorelist").innerHTML = rows.map((r, i) => {
+      const pts = want === "today" ? (r.points || 0) : (r.best || 0);
+      return `<div class="lbrow${r.id === me.id ? " me" : ""}">
+        <div class="pos">${i + 1}</div>
+        <div><div class="who">${esc(r.name || "Straphanger")}</div>
+          <div class="sub">${want === "today"
+            ? `${Math.max(0, Math.min(RUNS_PER_DAY, r.runs || 0))}/${RUNS_PER_DAY} RUNS · TIER ${Math.max(1, Math.min(TIERS.length, r.tier || 1))}`
+            : `BEST DAY`}</div></div>
+        <div class="pts"><div>${Math.round(pts).toLocaleString()}</div>
+          <div class="sub">GRADE ${esc(gradeFor(pts / RUNS_PER_DAY))}</div></div>
+      </div>`;
+    }).join("") + `<div class="note" style="padding:14px 2px">
+      You are <b>${esc(me.name || "Straphanger")}</b>. Tap NAME to change it.</div>`;
+  });
+}
+function renderOwnRuns(){
+  const scores = readScores();
+  $("scorelist").innerHTML = scores.length
+    ? scores.slice(0, 15).map((s, i) => `<div class="stop">
+        <div><div class="nm num ${s.net_worth >= 0 ? "up" : "down"}">${fmtMoney(s.net_worth)}</div>
+        <div class="meta"><span class="heat">DAY ${s.day} · ${new Date(s.finished_at * 1000)
+          .toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span></div></div>
+        <div class="heat" style="max-width:150px;text-align:right">${s.verdict.split(".")[0]}</div>
+      </div>`).join("")
+    : `<div class="note" style="padding:14px 2px">No finished runs yet. Survive thirty days and you'll have one.</div>`;
+}
+document.querySelector("#scores .tabs").addEventListener("click", e => {
+  const b = e.target.closest("[data-tab]");
+  if (b) { lbTab = b.dataset.tab; renderBoard(); }
+});
+$("rename").addEventListener("click", () => {
+  const typed = prompt("What name should the board show?", identity().name || "");
+  if (typed === null) return;
+  setName(typed);
+  profile = readProfile();
+  if (runsToday(profile).length) postDaily(profile).then(renderBoard);
+  else renderBoard();
+});
+$("toboard").addEventListener("click", () => { lbTab = "today"; showScores(); });
+$("board").addEventListener("click", showScores);
+$("closescores").addEventListener("click", closeSheets);
+
+function start(seed, tier, perk, slot, hard){
+  profile = readProfile();
+  game = new Game(seed, tier || 1, perk || null, levelsFromWins(profile.gear_wins),
+                  hard || pickedHard);
+  game.dailySlot = (slot === null || slot === undefined) ? null : slot;
+  game.isDaily = game.dailySlot !== null;
+  openCoin = null;
+  clearSave();
+  closeSheets();
+  render();
+  persist();
+}
+
+function openSetup(){
+  renderSetup();
+  openSheet("setup");
+}
+
+function boot(){
+  const resumed = readSave();
+  if (resumed && !resumed.finished) {
+    game = resumed;
+    openCoin = null;
+    render();
+    flash(`Picked up where you left off - day ${game.day}, ${game.station.name}.`, true);
+  } else {
+    // Opening the page used to start a practice run, so a player who just
+    // pressed play finished thirty days and posted nothing - the score was
+    // "not saving" because it was never a ranked run in the first place. A
+    // slot is only spent by FINISHING, so starting here costs nothing if they
+    // wander off; practice is still a button away on the NEW screen.
+    profile = readProfile();
+    rollDay(profile);
+    const slot = nextSlot(profile);
+    start(slot === null ? Math.floor(Math.random() * 1e9) : dailySeeds()[slot],
+          1, null, slot);
+  }
+}
+
+$("newgame").addEventListener("click", () => {
+  if (game && !game.finished && game.day > 1
+      && !confirm("Abandon the run in progress and start over?")) return;
+  openSetup();
+});
+$("again").addEventListener("click", openSetup);
+
+/* carry the run across a republish as well as a page close */
+window.claude?.hot?.snapshot?.(() => (game ? saveToDict(game) : null));
+boot();
+</script>
+
+</body>
+</html>

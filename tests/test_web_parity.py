@@ -24,6 +24,7 @@ from cryptowarz.market import station_markup
 from cryptowarz.stations import STATIONS
 
 WEB = Path(__file__).resolve().parent.parent / "web"
+ROOT = Path(__file__).resolve().parent.parent
 NODE = shutil.which("node")
 requires_node = unittest.skipUnless(NODE, "node is not installed; the web port cannot be checked")
 
@@ -118,6 +119,34 @@ class TestWebSourcesExist(unittest.TestCase):
             if re.search(r"\b" + name + r"\s*\(", page):
                 self.assertIn(name, declared | page_own,
                               f"the page calls {name}() and nothing declares it")
+
+    def test_the_downloadable_page_is_a_whole_document(self):
+        """A bug that shipped: the artifact build drops index.html's <head>,
+        because the host page owns it. The same bytes saved as a file opened in
+        quirks mode, at desktop width on a phone, and with no declared charset
+        to fall back on when there is no HTTP header. docs/index.html is the
+        standalone build, and it has to be a complete document."""
+        page = ROOT / "docs" / "index.html"
+        self.assertTrue(page.exists(), "run web/build.py")
+        text = page.read_text()
+        for needed in ("<!doctype html>", '<meta charset="utf-8">',
+                       'name="viewport"', "<title>CryptoWarz</title>",
+                       "</head>", "<body>", "</body>", "</html>"):
+            self.assertIn(needed, text, needed)
+        self.assertEqual(text.count("<html"), 1)
+        self.assertEqual(text.count("<body>"), 1)
+        self.assertLess(text.index("<meta charset"), text.index("<style>"))
+        self.assertLess(text.index("</style>"), text.index("<body>"))
+        self.assertNotIn("<script src=", text, "a relative script survived")
+
+    def test_the_two_builds_carry_the_same_game(self):
+        """The wrapper is the only difference; a standalone page that had
+        drifted from the artifact would be a second game to keep in step."""
+        page = (ROOT / "docs" / "index.html").read_text()
+        bundle = (WEB / "cryptowarz.artifact.html").read_text()
+        end = bundle.index("</style>") + len("</style>")
+        self.assertIn(bundle[bundle.index("<style>"):end], page, "the styles drifted")
+        self.assertIn(bundle[end:].strip(), page, "the game drifted")
 
     def test_the_wheel_can_actually_turn(self):
         """Guarding a bug that shipped, from a cause that has now bitten twice.

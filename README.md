@@ -194,6 +194,27 @@ Doing nothing loses. Acting at random loses badly. A sensible heuristic is a
 coin flip with real upside, and better judgement raises both the median and the
 ceiling. That is the shape a game should have.
 
+## Three ways to open it
+
+**A file on your machine.** `docs/index.html` is the whole game in one
+self-contained file — no server, no network, no dependencies. Save it, open it,
+play. The build checks it is a *complete* document (doctype, charset, viewport)
+because the artifact build deliberately isn't: the host page there supplies the
+head, and the same bytes saved to disk opened in quirks mode, at desktop width
+on a phone, with no declared charset. That shipped once; two tests now fail if
+it ever does again.
+
+**A web page.** The same file is at `docs/index.html` so GitHub Pages can serve
+it: *Settings → Pages → Source: deploy from a branch → `main` / `/docs`*. That
+gives a permanent public URL anyone can open — no account, no sign-in.
+
+**A Claude artifact.** Private by default: it opens for the account that
+published it, and for nobody else until it is shared from the page's Share
+menu. Handy, and not a link to send to a friend.
+
+All three are the same build and keep the same saves *per browser* — and the
+backup line below moves progress between them.
+
 ## Play it on a phone
 
 The terminal version is canonical, but the same rules run in a browser — open
