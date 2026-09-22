@@ -336,7 +336,7 @@ const HOT_HAND = [4, 2];
 const HOT_HAND_CHANCE = 0.75, HOT_HAND_MIN = 250, HOT_HAND_MAX = 10000;
 
 
-function Game(seed, tier, perk, gear) {
+function Game(seed, tier, perk, gear, difficulty) {
   // kept so a save records which run this was - the RNG state is what restores
   // the dice, but the seed is what lets you tell someone else to try it
   this.seed = (seed === undefined || seed === null) ? (Math.random() * 1e9) | 0 : seed;
@@ -344,13 +344,15 @@ function Game(seed, tier, perk, gear) {
   this.perk = perk || null;
   this.gear = gear || {};                  // {coin class: level}; see gear.py
   const t = TIER_BY_LEVEL[this.tier] || TIER_BY_LEVEL[1];
+  const hard = difficultyOf(difficulty);
+  this.difficulty = hard.key;              // normalised; an unknown key is Express
   this.days = t.days;
-  this.heatMult = t.heat;
+  this.heatMult = t.heat * hard.heatMult;  // the two axes multiply
   this.rng = new RNG(this.seed);
   this.day = 1;
   this.finished = false;
   this.station = STATIONS[9];              // 14 St-Union Sq
-  this.player = { cash: START_CASH, debt: t.debt, vault: 0,
+  this.player = { cash: START_CASH + hard.cash, debt: t.debt * hard.debtMult, vault: 0,
                   capacity: t.capacity, vpn: 0, wallet: {} };
   if (this.perk === "seed_round") this.player.cash += 2000;
   if (this.perk === "cold_storage") this.player.capacity += 15000;
@@ -374,8 +376,13 @@ Game.prototype.markStats = function () {
 };
 Object.defineProperty(Game.prototype, "fare", {
   get() { return this.perk === "metrocard" ? 0 : SUBWAY_FARE; } });
+/* The difficulty's rate, less the Fixer's discount. The discount is a ratio so
+   it is worth the same everywhere; at Express it still lands on exactly 8.5%. */
 Object.defineProperty(Game.prototype, "sharkRate", {
-  get() { return this.perk === "fixer" ? 0.085 : SHARK_RATE; } });
+  get() {
+    const rate = difficultyOf(this.difficulty).shark;
+    return this.perk === "fixer" ? rate * 0.85 : rate;
+  } });
 /* The best gear bonus you are holding for right now, 0 to 0.15. */
 Object.defineProperty(Game.prototype, "luck", {
   get() { return bestLuck(this.gear, this.player.wallet); } });
@@ -791,13 +798,102 @@ const EVENTS = [
   [delayEvent, 5, false], [airdrop, 8, false], [foundWallet, 6, false], [whaleOffer, 6, false],
   [quiet, 34, false],
 ];
-function rollEvent(game) {
-  const heat = Math.min(1, game.station.heat * (game.heatMult || 1));
+
+/* ---------------------------- enforcement ---------------------------- */
+/* Days the SEC leaves you alone at the start of a run. Losing a third of your
+   bags on day three is not a hard position, it is a coin flip that decides the
+   run before you have made a decision worth judging. The pressure is not
+   removed, it is moved: RAID_RAMP_TO puts it in the back half, where you
+   actually have something worth taking. */
+const RAID_GRACE = 15;
+const RAID_RAMP_TO = 1.8;
+
+function raidPressure(game, day) {
+  const d = (day === undefined || day === null) ? game.day : day;
+  if (d <= RAID_GRACE) return 0;
+  const span = Math.max(1, (game.days || 30) - RAID_GRACE);
+  return 1 + (RAID_RAMP_TO - 1) * Math.min(1, (d - RAID_GRACE) / span);
+}
+
+/* The weight of every event for an arrival, in EVENTS order. The threat meter
+   reads THIS, so a forecast can never disagree with the roll. */
+function eventWeights(game, station, day) {
+  const stop = station || game.station;
+  const heat = Math.min(1, stop.heat * (game.heatMult || 1));
   let shelter = 1.0 - Math.min(0.66, 0.22 * game.player.vpn);
   if (game.perk === "burner") shelter *= 0.66;
   // gear you are currently holding for; the best piece, never the sum
   shelter *= 1 - game.luck;
-  const weights = EVENTS.map(([, w, scales]) => (scales ? w * (0.35 + 1.4 * heat) * shelter : w));
+  const pressure = raidPressure(game, day);
+  return EVENTS.map(([fn, w, scales]) => {
+    let out = scales ? w * (0.35 + 1.4 * heat) * shelter : w;
+    if (fn === secRaid) out *= pressure;
+    return out;
+  });
+}
+
+/* The exact probability the SEC turns up on one arrival. Never a guess. */
+function raidChance(game, station, day) {
+  const weights = eventWeights(game, station, day);
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0) return 0;
+  return weights[EVENTS.findIndex(e => e[0] === secRaid)] / total;
+}
+
+/* Five readings and how many bars each fills. Cut points read off the real
+   chance: at Express with no VPN the map spans LOW to HIGH the day the grace
+   ends and WATCH to SEVERE by day thirty, and two VPN levels pull it back to
+   LOW and WATCH - which is the point of showing any of it. */
+const THREAT = [[0.185, "SEVERE", 4], [0.130, "HIGH", 3], [0.085, "WATCH", 2], [0.0, "LOW", 1]];
+const THREAT_BARS = 4;
+const WIRE_LINES = {
+  QUIET: ["Enforcement is still working last quarter's cases. Nobody downtown knows your name.",
+          "The regulator's press office is talking about something else entirely.",
+          "Nothing on the wire. It will not last, and everybody knows it."],
+  LOW: ["A subcommittee asks for documents. Nothing moves fast in Washington.",
+        "An enforcement notice goes out to somebody else. You read it twice anyway.",
+        "Quiet, but the tone has changed. They are writing things down."],
+  WATCH: ["Two agents were seen at {station} this week. They were not commuting.",
+          "The {borough} field office has been busy. Ask anyone on the platform.",
+          "Somebody at {station} got stopped on Tuesday. Nobody has seen him since."],
+  HIGH: ["Word on the platform: the feds are working this line. A day or two, maybe less.",
+         "They have a van on the street above {station}. It has not moved since Monday.",
+         "Three seizures in {borough} this week. {station} is next, if you believe the wire."],
+  SEVERE: ["They are at {station}. The only question left is who they stop.",
+           "{station} is crawling. Turnstiles, mezzanine, both platforms.",
+           "If you are carrying anything, {station} is the worst place in the city today."],
+};
+
+/* The stop's own reputation, in bars, for use while the grace holds: during
+   the first fifteen days every stop reads QUIET, which is true and useless. */
+function standingHeat(station) {
+  return Math.max(0, Math.min(THREAT_BARS, Math.round(station.heat * THREAT_BARS)));
+}
+
+function threatLevel(chance) {
+  if (chance <= 0) return ["QUIET", 0];
+  for (const [floor, label, bars] of THREAT) if (chance >= floor) return [label, bars];
+  return ["QUIET", 0];
+}
+
+/* The threat reading for a stop, as a news post the page can draw. The line is
+   picked by day and station rather than by a die: a headline that re-rolls on
+   every redraw reads as noise, and drawing here would move the run's stream. */
+function wire(game, station, day) {
+  const stop = station || game.station;
+  const when = (day === undefined || day === null) ? game.day : day;
+  const chance = raidChance(game, stop, day);
+  const [label, bars] = threatLevel(chance);
+  const lines = WIRE_LINES[label];
+  const text = lines[(when + stop.name.length) % lines.length]
+    .replace(/\{station\}/g, stop.name).replace(/\{borough\}/g, stop.borough);
+  return { label: label, bars: bars, of: THREAT_BARS, chance: chance,
+           two_stops: 1 - Math.pow(1 - chance, 2),
+           grace_left: Math.max(0, RAID_GRACE - when), text: text };
+}
+
+function rollEvent(game) {
+  const weights = eventWeights(game);
   return game.rng.choices(EVENTS.map(e => e[0]), weights)(game);
 }
 
@@ -991,6 +1087,25 @@ const TIERS = [
   { level: 5, name: "Blackout",   blurb: "Everything at once.",                 debt: 9000,  capacity: 13000, heat: 1.80, days: 26, mult: 2.40 },
 ];
 const TIER_BY_LEVEL = Object.fromEntries(TIERS.map(t => [t.level, t]));
+/* How hard the city is playing - a second axis, free to choose on any run.
+   A tier is progression you unlock; a difficulty is a dial you can turn on
+   day one. Both pay the board honestly: the multipliers multiply. */
+const DIFFICULTIES = [
+  { key: "easy",   name: "Local",      blurb: "Every stop, no hurry. The city is not paying attention.",
+    cash: 1500, debtMult: 0.85, shark: 0.075, heatMult: 0.80, mult: 0.70 },
+  { key: "normal", name: "Express",    blurb: "The game as it is meant to be played.",
+    cash: 0,    debtMult: 1.00, shark: 0.100, heatMult: 1.00, mult: 1.00 },
+  { key: "hard",   name: "Third Rail", blurb: "Bigger loan, worse rate, and everybody is looking.",
+    cash: 0,    debtMult: 1.25, shark: 0.125, heatMult: 1.30, mult: 1.50 },
+];
+const DIFFICULTY_BY_KEY = Object.fromEntries(DIFFICULTIES.map(d => [d.key, d]));
+const DEFAULT_DIFFICULTY = "normal";
+/* Falls back rather than throwing: a save from an older build carries no
+   difficulty at all, and a run that refuses to load is worse than Express. */
+function difficultyOf(key) {
+  return DIFFICULTY_BY_KEY[key || DEFAULT_DIFFICULTY] || DIFFICULTY_BY_KEY[DEFAULT_DIFFICULTY];
+}
+function difficultyMult(key) { return difficultyOf(key).mult; }
 const PERK_BY_KEY = Object.fromEntries(PERKS.map(p => [p.key, p]));
 const PROGRESS_KEY = "cryptowarz.progress.v1";
 const PROGRESS_VERSION = 3;
@@ -1020,7 +1135,10 @@ function runGrade(g) { return countsForProgress(g) ? gradeFor(runPoints(g)) : UN
 function tierMult(tier) { return (TIER_BY_LEVEL[tier] || TIERS[0]).mult; }
 /* Floored at zero: a board that can be dragged down is one where the safe play
    is not to play. */
-function runPoints(g) { return Math.max(0, g.finalScore()) * tierMult(g.tier || 1); }
+function difficultyMultOf(g) { return difficultyMult(g.difficulty || DEFAULT_DIFFICULTY); }
+function runPoints(g) {
+  return Math.max(0, g.finalScore()) * tierMult(g.tier || 1) * difficultyMultOf(g);
+}
 function gradeFor(points) { return (GRADES.find(r => points >= r[0]) || GRADES[GRADES.length - 1])[1]; }
 function gradeBlurb(points) { return (GRADES.find(r => points >= r[0]) || GRADES[GRADES.length - 1])[2]; }
 /* Per slot, so run two is a new market rather than run one replayed with the
@@ -1144,6 +1262,9 @@ function saveToDict(g) {
     saved_at: Date.now() / 1000,
     seed: g.seed,
     tier: g.tier,
+    /* added after version 1 shipped and read with a default, so a save from an
+       older build still loads - it simply resumes on Express */
+    difficulty: g.difficulty || DEFAULT_DIFFICULTY,
     perk: g.perk,
     /* the gear the run started with, so a reload keeps the same luck */
     gear: Object.assign({}, g.gear || {}),
@@ -1182,7 +1303,8 @@ function saveFromDict(data) {
     throw new Error("that save is from a different version of the game");
   }
   const g = new Game(data.seed === undefined ? 0 : data.seed, data.tier || 1,
-                     data.perk || null, data.gear || {});
+                     data.perk || null, data.gear || {},
+                     data.difficulty || DEFAULT_DIFFICULTY);
   g.rng.setState(data.rng);
   g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
   g.isDaily = g.dailySlot !== null;
@@ -1273,6 +1395,10 @@ if (typeof module !== "undefined") {
                      fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
+                     DIFFICULTIES, DIFFICULTY_BY_KEY, DEFAULT_DIFFICULTY,
+                     difficultyOf, difficultyMult,
+                     RAID_GRACE, RAID_RAMP_TO, raidPressure, eventWeights, raidChance,
+                     THREAT, THREAT_BARS, WIRE_LINES, threatLevel, standingHeat, wire, EVENTS,
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
                      PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,

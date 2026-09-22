@@ -111,7 +111,9 @@ class TestWebSourcesExist(unittest.TestCase):
             re.findall(r"(?:const|let|var)\s+(\w+)\s*=", page))
         for name in ("creditWheel", "creditWin", "levelsFromWins", "brokerOffer",
                      "renameGear", "retuneGear", "displayName", "levelFor",
-                     "winningClass", "gradeFor", "runGrade", "recordDaily"):
+                     "winningClass", "gradeFor", "runGrade", "recordDaily",
+                     "wire", "raidChance", "threatLevel", "difficultyOf",
+                     "raidPressure", "eventWeights"):
             if re.search(r"\b" + name + r"\s*\(", page):
                 self.assertIn(name, declared | page_own,
                               f"the page calls {name}() and nothing declares it")
@@ -410,6 +412,164 @@ class TestGearCustomisationParity(unittest.TestCase):
         self.assertTrue(self.js["refused_unearned_rename"])
         self.assertTrue(self.js["refused_broke_retune"])
         self.assertTrue(self.js["drops_the_name_when_the_piece_is_gone"])
+
+
+@requires_node
+class TestDifficultyParity(unittest.TestCase):
+    """A second scoring axis is exactly the kind of thing that drifts: one port
+    multiplies by it, the other forgets, and the same run is worth two numbers
+    on one leaderboard. Every lever is compared, and so is the fallback that
+    keeps an old save loading."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["hardness"]
+
+    def test_the_table_matches(self):
+        from cryptowarz.progress import DEFAULT_DIFFICULTY, DIFFICULTIES
+        self.assertEqual([d["key"] for d in self.js["table"]], [d.key for d in DIFFICULTIES])
+        self.assertEqual(self.js["default"], DEFAULT_DIFFICULTY)
+        for js, py in zip(self.js["table"], DIFFICULTIES):
+            self.assertEqual(js["name"], py.name, py.key)
+            self.assertEqual(js["blurb"], py.blurb, py.key)
+            self.assertAlmostEqual(js["cash"], py.cash, msg=py.key)
+            self.assertAlmostEqual(js["debt_mult"], py.debt_mult, msg=py.key)
+            self.assertAlmostEqual(js["shark"], py.shark, msg=py.key)
+            self.assertAlmostEqual(js["heat_mult"], py.heat_mult, msg=py.key)
+            self.assertAlmostEqual(js["mult"], py.score_mult, msg=py.key)
+
+    def test_both_ports_build_the_same_run(self):
+        from cryptowarz.game import Game
+        for js in self.js["made"]:
+            py = Game(seed=1, difficulty=js["key"])
+            self.assertAlmostEqual(js["cash"], py.player.cash, places=2, msg=js["key"])
+            self.assertAlmostEqual(js["debt"], py.player.debt, places=2, msg=js["key"])
+            self.assertAlmostEqual(js["shark"], py.shark_rate, msg=js["key"])
+            self.assertAlmostEqual(js["heat_mult"], py.heat_mult, msg=js["key"])
+
+    def test_both_ports_fall_back_the_same_way(self):
+        from cryptowarz.progress import difficulty_of
+        self.assertEqual(self.js["unknown_falls_back"], difficulty_of("nonsense").key)
+        self.assertEqual(self.js["old_save_loads_as_express"], "normal")
+
+    def test_the_fixer_is_a_ratio_on_both_sides(self):
+        from cryptowarz.game import Game
+        self.assertAlmostEqual(self.js["fixer_still_gets_its_discount"],
+                               Game(seed=1, perk="fixer").shark_rate)
+
+    def test_the_same_run_is_worth_the_same_points_on_both_sides(self):
+        from cryptowarz.game import Game
+        from cryptowarz.progress import run_points
+        for key, js_points in self.js["points_by_difficulty"].items():
+            game = Game(seed=9, difficulty=key)
+            game.player.debt = 0.0
+            game.player.wallet.clear()
+            game.player.cash = 100_000.0
+            game.finalise()
+            self.assertEqual(js_points, round(run_points(game)), key)
+
+    def test_it_rides_the_save_on_both_sides(self):
+        from cryptowarz.game import Game
+        from cryptowarz import save as sv
+        game = Game(seed=4, difficulty="hard")
+        game.day = 12
+        back = sv.from_dict(sv.to_dict(game))
+        self.assertEqual(self.js["survives_a_save"]["difficulty"], back.difficulty)
+        self.assertAlmostEqual(self.js["survives_a_save"]["debt"], back.player.debt, places=2)
+        self.assertAlmostEqual(self.js["survives_a_save"]["shark"], back.shark_rate)
+
+
+@requires_node
+class TestEnforcementParity(unittest.TestCase):
+    """The grace period, the ramp, and the meter.
+
+    The map strings are the sharp test here: sixteen stations reduced to one
+    letter each, on three different days. Two ports that had drifted by a
+    single constant anywhere in the weight chain would produce different
+    strings, and the strings are compared exactly because this part of the
+    model is arithmetic rather than sampling - no RNG is involved at all.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["enforcement"]
+
+    def test_the_constants_match(self):
+        from cryptowarz import events as ev
+        self.assertEqual(self.js["grace"], ev.RAID_GRACE)
+        self.assertAlmostEqual(self.js["ramp_to"], ev.RAID_RAMP_TO)
+        self.assertEqual(self.js["bars"], ev.THREAT_BARS)
+        self.assertEqual([tuple(t) for t in self.js["thresholds"]],
+                         [tuple(t) for t in ev.THREAT])
+
+    def test_the_grace_is_absolute_on_both_sides(self):
+        self.assertEqual(self.js["chance_in_grace"], 0)
+        self.assertEqual(self.js["raid_weight_in_grace"], 0)
+
+    def test_the_ramp_climbs_identically(self):
+        from cryptowarz import events as ev
+        from cryptowarz.game import Game
+        game = Game(seed=3)
+        self.assertEqual([round(ev.raid_pressure(game, d), 3) for d in (1, 8, 15, 16, 22, 30)],
+                         self.js["pressure"])
+
+    def test_the_whole_map_reads_the_same_on_both_sides(self):
+        from cryptowarz import events as ev
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+        for day, js_map in self.js["map_by_day"].items():
+            game = Game(seed=3)
+            game.day = int(day)
+            py_map = "".join(ev.threat_level(ev.raid_chance(game, s, int(day)))[0][0]
+                             for s in STATIONS)
+            self.assertEqual(js_map, py_map, f"day {day}")
+
+    def test_a_vpn_moves_the_meter_the_same_way_on_both_sides(self):
+        from cryptowarz import events as ev
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+        game = Game(seed=3)
+        game.day = 22
+        game.player.vpn = 2
+        py_map = "".join(ev.threat_level(ev.raid_chance(game, s, 22))[0][0] for s in STATIONS)
+        self.assertEqual(self.js["map_with_vpn"], py_map)
+
+    def test_the_odds_themselves_match(self):
+        from cryptowarz import events as ev
+        from cryptowarz.game import Game
+        for js_chance, day in zip(self.js["chance_here"], (16, 22, 30)):
+            game = Game(seed=3)
+            game.day = day
+            self.assertAlmostEqual(js_chance, round(ev.raid_chance(game, None, day), 4), msg=day)
+
+    def test_the_news_post_matches_word_for_word(self):
+        from cryptowarz import events as ev
+        from cryptowarz.game import Game
+        quiet = Game(seed=3)
+        quiet.day = 8
+        py_quiet = ev.wire(quiet, day=8)
+        self.assertEqual(self.js["wire_quiet"]["label"], py_quiet["label"])
+        self.assertEqual(self.js["wire_quiet"]["bars"], py_quiet["bars"])
+        self.assertEqual(self.js["wire_quiet"]["grace_left"], py_quiet["grace_left"])
+        self.assertEqual(self.js["wire_quiet"]["text"], py_quiet["text"])
+        late = Game(seed=3)
+        late.day = 24
+        py_late = ev.wire(late, day=24)
+        self.assertEqual(self.js["wire_late"]["label"], py_late["label"])
+        self.assertEqual(self.js["wire_late"]["text"], py_late["text"])
+        self.assertAlmostEqual(self.js["wire_late"]["two_stops"],
+                               round(py_late["two_stops"], 4))
+
+    def test_the_grace_period_map_matches(self):
+        """What the stops are LIKE, shown while the live reading is all zeros."""
+        from cryptowarz import events as ev
+        from cryptowarz.stations import STATIONS
+        self.assertEqual(self.js["standing_heat"], [ev.standing_heat(s) for s in STATIONS])
+
+    def test_every_line_of_copy_matches(self):
+        from cryptowarz import events as ev
+        self.assertEqual({k: list(v) for k, v in self.js["lines"].items()},
+                         {k: list(v) for k, v in ev.WIRE_LINES.items()})
 
 
 @requires_node

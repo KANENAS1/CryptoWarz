@@ -75,6 +75,9 @@ def to_dict(game) -> Dict[str, Any]:
         "saved_at": time.time(),
         "seed": game.seed,
         "tier": game.tier,
+        # added after version 1 shipped and read with a default, so a save from
+        # an older build still loads - it simply resumes on Express
+        "difficulty": getattr(game, "difficulty", "normal"),
         "perk": game.perk,
         # the gear the run started with, so a reload keeps the same luck
         "gear": dict(getattr(game, "gear", {}) or {}),
@@ -129,6 +132,7 @@ def from_dict(data: Dict[str, Any]):
         )
 
     game = Game(seed=data.get("seed"), tier=int(data.get("tier", 1)),
+                difficulty=data.get("difficulty") or "normal",
                 perk=data.get("perk"),
                 gear={k: int(v) for k, v in (data.get("gear") or {}).items()})
     slot = data.get("daily_slot")

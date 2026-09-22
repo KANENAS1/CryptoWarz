@@ -235,6 +235,79 @@ const out = {
       })(),
     };
   })(),
+  hardness: (() => {
+    const made = G.DIFFICULTIES.map(d => {
+      const g = new G.Game(1, 1, null, {}, d.key);
+      return { key: g.difficulty, cash: g.player.cash, debt: Math.round(g.player.debt * 100) / 100,
+               shark: g.sharkRate, heat_mult: g.heatMult };
+    });
+    const scored = (() => {
+      const out = {};
+      for (const d of G.DIFFICULTIES) {
+        const g = new G.Game(9, 1, null, {}, d.key);
+        g.player.debt = 0; g.player.wallet = {}; g.player.cash = 100000;
+        g.finalise();
+        out[d.key] = Math.round(G.runPoints(g));
+      }
+      return out;
+    })();
+    return {
+      table: G.DIFFICULTIES.map(d => ({ key: d.key, name: d.name, blurb: d.blurb,
+        cash: d.cash, debt_mult: d.debtMult, shark: d.shark,
+        heat_mult: d.heatMult, mult: d.mult })),
+      default: G.DEFAULT_DIFFICULTY,
+      made: made,
+      /* an unknown key must fall back rather than throw - an old save has none */
+      unknown_falls_back: G.difficultyOf("nonsense").key,
+      fixer_still_gets_its_discount: new G.Game(1, 1, "fixer").sharkRate,
+      points_by_difficulty: scored,
+      /* the save has to carry it, or a reload changes the rules mid-run */
+      survives_a_save: (() => {
+        const g = new G.Game(4, 1, null, {}, "hard"); g.day = 12;
+        const back = G.saveFromDict(G.saveToDict(g));
+        return { difficulty: back.difficulty, debt: Math.round(back.player.debt * 100) / 100,
+                 shark: back.sharkRate };
+      })(),
+      old_save_loads_as_express: (() => {
+        const g = new G.Game(4); const data = G.saveToDict(g);
+        delete data.difficulty;
+        return G.saveFromDict(data).difficulty;
+      })(),
+    };
+  })(),
+  enforcement: (() => {
+    const at = (day, difficulty, vpn) => {
+      const g = new G.Game(3, 1, null, {}, difficulty || "normal");
+      g.day = day; g.player.vpn = vpn || 0;
+      return g;
+    };
+    const mapAt = (day, difficulty, vpn) => G.STATIONS.map(s =>
+      G.threatLevel(G.raidChance(at(day, difficulty, vpn), s, day))[0][0]).join("");
+    const raidIndex = G.EVENTS.findIndex(e => e[1] === 10 && e[2] === true);
+    return {
+      grace: G.RAID_GRACE, ramp_to: G.RAID_RAMP_TO,
+      thresholds: G.THREAT.map(t => [t[0], t[1], t[2]]), bars: G.THREAT_BARS,
+      /* the grace is absolute: no weight at all, not merely less */
+      pressure: [1, 8, 15, 16, 22, 30].map(d => {
+        const g = at(d); return Math.round(G.raidPressure(g, d) * 1000) / 1000;
+      }),
+      chance_in_grace: G.raidChance(at(8), null, 8),
+      raid_weight_in_grace: G.eventWeights(at(8), null, 8)[raidIndex],
+      /* the shape of the run: the map gets worse as it goes on */
+      map_by_day: { 16: mapAt(16), 22: mapAt(22), 30: mapAt(30) },
+      /* a VPN is the thing the meter visibly buys */
+      map_with_vpn: mapAt(22, "normal", 2),
+      chance_here: [16, 22, 30].map(d => Math.round(G.raidChance(at(d), null, d) * 10000) / 10000),
+      /* the news post itself */
+      wire_quiet: (() => { const w = G.wire(at(8), null, 8);
+        return { label: w.label, bars: w.bars, grace_left: w.grace_left, text: w.text }; })(),
+      wire_late: (() => { const w = G.wire(at(24), null, 24);
+        return { label: w.label, bars: w.bars, two_stops: Math.round(w.two_stops * 10000) / 10000,
+                 text: w.text }; })(),
+      lines: G.WIRE_LINES,
+      standing_heat: G.STATIONS.map(s => G.standingHeat(s)),
+    };
+  })(),
   broker: (() => {
     const SHOP = G.STATIONS.find(s => s.shop), BARE = G.STATIONS.find(s => !s.shop);
     const rich = (cash, station, holding, streak) => {

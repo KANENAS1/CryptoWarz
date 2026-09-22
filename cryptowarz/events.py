@@ -14,7 +14,7 @@ decision.
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING, Callable, List, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 if TYPE_CHECKING:                       # pragma: no cover
     from .game import Game
@@ -151,6 +151,34 @@ def quiet(game: "Game") -> List[str]:
     return []
 
 
+# ------------------------------------------------------------ enforcement
+
+#: Days the SEC leaves you alone at the start of a run.
+#:
+#: Losing a third of your bags on day three is not a hard position, it is a
+#: coin flip that decides the run before you have made a decision worth
+#: judging - you have no capacity, no cash and nothing to trade your way out
+#: with. The grace period buys every run the same fair opening, and it costs
+#: the game nothing, because the pressure is not removed - it is *moved*.
+RAID_GRACE = 15
+
+#: Where raid weight ends up on the final day, relative to the day it comes
+#: back. The back half is more dangerous than it used to be, deliberately: by
+#: then you have something worth taking and the choice to sit on it or keep
+#: pushing is the most interesting decision in the game. A flat rate after the
+#: grace would have made the first half safe and changed nothing else.
+RAID_RAMP_TO = 1.8
+
+
+def raid_pressure(game, day: Optional[int] = None) -> float:
+    """What the SEC's weight is multiplied by on a given day. Zero = grace."""
+    day = game.day if day is None else day
+    if day <= RAID_GRACE:
+        return 0.0
+    span = max(1, int(getattr(game, "days", 30)) - RAID_GRACE)
+    return 1.0 + (RAID_RAMP_TO - 1.0) * min(1.0, (day - RAID_GRACE) / span)
+
+
 #: (function, base weight, scales_with_heat)
 EVENTS: List[Tuple[Callable[["Game"], List[str]], float, bool]] = [
     (sec_raid,     10.0, True),
@@ -165,23 +193,147 @@ EVENTS: List[Tuple[Callable[["Game"], List[str]], float, bool]] = [
 ]
 
 
-def roll_event(game: "Game") -> List[str]:
-    """Pick one event for this arrival, weighted by heat, tier, VPN and perk."""
-    # a tier turns the whole map up; a VPN or a burner turns it back down
-    heat = min(1.0, game.station.heat * getattr(game, "heat_mult", 1.0))
+def event_weights(game: "Game", station=None, day: Optional[int] = None) -> List[float]:
+    """The weight of every event for an arrival, in EVENTS order.
+
+    Factored out of ``roll_event`` so the threat meter is computed from the
+    *same* numbers the roll uses. A forecast drawn from a second, parallel
+    formula is a meter that can disagree with the game, and a meter that lies
+    is worse than no meter: the player would learn to distrust the one piece of
+    information the game volunteers.
+    """
+    station = station or game.station
+    # a tier or a difficulty turns the whole map up; a VPN or a burner turns it
+    # back down
+    heat = min(1.0, station.heat * getattr(game, "heat_mult", 1.0))
     shelter = 1.0 - min(0.66, 0.22 * game.player.vpn)
     if getattr(game, "perk", None) == "burner":
         shelter *= 0.66
     # gear you are currently holding for; the best piece, never the sum, so no
     # build stacks its way to immunity
     shelter *= 1.0 - game.luck
-    # an open bet is somebody else's coin moving on your say-so, and the
-    # exchange is looking at you while it does
+    pressure = raid_pressure(game, day)
     weights = []
-    for _fn, weight, scales in EVENTS:
+    for fn, weight, scales in EVENTS:
         w = weight
         if scales:
             w *= (0.35 + 1.4 * heat) * shelter
+        if fn is sec_raid:
+            w *= pressure
         weights.append(w)
+    return weights
+
+
+def raid_chance(game: "Game", station=None, day: Optional[int] = None) -> float:
+    """The exact probability the SEC turns up on one arrival. Never a guess."""
+    weights = event_weights(game, station, day)
+    total = sum(weights)
+    if total <= 0:
+        return 0.0
+    return weights[[e[0] for e in EVENTS].index(sec_raid)] / total
+
+
+def roll_event(game: "Game") -> List[str]:
+    """Pick one event for this arrival, weighted by heat, tier, VPN and perk."""
+    weights = event_weights(game)
     chosen = game.rng.choices([e[0] for e in EVENTS], weights=weights, k=1)[0]
     return chosen(game)
+
+
+# ------------------------------------------------------------- the threat bar
+
+#: Five readings, and the number of bars each one fills. The cut points are
+#: read off the real per-arrival chance rather than chosen to look dramatic:
+#: at Express with no VPN the map spans LOW to HIGH the day the grace ends and
+#: WATCH to SEVERE by day thirty, so the spread across stations stays readable
+#: at every point in the run while the whole board drifts upward. Two VPN
+#: levels pull the same map back to LOW and WATCH, which is the point of
+#: showing any of this - the meter is the thing a VPN visibly buys.
+THREAT: Tuple[Tuple[float, str, int], ...] = (
+    (0.185, "SEVERE", 4),
+    (0.130, "HIGH",   3),
+    (0.085, "WATCH",  2),
+    (0.0,   "LOW",    1),      # anything above zero is never "quiet"
+)
+THREAT_BARS = 4
+QUIET = ("QUIET", 0)
+
+#: Three lines per reading so the wire does not repeat itself, picked by day
+#: and station rather than by a die - a headline that re-rolls on every redraw
+#: reads as noise, and drawing here would also move the run's random stream.
+WIRE_LINES: dict = {
+    "QUIET": (
+        "Enforcement is still working last quarter's cases. Nobody downtown knows your name.",
+        "The regulator's press office is talking about something else entirely.",
+        "Nothing on the wire. It will not last, and everybody knows it.",
+    ),
+    "LOW": (
+        "A subcommittee asks for documents. Nothing moves fast in Washington.",
+        "An enforcement notice goes out to somebody else. You read it twice anyway.",
+        "Quiet, but the tone has changed. They are writing things down.",
+    ),
+    "WATCH": (
+        "Two agents were seen at {station} this week. They were not commuting.",
+        "The {borough} field office has been busy. Ask anyone on the platform.",
+        "Somebody at {station} got stopped on Tuesday. Nobody has seen him since.",
+    ),
+    "HIGH": (
+        "Word on the platform: the feds are working this line. A day or two, maybe less.",
+        "They have a van on the street above {station}. It has not moved since Monday.",
+        "Three seizures in {borough} this week. {station} is next, if you believe the wire.",
+    ),
+    "SEVERE": (
+        "They are at {station}. The only question left is who they stop.",
+        "{station} is crawling. Turnstiles, mezzanine, both platforms.",
+        "If you are carrying anything, {station} is the worst place in the city today.",
+    ),
+}
+
+
+def standing_heat(station) -> int:
+    """The stop's own reputation, in bars, for use while the grace holds.
+
+    During the first fifteen days every stop reads QUIET, which is true and
+    useless - a column that says the same thing sixteen times is not worth the
+    width. This is what the stop is *like*, so the early map still tells you
+    which places will be bad later, and it never pretends to be the live
+    number: the two are labelled differently everywhere they are drawn.
+    """
+    return max(0, min(THREAT_BARS, int(round(station.heat * THREAT_BARS))))
+
+
+def threat_level(chance: float) -> Tuple[str, int]:
+    """(label, bars filled) for a per-arrival raid chance."""
+    if chance <= 0:
+        return QUIET
+    for floor, label, bars in THREAT:
+        if chance >= floor:
+            return (label, bars)
+    return QUIET
+
+
+def wire(game: "Game", station=None, day: Optional[int] = None) -> dict:
+    """The threat reading for a stop, as a news post both front ends can draw.
+
+    Returns the label, how many bars to fill, the true per-arrival chance, the
+    chance of being hit at least once across the next two arrivals - which is
+    the number a player actually wants when deciding whether to make one more
+    run - and a line of copy.
+    """
+    station = station or game.station
+    when = game.day if day is None else day
+    chance = raid_chance(game, station, day)
+    label, bars = threat_level(chance)
+    lines = WIRE_LINES[label]
+    pick = lines[(when + len(station.name)) % len(lines)]
+    text = pick.format(station=station.name, borough=station.borough)
+    grace_left = max(0, RAID_GRACE - when)
+    return {
+        "label": label,
+        "bars": bars,
+        "of": THREAT_BARS,
+        "chance": chance,
+        "two_stops": 1.0 - (1.0 - chance) ** 2,
+        "grace_left": grace_left,
+        "text": text,
+    }

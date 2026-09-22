@@ -90,7 +90,86 @@ it; a coin doubling does not. You are always choosing which edge deserves the
 space.
 
 **Heat.** An SEC raid takes 18–42% of everything you're holding. A VPN halves
-your odds, and the safest stations pay the worst prices.
+your odds, and the safest stations pay the worst prices. **They leave you alone
+for the first fifteen days** — see below.
+
+## The wire: they are coming, and you can see it
+
+Losing a third of your bags on day three was not a hard position. It was a coin
+flip that decided the run before you had made a decision worth judging — no
+capacity, no cash, nothing to trade your way out with. So:
+
+**The SEC cannot raid you for the first 15 days.** Not "rarely" — the weight is
+zero. Every run gets the same fair opening.
+
+The pressure isn't deleted, it's **moved**. From day 16 raid weight comes back
+and then climbs, reaching **1.8×** on the final day. The back half is more
+dangerous than it used to be, deliberately: by then you have something worth
+taking, and the choice between sitting on it and pushing on is the best
+decision in the game.
+
+And you can read it. Every stop shows **THE WIRE** — a news post with a threat
+bar, the real odds, and what the city is saying:
+
+```
+  THE WIRE ▮▮▮▯ HIGH  1 in 7 per stop · 27% over the next two
+  Word on the platform: the feds are working this line. A day or two, maybe less.
+```
+
+The travel screen shows the same reading **for the day you would arrive**, on
+every destination, so the fare buys an informed choice rather than a surprise.
+
+Two things make this worth trusting. The odds are computed from **the same
+weight table the roll uses** — there is no second, parallel formula that could
+drift, and a test rolls four thousand arrivals to confirm the meter matched
+what happened. And the headline is picked by day and station rather than by a
+die, so it doesn't churn on every redraw and doesn't touch the run's random
+stream.
+
+The meter is also what a **VPN** visibly buys: at Express with no VPN the map
+spans LOW to HIGH the day the grace ends and WATCH to SEVERE by day thirty; two
+VPN levels pull that same map back to LOW and WATCH. Gear you're holding for
+moves it too — measured, a raid at a hot stop on day 22 goes from **14.7% to
+13.0%** with the right piece at full level.
+
+## Pick how hard the city plays
+
+The tiers are *progression* — you unlock one by beating the one below.
+Difficulty is a **second axis, open on every run from the first**, because
+somebody who wants a gentler thirty days shouldn't have to grind for it and
+somebody who has cleared tier 5 should be able to make tier 1 hurt again.
+
+| | Start | Debt | Shark | Heat | Score |
+|---|---|---|---|---|---|
+| **Local** | +$1,500 | 85% | 7.5%/day | 80% | **×0.70** |
+| **Express** | — | 100% | 10%/day | 100% | **×1.00** |
+| **Third Rail** | — | 125% | 12.5%/day | 130% | **×1.50** |
+
+The two axes **multiply**, on the levers and on the board: a hard run of a hot
+tier really is both, and an easier run is worth less on the leaderboard while a
+harder one is worth more. Nobody has to trust anybody's restraint. Measured
+over 400 runs of the same bot:
+
+| | Buy the cheapest | + clear the debt |
+|---|---|---|
+| Local | **85%** solvent | **89%** |
+| Express | **50%** | **57%** |
+| Third Rail | **14%** | **28%** |
+
+The difficulty rides the save, so a reload can't change the rules mid-run, and
+a save written before this existed still loads — as Express.
+
+`python3 -m cryptowarz --difficulty hard`, or tap **HOW HARD** on the new-run
+screen. The phone remembers your choice.
+
+### What the grace period cost, measured
+
+Honestly: the grace on its own made the game noticeably softer — buy-the-
+cheapest went from **41% to 55%** solvent over 400 runs. The 1.8× ramp puts
+most of that back, at **50%**, and moves raids per run from **3.25 to 2.38**.
+The game is a little more forgiving than it was, and the losses now land when
+you have something to lose. If you want the old pressure and more, Third Rail
+is right there.
 
 ## How it's balanced
 
@@ -106,10 +185,10 @@ cheapest seller. Measured over 200 simulated runs:
 
 | Strategy | Median | p90 | Best | Finished solvent |
 |---|---|---|---|---|
-| Do nothing | −11,451 | −6,039 | 41 | **0%** |
-| Buy at random | −87,903 | −67,632 | — | **1%** |
-| Buy the cheapest | 401 | 90,008 | 244,040 | **50%** |
-| + clear the debt when you can afford to | 8,745 | 158,552 | **466,321** | **53%** |
+| Do nothing | −16,238 | −5,922 | 11,511 | **2%** |
+| Buy at random | −86,979 | −46,265 | 42,285 | **4%** |
+| Buy the cheapest | −581 | 123,715 | 294,034 | **50%** |
+| + clear the debt when you can afford to | 18,846 | 200,842 | **535,237** | **56%** |
 
 Doing nothing loses. Acting at random loses badly. A sensible heuristic is a
 coin flip with real upside, and better judgement raises both the median and the
@@ -282,9 +361,12 @@ shock was always a coin-flip between a crash and a pump; gear tilts that flip.
 Gear is written into the save, so a reloaded run carries the same luck and
 replays as it would have — the anti-savescum guarantee outranks any feature.
 
-Measured over 400 simulated runs of the same trading bot: **26.2% solvent with
-no gear, 32.0% with everything at full level** — about the weight of a perk.
-Shocks on a coin you're geared for went from 51.9% pumps to 67.2%.
+Measured over 400 runs of the same bot on the current build: **57% solvent with
+no gear, 63% with everything at full level**, and the median roughly doubles
+(18,952 → 39,613). Raids per run drop from **2.38 to 2.12**, and a raid at a hot
+stop on day 22 reads **14.7% without gear, 13.0% with the right piece at full
+level** — while gear for a class you are *not* holding leaves the number exactly
+where it was, which is the rule the whole feature stands on.
 
 ### The gear screen, and the dealer
 
@@ -649,6 +731,7 @@ python3 -m cryptowarz --goals      # achievements, perks and tiers
 python3 -m cryptowarz --gear       # your gear and what it's worth
 #   in-game: spin · dealer · gear name · gear move · giveup
 python3 -m cryptowarz --daily      # your next ranked run of the day
+python3 -m cryptowarz --difficulty hard    # local · express · third rail
 python3 -m cryptowarz --tier 3 --perk fixer
 ```
 

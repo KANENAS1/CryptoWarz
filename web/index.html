@@ -120,6 +120,32 @@
   .chip.vault{border-color:var(--blue);color:#6f9bff}
   .chip.shop{border-color:var(--yellow);color:var(--yellow)}
   .heat{font-size:9px;letter-spacing:.1em;color:var(--faint)}
+
+  /* ---------- the wire: how close the SEC is ----------
+     The bar count and the word both carry the reading, so colour is a third
+     channel rather than the only one - it stays legible in greyscale and to
+     anyone who cannot separate the red from the green. */
+  .wire{display:flex;gap:10px;align-items:flex-start;background:var(--panel);
+        border:1px solid var(--rule);border-left:3px solid var(--faint);
+        border-radius:7px;padding:9px 11px;margin:0 0 10px}
+  .wire.t2{border-left-color:var(--yellow)}
+  .wire.t3{border-left-color:var(--yellow)}
+  .wire.t4{border-left-color:var(--red)}
+  .wire .bars{font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+              color:var(--faint);flex:none;padding-top:1px}
+  .wire.t1 .bars{color:#34d07a}
+  .wire.t2 .bars,.wire.t3 .bars{color:var(--yellow)}
+  .wire.t4 .bars{color:var(--red)}
+  .wire .who{font-size:9px;letter-spacing:.14em;color:var(--faint);font-weight:700}
+  .wire .lvl{font-size:9px;letter-spacing:.14em;font-weight:700}
+  .wire.t0 .lvl{color:var(--dim)} .wire.t1 .lvl{color:#34d07a}
+  .wire.t2 .lvl,.wire.t3 .lvl{color:var(--yellow)} .wire.t4 .lvl{color:var(--red)}
+  .wire .txt{font-size:12.5px;color:var(--paper);margin-top:2px}
+  .wire .odds{font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px}
+  .stop .threat{font-size:9px;letter-spacing:.1em;font-family:var(--mono)}
+  .stop .threat.t0{color:var(--faint)} .stop .threat.t1{color:#34d07a}
+  .stop .threat.t2,.stop .threat.t3{color:var(--yellow)}
+  .stop .threat.t4{color:var(--red)}
   .bullets{display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;max-width:130px}
 
   /* ---------- end screen ---------- */
@@ -280,6 +306,7 @@
   </header>
 
   <main id="main">
+    <div class="wire" id="wire" hidden></div>
     <div id="alerts"></div>
     <div class="deadend" id="deadend" hidden>
       <div class="t">STRANDED</div>
@@ -338,7 +365,9 @@
   <h3 id="setuptitle">NEW RUN</h3>
   <div class="sheetscroll">
     <div id="dailybox"></div>
-    <h2 style="margin-top:2px">DIFFICULTY</h2>
+    <h2 style="margin-top:2px">HOW HARD</h2>
+    <div id="hardpicks"></div>
+    <h2>THE LADDER</h2>
     <div id="tierpicks"></div>
     <h2>CARRY ONE THING</h2>
     <div id="perkpicks"></div>
@@ -545,6 +574,20 @@ function render(){
       <div class="trade">${trade}</div>
     </div>`;
   }).join("");
+
+  // The wire: the real odds of a raid at this stop, on this day, as news.
+  // Drawn from the same weight table the roll uses, so it cannot disagree.
+  const w = wire(g);
+  const wireEl = $("wire");
+  wireEl.hidden = false;
+  wireEl.className = "wire t" + w.bars;
+  wireEl.innerHTML = `<div class="bars">${"\u25ae".repeat(w.bars)}${
+      "\u25af".repeat(w.of - w.bars)}</div>
+    <div><div><span class="who">THE WIRE</span> <span class="lvl">${w.label}</span></div>
+      <div class="txt">${esc(w.text)}</div>
+      <div class="odds">${w.chance > 0
+        ? `1 in ${Math.round(1 / w.chance)} per stop · ${Math.round(w.two_stops * 100)}% over the next two`
+        : `no raids for ${w.grace_left} more day${w.grace_left === 1 ? "" : "s"}`}</div></div>`;
 
   const st = g.station, svc = [];
   if (st.shark) {
@@ -951,10 +994,18 @@ $("ride").addEventListener("click", () => {
       s.shark ? '<span class="chip shark">SHARK</span>' : "",
       s.vault ? '<span class="chip vault">VAULT</span>' : "",
       s.shop ? '<span class="chip shop">SHOP</span>' : "",
-      `<span class="heat">HEAT ${"▮".repeat(Math.round(s.heat * 5))}${"▯".repeat(5 - Math.round(s.heat * 5))}</span>`,
     ].join("");
+    // the day you would ARRIVE, not the day you are leaving - the fare buys a
+    // day, and the threat you are choosing between is tomorrow's
+    const t = wire(game, s, game.day + 1);
+    // still in the grace: show what the stop is LIKE rather than sixteen
+    // identical QUIETs, labelled so the two readings can never be confused
+    const bars = t.bars || standingHeat(s);
+    const threat = `<span class="threat t${t.bars}">${"▮".repeat(bars)}${
+      "▯".repeat(t.of - bars)} ${t.bars ? t.label : "HEAT"}</span>`;
     return `<div class="stop" data-go="${i}" role="button" tabindex="0">
-      <div><div class="nm">${s.name}</div><div class="meta">${chips}</div></div>
+      <div><div class="nm">${s.name}</div><div class="meta">${chips}</div>
+        <div class="meta">${threat}</div></div>
       <div class="bullets">${s.lines.map(bullet).join("")}</div></div>`;
   }).join("");
   openSheet("travel");
@@ -1082,6 +1133,12 @@ function closeSheets(){ SHEETS.forEach(s => $(s).classList.remove("on")); }
 
 let profile = readProfile();
 let pickedTier = 1, pickedPerk = null;
+/* The difficulty is remembered between runs: somebody who plays Third Rail
+   wants Third Rail again, and re-picking it every time is friction. */
+let pickedHard = (() => {
+  try { return difficultyOf(localStorage.getItem("cryptowarz.difficulty")).key; }
+  catch (e) { return DEFAULT_DIFFICULTY; }
+})();
 
 /* --------------------------- who you are ------------------------------ */
 /* A board needs a stable identity. There is no login here, so the page mints
@@ -1197,6 +1254,18 @@ function renderSetup(){
         · best day ${Math.round(profile.best_daily || 0).toLocaleString()}</div>
     </div>`;
 
+  $("hardpicks").innerHTML = DIFFICULTIES.map(d => {
+    const bits = [];
+    if (d.cash) bits.push(`+$${d.cash.toLocaleString()} to start`);
+    if (d.debtMult !== 1) bits.push(`${Math.round(d.debtMult * 100)}% debt`);
+    bits.push(`${(d.shark * 100).toFixed(1)}% a day`);
+    if (d.heatMult !== 1) bits.push(`${Math.round(d.heatMult * 100)}% heat`);
+    return `<div class="pick${d.key === pickedHard ? " on" : ""}" data-hard="${d.key}">
+      <div><div class="t">${d.name}</div><div class="d">${d.blurb}</div>
+      <div class="d">${bits.join(" · ")} · ×${d.mult.toFixed(2)} score</div></div>
+      <div class="k">${d.key === DEFAULT_DIFFICULTY ? "DEFAULT" : "OPEN"}</div></div>`;
+  }).join("");
+
   const top = maxTier(profile);
   $("tierpicks").innerHTML = TIERS.map(t => {
     const locked = t.level > top;
@@ -1225,7 +1294,13 @@ function renderSetup(){
 
 $("setup").addEventListener("click", e => {
   const slot = e.target.closest("[data-slot]");
-  if (slot) { closeSheets(); return start(dailySeeds()[+slot.dataset.slot], pickedTier, pickedPerk, +slot.dataset.slot); }
+  if (slot) { closeSheets(); return start(dailySeeds()[+slot.dataset.slot], pickedTier, pickedPerk, +slot.dataset.slot, pickedHard); }
+  const h = e.target.closest("[data-hard]");
+  if (h && h.dataset.hard) {
+    pickedHard = h.dataset.hard;
+    try { localStorage.setItem("cryptowarz.difficulty", pickedHard); } catch (err) {}
+    return renderSetup();
+  }
   const t = e.target.closest("[data-tier]");
   if (t && t.dataset.tier) { pickedTier = +t.dataset.tier; return renderSetup(); }
   const p = e.target.closest("[data-perk]");
@@ -1236,7 +1311,7 @@ $("setup").addEventListener("click", e => {
 $("setupcancel").addEventListener("click", closeSheets);
 $("startrun").addEventListener("click", () => {
   closeSheets();
-  start(Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, null);
+  start(Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, null, pickedHard);
 });
 
 function showGoals(){
@@ -1426,9 +1501,10 @@ $("toboard").addEventListener("click", () => { lbTab = "today"; showScores(); })
 $("board").addEventListener("click", showScores);
 $("closescores").addEventListener("click", closeSheets);
 
-function start(seed, tier, perk, slot){
+function start(seed, tier, perk, slot, hard){
   profile = readProfile();
-  game = new Game(seed, tier || 1, perk || null, levelsFromWins(profile.gear_wins));
+  game = new Game(seed, tier || 1, perk || null, levelsFromWins(profile.gear_wins),
+                  hard || pickedHard);
   game.dailySlot = (slot === null || slot === undefined) ? null : slot;
   game.isDaily = game.dailySlot !== null;
   openCoin = null;

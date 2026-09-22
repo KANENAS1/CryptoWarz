@@ -70,8 +70,13 @@ def banner() -> str:
 def header(game: Game) -> str:
     p = game.player
     worth = p.net_worth(game.market)
-    left = (f"{c('DAY', GREY)} {c(f'{game.day}/{DAYS}', WHITE, True)}   "
-            f"{c(game.station.name, MAG, True)} {c(f'({game.station.lines})', GREY)}")
+    from .progress import difficulty_of
+
+    hardness = difficulty_of(getattr(game, "difficulty", "normal"))
+    days = getattr(game, "days", DAYS)
+    left = (f"{c('DAY', GREY)} {c(f'{game.day}/{days}', WHITE, True)}   "
+            f"{c(game.station.name, MAG, True)} {c(f'({game.station.lines})', GREY)}   "
+            f"{c(hardness.name.upper(), CYAN)}")
     right = (f"{c('CASH', GREY)} {c(money(p.cash), GREEN if p.cash > 0 else RED)}   "
              f"{c('DEBT', GREY)} {c(money(p.debt), RED if p.debt > 0 else GREY)}   "
              f"{c('VAULT', GREY)} {c(money(p.vault), CYAN)}   "
@@ -201,6 +206,35 @@ def wallet_panel(game: Game) -> str:
     return "\n".join(lines)
 
 
+def threat_bar(bars: int, of: int = 4) -> str:
+    """Filled blocks for a threat reading, coloured by how bad it is."""
+    colour = (GREY, GREEN, YELL, YELL, RED)[min(bars, 4)]
+    return c("▮" * bars, colour, bars >= 3) + c("▯" * max(0, of - bars), GREY)
+
+
+def wire(game: Game, station=None) -> str:
+    """The news post: how likely the SEC is at a stop, and what the city says.
+
+    The odds printed here are the real ones - ``events.wire`` reads the same
+    weight table the roll uses - because a meter a player learns to distrust is
+    worse than no meter at all.
+    """
+    from .events import wire as read_wire
+
+    w = read_wire(game, station)
+    head = c("THE WIRE", MAG, True)
+    bar = threat_bar(int(w["bars"]), int(w["of"]))
+    label = c(str(w["label"]), (GREY, GREEN, YELL, YELL, RED)[min(int(w["bars"]), 4)], True)
+    if w["label"] == "QUIET":
+        odds = c(f"no raids for {int(w['grace_left'])} more day"
+                 f"{'s' if int(w['grace_left']) != 1 else ''}", GREY)
+    else:
+        one_in = 1.0 / w["chance"] if w["chance"] > 0 else 0.0
+        odds = c(f"1 in {one_in:.0f} per stop · {w['two_stops']:.0%} over the next two", GREY)
+    return (f"  {head} {bar} {label}  {odds}\n"
+            f"  {c(str(w['text']), WHITE)}")
+
+
 def whisper(game: Game) -> str:
     """A rumour you were given, while it is still worth anything."""
     from .coins import coin as get_coin
@@ -267,11 +301,32 @@ def services(game: Game) -> str:
     return "  " + ("   ".join(have) if have else c("no services at this stop", GREY))
 
 
-def station_menu() -> str:
+def station_menu(game: Optional[Game] = None) -> str:
+    """The map. With a game in hand it also prices the risk of each stop.
+
+    The threat column is what makes the map a decision rather than a list: the
+    stop that pays best for what you are carrying is usually the one the SEC is
+    working, and now you can see that before you pay the fare rather than
+    afterwards.
+    """
     rows = []
     for i, s in enumerate(STATIONS, 1):
-        marks = "".join(m for m, f in (("$", s.has_shark), ("V", s.has_vault), ("S", s.has_upgrades)) if f)
-        rows.append(f"  {c(f'{i:>2}', YELL)} {s.name:<28}{c(s.lines[:16], GREY):<16} {c(marks, CYAN)}")
+        marks = "".join(m for m, f in (("$", s.has_shark), ("V", s.has_vault),
+                                       ("S", s.has_upgrades), ("W", s.has_wheel)) if f)
+        risk = ""
+        if game is not None:
+            from .events import raid_chance, standing_heat, threat_level
+            # the day you would actually arrive, not the day you are leaving
+            chance = raid_chance(game, s, game.day + 1)
+            label, bars = threat_level(chance)
+            if bars == 0:
+                # still in the grace: show what the stop is like, not a column
+                # of identical QUIETs
+                risk = f"  {threat_bar(standing_heat(s))} {c('heat', GREY)}"
+            else:
+                risk = f"  {threat_bar(bars)} {c(label.lower(), GREY)}"
+        rows.append(f"  {c(f'{i:>2}', YELL)} {s.name:<28}{c(s.lines[:16], GREY):<16} "
+                    f"{c(marks, CYAN):<6}{risk}")
     return "\n".join(rows)
 
 

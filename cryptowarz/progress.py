@@ -143,6 +143,69 @@ TIERS: List[Tier] = [
 TIER_BY_LEVEL = {t.level: t for t in TIERS}
 
 
+
+# -------------------------------------------------------------- difficulty
+
+@dataclass(frozen=True)
+class Difficulty:
+    """How hard the city is playing, chosen freely at the start of any run.
+
+    This is deliberately a *second* axis rather than more tiers. A tier is
+    progression - you unlock it by beating the one below, and it changes the
+    shape of the run (less capacity, fewer days). A difficulty is a dial you
+    can turn on day one of your first game, and it changes how forgiving the
+    same run is. Somebody who wants a gentler thirty days should not have to
+    grind for it, and somebody who has beaten tier 5 should be able to make
+    tier 1 hurt again.
+
+    Both axes pay the board honestly: the score multipliers multiply, so an
+    easier run is worth less and a harder one worth more, and nobody has to
+    trust anybody's restraint.
+    """
+
+    key: str
+    name: str
+    blurb: str
+    #: extra cash in hand on day one
+    cash: float
+    #: what the starting loan is multiplied by
+    debt_mult: float
+    #: the Shark's daily rate. The difference between 7.5% and 12.5% a day over
+    #: thirty days is a factor of four on an untouched loan, which is why this
+    #: is the sharpest lever on the list.
+    shark: float
+    #: multiplies the tier's heat, so trouble is rarer or commoner everywhere
+    heat_mult: float
+    #: what a dollar of net worth is worth on the board here
+    score_mult: float
+
+
+DIFFICULTIES: List[Difficulty] = [
+    Difficulty("easy", "Local", "Every stop, no hurry. The city is not paying attention.",
+               cash=1_500.0, debt_mult=0.85, shark=0.075, heat_mult=0.80, score_mult=0.70),
+    Difficulty("normal", "Express", "The game as it is meant to be played.",
+               cash=0.0, debt_mult=1.00, shark=0.100, heat_mult=1.00, score_mult=1.00),
+    Difficulty("hard", "Third Rail", "Bigger loan, worse rate, and everybody is looking.",
+               cash=0.0, debt_mult=1.25, shark=0.125, heat_mult=1.30, score_mult=1.50),
+]
+DIFFICULTY_BY_KEY: Dict[str, Difficulty] = {d.key: d for d in DIFFICULTIES}
+DEFAULT_DIFFICULTY = "normal"
+
+
+def difficulty_of(key: Optional[str]) -> Difficulty:
+    """The difficulty for a key, falling back to normal rather than raising.
+
+    A save written by an older build has no difficulty in it at all, and a run
+    that refuses to load is worse than a run that loads as Express.
+    """
+    return DIFFICULTY_BY_KEY.get(key or DEFAULT_DIFFICULTY,
+                                 DIFFICULTY_BY_KEY[DEFAULT_DIFFICULTY])
+
+
+def difficulty_mult(key: Optional[str]) -> float:
+    return difficulty_of(key).score_mult
+
+
 # ------------------------------------------------------------------- grading
 
 #: Three ranked runs a day, each a full thirty-day market. Three is the number
@@ -197,7 +260,9 @@ def run_points(game) -> float:
     scores nothing rather than scoring negatively, because a leaderboard that
     can be dragged down is one where the safe play is not to play.
     """
-    return max(0.0, game.final_score()) * tier_mult(getattr(game, "tier", 1))
+    return (max(0.0, game.final_score())
+            * tier_mult(getattr(game, "tier", 1))
+            * difficulty_mult(getattr(game, "difficulty", DEFAULT_DIFFICULTY)))
 
 
 def grade(points: float) -> str:

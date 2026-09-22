@@ -194,6 +194,9 @@ class Game:
     finished: bool = False
     #: difficulty level, 1-5; see progress.TIERS
     tier: int = 1
+    #: how hard the city is playing; see progress.DIFFICULTIES. Free to choose
+    #: on any run, unlike a tier, and it pays the board a different multiple.
+    difficulty: str = "normal"
     #: one carried-over advantage, unlocked by an achievement
     perk: Optional[str] = None
     #: earned gear, as {coin class: level}; see gear.py
@@ -207,11 +210,17 @@ class Game:
     def __post_init__(self) -> None:
         from .progress import PERK_BY_KEY, TIER_BY_LEVEL
 
+        from .progress import difficulty_of
+
         tier = TIER_BY_LEVEL.get(self.tier, TIER_BY_LEVEL[1])
-        self.player.debt = tier.debt
+        hardness = difficulty_of(self.difficulty)
+        self.difficulty = hardness.key          # normalise an unknown key
+        self.player.debt = tier.debt * hardness.debt_mult
+        self.player.cash += hardness.cash
         self.player.capacity = tier.capacity
         self.days = tier.days
-        self.heat_mult = tier.heat_mult
+        # the two axes multiply: a hard run of a hot tier really is both
+        self.heat_mult = tier.heat_mult * hardness.heat_mult
 
         if self.perk and self.perk in PERK_BY_KEY:
             if self.perk == "seed_round":
@@ -261,7 +270,15 @@ class Game:
 
     @property
     def shark_rate(self) -> float:
-        return 0.085 if self.perk == "fixer" else SHARK_RATE
+        """The Shark's daily rate: the difficulty's, less the Fixer's discount.
+
+        The discount is a ratio rather than a fixed rate so that it is worth
+        the same everywhere. At Express it still lands on exactly the 8.5% the
+        perk has always promised.
+        """
+        from .progress import difficulty_of
+        rate = difficulty_of(self.difficulty).shark
+        return rate * 0.85 if self.perk == "fixer" else rate
 
     # ------------------------------------------------------------------ log
 

@@ -11,6 +11,7 @@ import random
 import sys
 from typing import List, Optional
 
+from . import events as events_module
 from . import gear as gear_module
 from . import progress as progress_module
 from . import save as save_module
@@ -28,6 +29,8 @@ def draw(game: Game) -> None:
     print()
     print(ui.wallet_panel(game))
     print(ui.services(game))
+    print()
+    print(ui.wire(game))
     word = ui.whisper(game)
     if word:
         print(word)
@@ -81,7 +84,7 @@ def handle(game: Game, raw: str) -> List[str]:
             return [f"call a number from 1 to {DICE_SIDES}"]
         return game.roll_dice(args[0])
     if cmd == "map":
-        return [ui.station_menu()]
+        return [ui.station_menu(game)]
     if cmd == "borrow":
         return [game.borrow(_qty(game, "", args[0], False) if args else 0)]
     if cmd == "repay":
@@ -164,7 +167,12 @@ def new_game(args) -> Game:
             seed = progress_module.daily_seeds()[slot]
             print(ui.c(f"  Ranked run {slot + 1} of {progress_module.RUNS_PER_DAY}. "
                        f"Everyone plays this same market today.", ui.CYAN))
-    game = Game(seed=seed, tier=tier, perk=perk, gear=profile.gear_levels)
+    hardness = progress_module.difficulty_of(getattr(args, "difficulty", "normal"))
+    if hardness.key != progress_module.DEFAULT_DIFFICULTY:
+        print(ui.c(f"  {hardness.name}: {hardness.blurb} "
+                   f"Scores here are worth {hardness.score_mult:.0%}.", ui.CYAN))
+    game = Game(seed=seed, tier=tier, difficulty=hardness.key,
+                perk=perk, gear=profile.gear_levels)
     game.is_daily = slot is not None
     game.daily_slot = slot
     return game
@@ -206,15 +214,17 @@ def play(args) -> int:
         print(ui.c(f"  {profile.runs} runs · best {ui.money(profile.best_net)} · "
                    f"{len(profile.achievements)}/{len(progress_module.ACHIEVEMENTS)} goals · "
                    f"tier {profile.max_tier} unlocked", ui.GREY))
-    force_new = args.new or args.no_save or args.tier > 1 or args.perk or args.daily
+    force_new = (args.new or args.no_save or args.tier > 1 or args.perk or args.daily
+                 or getattr(args, "difficulty", "normal") != progress_module.DEFAULT_DIFFICULTY)
     if force_new or not save_module.has_save():
         save_module.clear_save()
         game = new_game(args)
     else:
         game = resume_or_new(args.seed, False)
     autosave = not args.no_save
-    print(ui.c("  Buy low at one stop, sell high at another. You have thirty days\n"
-               "  and a debt that grows 10% a day. Type 'help' for commands.", ui.GREY))
+    print(ui.c(f"  Buy low at one stop, sell high at another. You have {game.days} days,\n"
+               f"  a debt that grows {game.shark_rate:.1%} a day, and {events_module.RAID_GRACE} "
+               f"before the SEC starts\n  looking. Type 'help' for commands.", ui.GREY))
     draw(game)
 
     while not game.finished:
@@ -323,7 +333,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(prog="cryptowarz",
                                 description="Buy low, sell high, ride the subway, dodge the SEC.")
     p.add_argument("--seed", type=int, default=None, help="replay the same thirty days")
-    p.add_argument("--tier", type=int, default=1, help="difficulty 1-5; higher ones unlock as you clear them")
+    p.add_argument("--tier", type=int, default=1, help="the ladder, 1-5; higher ones unlock as you clear them")
+    p.add_argument("--difficulty", "--hardness", default="normal",
+                   choices=[d.key for d in progress_module.DIFFICULTIES],
+                   help="how hard the city plays: easy (Local), normal (Express), hard (Third Rail). "
+                        "Free to choose on any run; it changes what the run is worth")
     p.add_argument("--perk", default=None, help="carry an unlocked perk (see 'goals')")
     p.add_argument("--daily", action="store_true", help="a ranked run - three a day, same markets for everyone")
     p.add_argument("--gear", action="store_true", help="show your gear and exit")
