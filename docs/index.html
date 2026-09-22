@@ -3156,7 +3156,17 @@ $("closegoals").addEventListener("click", closeSheets);
    cannot close the tab to dodge a raid you have already walked into. */
 function persist(){ if (game && !game.finished) writeSave(game); }
 
-let lbTab = "today";
+/* Whether a shared board could exist here at all.
+   Two different absences, and telling them apart matters: on the published
+   page the store is there and a signed-out viewer can fix it by signing in,
+   while this same file served from any other web host - or opened from disk -
+   has no Claude runtime and never will. Telling a stranger on the open web to
+   "sign in" points them at nothing. */
+function boardIsPossible(){
+  return !!(window.claude && typeof window.claude.use === "function");
+}
+/* Open on the tab that has something in it. */
+let lbTab = boardIsPossible() ? "today" : "mine";
 function showScores(){
   openSheet("scores");
   renderBoard();
@@ -3173,9 +3183,13 @@ function renderBoard(){
   fetchBoard(want).then(rows => {
     if (want !== lbTab) return;                       // the player switched tabs
     if (!rows) {
-      $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">
-        The shared board lives on the published page and needs you signed in.
-        Your own runs are under YOUR RUNS.</div>`;
+      $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">${
+        boardIsPossible()
+          ? `The shared board needs you signed in. Everything else works either
+             way, and your own runs are under YOUR RUNS.`
+          : `This copy has no shared board — it is the open-web version, and
+             there is nobody to compare with. Ranked runs, grades and gear all
+             still work; your runs are under <b>YOUR RUNS</b>.`}</div>`;
       return;
     }
     if (!rows.length) {

@@ -217,6 +217,17 @@ menu. Handy, and not a link to send to a friend.
 All three are the same build and keep the same saves *per browser* — and the
 backup line below moves progress between them.
 
+**One thing differs between them, and only one.** The shared leaderboard runs
+on the artifact runtime, so it exists on the Claude page and nowhere else.
+Everything else — ranked runs, the three-a-day slate, grades, gear, the
+dealer, the wire — works identically on a public web host and on a file opened
+from disk. The board screen says which of the two it is rather than offering
+one explanation for both: on the published page a signed-out viewer can fix it
+by signing in, while a copy served from any other host has no Claude runtime
+and never will, so telling that viewer to "sign in" would point them at
+nothing. Where there is no shared board the screen opens on YOUR RUNS instead
+of an empty list.
+
 ### Safari, specifically
 
 Two things about WebKit that are worth knowing, both fixed rather than

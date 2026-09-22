@@ -161,6 +161,22 @@ class TestWebSourcesExist(unittest.TestCase):
             block = block[:block.index("}")]
             self.assertIn("env(safe-area-inset-", block, rule)
 
+    def test_the_board_tells_the_truth_about_where_it_is(self):
+        """The same file runs in three places, and the shared board only
+        exists in one of them. On the published page a signed-out viewer can
+        fix it by signing in; served from any other host there is no Claude
+        runtime and never will be, so telling that viewer to sign in points
+        them at nothing."""
+        html = (WEB / "index.html").read_text()
+        self.assertIn("function boardIsPossible", html)
+        self.assertIn("boardIsPossible() ? \"today\" : \"mine\"", html,
+                      "open the board on the tab that has something in it")
+        note = html[html.index("if (!rows) {"):]
+        note = note[:note.index("return;")]
+        self.assertIn("boardIsPossible()", note, "one message for both absences")
+        self.assertIn("signed in", note)
+        self.assertIn("open-web version", note)
+
     def test_a_browser_that_refuses_to_save_says_so(self):
         """Every write is wrapped in try/catch, which keeps a blocked store
         from ending the run - and lets somebody in Private Browsing play thirty
