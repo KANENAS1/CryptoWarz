@@ -700,6 +700,59 @@ supposed to buy you.
 
 </details>
 
+## Nothing here is trapped in one browser
+
+The save and the profile live in whatever browser or home directory you played
+in. That is fine until a new phone, a cleared cache, or a copy of the page
+saved to disk — and twenty runs of gear are gone, with nothing able to rebuild
+them, because the game deliberately doesn't trust anything it didn't write.
+
+So the game hands you the bytes. **BACKUP**, on the gear screen, gives you your
+progress as **one line of text**:
+
+```
+CW1.2a9534e8.eyJ2IjoxLCJwcm9maWxlIjp7InJ1bnMiOjIzLCJ…
+```
+
+About **390 characters** — gear, goals, tiers, best scores. Short enough to
+paste into a note or message to yourself. Tick *include the run I'm in the
+middle of* and it carries the live run too (~2,600 characters): the day, the
+station, the wallet, the market, the RNG state.
+
+**Both front ends read and write the same line.** A run started in a browser
+can be finished in the terminal and the other way round:
+
+```bash
+python3 -m cryptowarz --export backup.txt      # or --export to print it
+python3 -m cryptowarz --export --export-run    # with the run in progress
+python3 -m cryptowarz --import backup.txt
+```
+
+Three decisions worth naming:
+
+**It's text, not a file.** A download is blocked or awkward in half the places
+this game runs — a sandboxed frame, a page opened from disk, a phone browser. A
+line you can select and copy works everywhere. A file is still offered where
+files work, and the page tries the artifact runtime's download, then a normal
+one, and tells you plainly if neither is available.
+
+**It carries a checksum.** A half-copied paste that silently loaded would
+overwrite good progress with a broken profile — the exact failure a backup
+exists to prevent. FNV-1a, four lines in both languages so they can't drift,
+checked against the published test vectors. A damaged line is refused by name
+and nothing is touched.
+
+**It is not a cheat guard.** It's base64, not a lock, and pretending otherwise
+would be theatre. What it protects is the leaderboard, and that is protected
+where it always was: the board is written from finished runs, not from
+profiles, so an imported profile brings gear and history, never a score.
+
+Verified end to end in a real browser on the built page: progress written,
+`localStorage` cleared the way a wiped cache would, the line pasted back, and
+the profile *and* the run in progress came back — day 6, $41,000, gear intact.
+A truncated paste was refused with the good profile untouched, and a line
+written by the terminal loaded in the browser.
+
 ## Saving, and why you can't scum it
 
 Quit whenever. The terminal game writes to `~/.cryptowarz/save.json` after
@@ -732,6 +785,8 @@ python3 -m cryptowarz --gear       # your gear and what it's worth
 #   in-game: spin · dealer · gear name · gear move · giveup
 python3 -m cryptowarz --daily      # your next ranked run of the day
 python3 -m cryptowarz --difficulty hard    # local · express · third rail
+python3 -m cryptowarz --export backup.txt # your gear and goals, as one line
+python3 -m cryptowarz --import backup.txt # ... and back again, anywhere
 python3 -m cryptowarz --tier 3 --perk fixer
 ```
 

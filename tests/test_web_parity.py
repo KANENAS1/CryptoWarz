@@ -113,7 +113,8 @@ class TestWebSourcesExist(unittest.TestCase):
                      "renameGear", "retuneGear", "displayName", "levelFor",
                      "winningClass", "gradeFor", "runGrade", "recordDaily",
                      "wire", "raidChance", "threatLevel", "difficultyOf",
-                     "raidPressure", "eventWeights"):
+                     "raidPressure", "eventWeights", "makeBackup", "readBackup",
+                     "writeScores", "standingHeat"):
             if re.search(r"\b" + name + r"\s*\(", page):
                 self.assertIn(name, declared | page_own,
                               f"the page calls {name}() and nothing declares it")
@@ -412,6 +413,95 @@ class TestGearCustomisationParity(unittest.TestCase):
         self.assertTrue(self.js["refused_unearned_rename"])
         self.assertTrue(self.js["refused_broke_retune"])
         self.assertTrue(self.js["drops_the_name_when_the_piece_is_gone"])
+
+
+@requires_node
+class TestBackupParity(unittest.TestCase):
+    """The one feature whose entire value is that the two ports agree.
+
+    "Take your progress with you" means nothing if it only travels to another
+    tab, so the sharp test here is interoperability rather than sameness: a
+    line the browser wrote is read by Python, and a line Python wrote is read
+    by the browser, both with a unicode gear name in it. Everything else -
+    the checksum vectors, the refusals - exists so that a half-copied paste
+    cannot quietly overwrite a good profile on either side.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["backup"]
+
+    def test_the_envelope_matches(self):
+        from cryptowarz import backup as bk
+        self.assertEqual(self.js["version"], bk.BACKUP_VERSION)
+        self.assertEqual(self.js["prefix"], bk.PREFIX)
+
+    def test_the_checksum_is_the_same_function(self):
+        from cryptowarz import backup as bk
+        self.assertEqual(self.js["fnv"], [bk.fnv1a(t) for t in ("", "a", "foobar")])
+
+    def test_python_can_read_a_line_the_browser_wrote(self):
+        from cryptowarz import backup as bk
+        read = bk.read(self.js["line"])
+        self.assertEqual(read["profile"].runs, 37)
+        self.assertEqual(read["profile"].gear_wins, {"meme": 7, "major": 3})
+        self.assertEqual(read["profile"].gear_names, {"meme": "Ratty — the good one"})
+
+    def test_and_the_browser_can_read_one_python_wrote(self):
+        """Written here, decoded by node, compared field by field."""
+        from cryptowarz import backup as bk
+        from cryptowarz.progress import Profile
+
+        profile = Profile(runs=11, best_net=4_242.0, gear_wins={"major": 2},
+                          gear_names={"major": "Старый — 日本"})
+        line = bk.make(profile)
+        script = (
+            "const G = require('./game.js');"
+            "const out = G.readBackup(process.argv[1]);"
+            "console.log(JSON.stringify({runs: out.profile.runs, "
+            "best: out.profile.best_net, wins: out.profile.gear_wins, "
+            "names: out.profile.gear_names}));"
+        )
+        result = subprocess.run([shutil.which("node"), "-e", script, line],
+                                cwd=WEB, capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        got = json.loads(result.stdout)
+        self.assertEqual(got["runs"], 11)
+        self.assertEqual(got["best"], 4_242.0)
+        self.assertEqual(got["wins"], {"major": 2})
+        self.assertEqual(got["names"], {"major": "Старый — 日本"})
+
+    def test_a_run_survives_the_trip_on_the_port_too(self):
+        from cryptowarz import backup as bk
+        from cryptowarz import save as sv
+        from cryptowarz.game import Game
+        game = Game(seed=5, difficulty="hard")
+        game.day = 9
+        back = sv.from_dict(bk.read(bk.make(None, sv.to_dict(game)))["save"])
+        self.assertEqual(self.js["with_a_run"]["day"], back.day)
+        self.assertEqual(self.js["with_a_run"]["difficulty"], back.difficulty)
+        self.assertEqual(self.js["with_a_run"]["station"], back.station.name)
+        self.assertAlmostEqual(self.js["with_a_run"]["debt"], back.player.debt, places=2)
+
+    def test_both_sides_refuse_the_same_things(self):
+        self.assertTrue(self.js["refuses_truncated"])
+        self.assertTrue(self.js["refuses_rubbish"])
+        self.assertTrue(self.js["refuses_a_newer_version"])
+
+    def test_both_sides_forgive_a_wrapped_paste(self):
+        self.assertEqual(self.js["forgives_line_breaks"], 37)
+
+    def test_both_sides_drop_a_goal_that_does_not_exist(self):
+        self.assertEqual(self.js["drops_an_unknown_goal"], ["first_run", "in_the_black"])
+
+    def test_both_sides_keep_unicode_intact(self):
+        self.assertEqual(self.js["unicode"], {"major": "Старый — 日本"})
+
+    def test_a_pasteable_line_stays_pasteable_on_both_sides(self):
+        from cryptowarz import backup as bk
+        from cryptowarz.progress import Profile
+        self.assertTrue(self.js["short_enough_to_paste"])
+        self.assertLess(len(bk.make(Profile(runs=37, gear_wins={"meme": 7}))), 1_000)
 
 
 @requires_node

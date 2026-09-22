@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from . import events as events_module
@@ -206,6 +207,66 @@ def resume_or_new(seed: Optional[int], force_new: bool) -> Game:
     return Game(seed=seed)
 
 
+def export_backup(args) -> int:
+    """Print or write a backup line. Nothing on disk is touched."""
+    from . import backup as backup_module
+
+    profile = progress_module.read_profile()
+    run = None
+    if args.export_run:
+        try:
+            saved = save_module.read_save()
+            run = save_module.to_dict(saved) if saved else None
+        except (save_module.SaveError, OSError, ValueError) as exc:
+            print(ui.c(f"  no run to include ({exc})", ui.YELL))
+    scores = [sc.to_dict() if hasattr(sc, "to_dict") else dict(sc)
+              for sc in save_module.read_scores()]
+    line = backup_module.make(profile, run, scores)
+    target = args.export
+    if target and target != "-":
+        Path(target).write_text(line + "\n")
+        print(ui.c(f"  Written to {target} ({len(line):,} characters).", ui.GREEN))
+        print(ui.c("  Paste it into BACKUP on the phone version to carry it across.", ui.GREY))
+    else:
+        print(line)
+    return 0
+
+
+def import_backup(args) -> int:
+    """Restore a profile - and optionally a run - from a backup line."""
+    from . import backup as backup_module
+
+    source = args.import_from
+    try:
+        text = sys.stdin.read() if source == "-" else Path(source).read_text()
+    except OSError as exc:
+        print(ui.c(f"  could not read {source} ({exc})", ui.RED))
+        return 1
+    try:
+        read = backup_module.read(text)
+    except ValueError as exc:
+        print(ui.c(f"  {exc}", ui.RED))
+        return 1
+    if not read["profile"]:
+        print(ui.c("  that line has no progress in it", ui.RED))
+        return 1
+    profile = progress_module.write_profile(read["profile"])
+    levels = profile.gear_levels
+    print(ui.c(f"  Restored: {profile.runs} runs · best {ui.money(profile.best_net)} · "
+               f"{len(profile.achievements)} goals · {sum(levels.values())} gear levels.",
+               ui.GREEN))
+    if read["save"]:
+        try:
+            game = save_module.from_dict(read["save"])
+            save_module.write_save(game)
+            print(ui.c(f"  The run came back too - day {game.day} at {game.station.name}.",
+                       ui.GREEN))
+        except (save_module.SaveError, KeyError, ValueError) as exc:
+            print(ui.c(f"  the run inside it could not be read ({exc}); "
+                       f"your progress is still restored", ui.YELL))
+    return 0
+
+
 def play(args) -> int:
     ui.enable_color()
     print(ui.banner())
@@ -345,10 +406,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--new", action="store_true", help="start fresh, discarding any saved run")
     p.add_argument("--no-save", action="store_true", help="do not read or write save files")
     p.add_argument("--scores", action="store_true", help="show the scoreboard and exit")
+    p.add_argument("--export", nargs="?", const="-", metavar="FILE",
+                   help="print a backup line for your progress (or write it to FILE); "
+                        "paste it into the phone version to carry your gear across")
+    p.add_argument("--export-run", action="store_true",
+                   help="with --export, include the run you are in the middle of")
+    p.add_argument("--import", dest="import_from", metavar="FILE",
+                   help="restore progress from a backup line (a file, or - for stdin)")
     p.add_argument("--no-color", action="store_true")
     args = p.parse_args(argv)
     if args.no_color:
         ui.enable_color(False)
+    if getattr(args, "import_from", None):
+        return import_backup(args)
+    if getattr(args, "export", None):
+        return export_backup(args)
     if args.scores:
         ui.enable_color()
         print(ui.scoreboard(save_module.read_scores()))

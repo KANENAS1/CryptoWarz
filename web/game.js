@@ -1248,6 +1248,86 @@ function award(profile, g) {
    localStorage is per-browser and can throw (private mode, blocked site data),
    so every read and write is guarded and the game plays fine without it. */
 const SAVE_VERSION = 1;
+/* -------------------------- taking it with you -----------------------
+   The save and the profile live in whatever browser you happened to play in.
+   That is fine until a new phone, a cleared cache or a page saved to disk -
+   and the gear you spent twenty runs earning is simply gone. So the game hands
+   you the bytes: one line of text that both front ends read and write, so a
+   run started here can be finished in the terminal and the other way round.
+
+   Text rather than a file, because a download is blocked or awkward in half
+   the places this game runs. With a checksum, because a half-copied paste that
+   silently loaded would overwrite a good profile with a broken one - the exact
+   failure a backup exists to prevent. Not a cheat guard: it is base64, not a
+   lock, and the leaderboard is protected where it always was. */
+const BACKUP_VERSION = 1, BACKUP_PREFIX = "CW1";
+
+/* 32-bit FNV-1a: four lines in every language, so the two ports cannot drift
+   on it. It catches truncation and transcription, which is all it is for. */
+function fnv1a(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i) & 0xff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+function backupEncode(payload) {
+  const raw = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(raw);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  const body = btoa(bin);
+  return `${BACKUP_PREFIX}.${fnv1a(body).toString(16).padStart(8, "0")}.${body}`;
+}
+function backupDecode(text) {
+  const parts = String(text).replace(/\s+/g, "").split(".");
+  if (parts.length !== 3 || parts[0] !== BACKUP_PREFIX) {
+    throw new Error("that doesn't look like a CryptoWarz backup line");
+  }
+  const [, checksum, body] = parts;
+  if (fnv1a(body).toString(16).padStart(8, "0") !== checksum.toLowerCase()) {
+    throw new Error("that backup is damaged or was only half copied - copy the whole "
+                    + "line, including the CW1 at the front");
+  }
+  let payload;
+  try {
+    const bin = atob(body);
+    const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+    payload = JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) { throw new Error(`that backup could not be read (${e.message})`); }
+  if (!payload || typeof payload !== "object") throw new Error("that backup is not a backup");
+  return payload;
+}
+/* A backup line for a profile, optionally with a run in progress. */
+function makeBackup(profile, save, scores) {
+  const payload = { v: BACKUP_VERSION, profile: profile };
+  if (save) payload.save = save;
+  if (scores && scores.length) payload.scores = scores;
+  return backupEncode(payload);
+}
+/* {profile, save, scores} from a line. The profile goes through the same
+   reader a stored one does, so an older backup migrates identically. */
+function readBackup(text) {
+  const payload = backupDecode(text);
+  const version = payload.v | 0;
+  if (version > BACKUP_VERSION) {
+    throw new Error(`that backup was written by a newer build (version ${version}; `
+                    + `this one reads ${BACKUP_VERSION})`);
+  }
+  let profile = null;
+  if (payload.profile) {
+    const known = new Set(ACHIEVEMENTS.map(a => a.key));
+    const raw = Object.assign({}, payload.profile);
+    raw.achievements = (raw.achievements || []).filter(k => known.has(k));
+    if (!Array.isArray(raw.daily_runs)) raw.daily_runs = [];
+    if (!raw.gear_wins || typeof raw.gear_wins !== "object") raw.gear_wins = {};
+    if (!raw.gear_names || typeof raw.gear_names !== "object") raw.gear_names = {};
+    profile = Object.assign(blankProfile(), raw, { version: PROGRESS_VERSION });
+  }
+  return { profile: profile, save: payload.save || null, scores: payload.scores || null };
+}
+
 const SAVE_KEY = "cryptowarz.save.v1";
 const SCORE_KEY = "cryptowarz.scores.v1";
 const MAX_SCORES = 25;
@@ -1362,6 +1442,15 @@ function readScores() {
               .sort((a, b) => b.net_worth - a.net_worth);
   } catch (e) { return []; }
 }
+/* Used by a restore: the board a backup carried, put back as it came. */
+function writeScores(scores) {
+  const kept = (Array.isArray(scores) ? scores : [])
+    .filter(r => r && typeof r.net_worth === "number")
+    .sort((a, b) => b.net_worth - a.net_worth)
+    .slice(0, MAX_SCORES);
+  try { localStorage.setItem(SCORE_KEY, JSON.stringify(kept)); } catch (e) {}
+  return kept;
+}
 function recordScore(g) {
   const scores = readScores();
   if (!countsForProgress(g)) return scores;   // an ineligible run is not a result
@@ -1393,6 +1482,8 @@ function fmtMoney(v) {
 if (typeof module !== "undefined") {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
                      fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
+                     BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
+                     makeBackup, readBackup, writeScores,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
                      DIFFICULTIES, DIFFICULTY_BY_KEY, DEFAULT_DIFFICULTY,

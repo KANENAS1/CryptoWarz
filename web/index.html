@@ -142,6 +142,19 @@
   .wire.t2 .lvl,.wire.t3 .lvl{color:var(--yellow)} .wire.t4 .lvl{color:var(--red)}
   .wire .txt{font-size:12.5px;color:var(--paper);margin-top:2px}
   .wire .odds{font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px}
+  /* ---------- backup ---------- */
+  .bk{background:var(--panel);border:1px solid var(--rule);border-radius:9px;
+      padding:12px;margin-bottom:12px}
+  .bk h4{margin:0 0 6px;font-size:11px;letter-spacing:.16em;color:var(--yellow)}
+  .bk .d{font-size:12.5px;color:var(--dim);margin-bottom:9px}
+  .bk textarea{width:100%;height:74px;background:#0c0c10;color:var(--paper);
+               border:1px solid var(--rule);border-radius:6px;padding:8px;
+               font-family:var(--mono);font-size:11px;resize:vertical;word-break:break-all}
+  .bk .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  .bk label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);
+            margin-top:9px;cursor:pointer}
+  .bk .ok{color:#34d07a;font-size:12px;margin-top:8px;min-height:16px}
+  .bk .bad{color:var(--red)}
   .stop .threat{font-size:9px;letter-spacing:.1em;font-family:var(--mono)}
   .stop .threat.t0{color:var(--faint)} .stop .threat.t1{color:#34d07a}
   .stop .threat.t2,.stop .threat.t3{color:var(--yellow)}
@@ -381,7 +394,42 @@
 <div class="sheet" id="goals">
   <h3 id="goalstitle">GEAR</h3>
   <div class="sheetscroll" id="goallist"></div>
-  <div style="padding-top:10px"><button id="closegoals">BACK</button></div>
+  <div style="padding-top:10px;display:flex;gap:9px">
+    <button id="closegoals">BACK</button>
+    <button id="openbackup" style="flex:0 0 auto;min-width:104px">BACKUP</button>
+  </div>
+</div>
+
+<div class="sheet" id="backup">
+  <h3>BACKUP &amp; RESTORE — TAKE IT WITH YOU</h3>
+  <div class="sheetscroll">
+    <div class="bk">
+      <h4>YOUR PROGRESS, AS ONE LINE</h4>
+      <div class="d">Gear, goals, tiers, best scores. Copy it anywhere — a note,
+        an email to yourself, another phone. Paste it back below on any device,
+        in this page or the terminal version.</div>
+      <textarea id="bkout" readonly spellcheck="false"></textarea>
+      <label><input type="checkbox" id="bkrun"> include the run I'm in the middle of</label>
+      <div class="btns">
+        <button class="go" id="bkcopy">COPY</button>
+        <button id="bksave">SAVE AS A FILE</button>
+      </div>
+      <div class="ok" id="bkmsg"></div>
+    </div>
+    <div class="bk">
+      <h4>PASTE ONE BACK</h4>
+      <div class="d">This replaces the gear and goals stored in this browser with
+        whatever the line says. Copy your current one first if you want it.</div>
+      <textarea id="bkin" spellcheck="false" placeholder="CW1.…"></textarea>
+      <div class="btns">
+        <button class="go" id="bkload">RESTORE</button>
+        <button id="bkfile">LOAD A FILE</button>
+        <input type="file" id="bkpick" accept=".txt,.json,text/plain" hidden>
+      </div>
+      <div class="ok" id="bkinmsg"></div>
+    </div>
+  </div>
+  <div style="padding-top:10px"><button id="bkclose">BACK</button></div>
 </div>
 
 <div class="sheet" id="scores">
@@ -1125,7 +1173,7 @@ function showFinal(){
 /* One function owns which overlay is visible. Opening a sheet without closing
    the others left two stacked full-screen panels, and the one later in the
    document silently swallowed every tap meant for the one beneath it. */
-const SHEETS = ["setup", "goals", "scores", "travel", "over"];
+const SHEETS = ["setup", "goals", "scores", "travel", "over", "backup"];
 function openSheet(id){
   SHEETS.forEach(s => $(s).classList.toggle("on", s === id));
 }
@@ -1312,6 +1360,119 @@ $("setupcancel").addEventListener("click", closeSheets);
 $("startrun").addEventListener("click", () => {
   closeSheets();
   start(Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, null, pickedHard);
+});
+
+/* ------------------------------ backup -------------------------------
+   The one screen whose job is to make sure nothing here is trapped in this
+   browser. Everything it offers has a fallback, because every mechanism it
+   could use - the clipboard API, a file download, a file picker - is blocked
+   somewhere this game runs. The text in the box always works. */
+function renderBackup(){
+  const withRun = $("bkrun").checked && game && !game.finished;
+  let line;
+  try {
+    line = makeBackup(readProfile(), withRun ? saveToDict(game) : null, readScores());
+  } catch (e) { line = ""; }
+  $("bkout").value = line;
+  $("bkmsg").textContent = line
+    ? `${line.length.toLocaleString()} characters${withRun ? ", with your run in it" : ""}`
+    : "nothing to back up yet";
+  $("bkmsg").className = "ok";
+}
+function bkSay(id, text, bad){
+  const el = $(id);
+  el.textContent = text;
+  el.className = "ok" + (bad ? " bad" : "");
+}
+$("openbackup").addEventListener("click", () => {
+  $("bkin").value = "";
+  bkSay("bkinmsg", "");
+  renderBackup();
+  openSheet("backup");
+});
+$("bkclose").addEventListener("click", () => openSheet("goals"));
+$("bkrun").addEventListener("change", renderBackup);
+
+$("bkcopy").addEventListener("click", async () => {
+  const text = $("bkout").value;
+  if (!text) return;
+  // the clipboard API is blocked in plenty of frames, so selecting the text is
+  // the fallback - and it is also the instruction, because a player who can
+  // see it selected knows what to do next
+  try {
+    await navigator.clipboard.writeText(text);
+    bkSay("bkmsg", "Copied. Paste it somewhere safe.");
+    return;
+  } catch (e) {}
+  $("bkout").focus();
+  $("bkout").select();
+  try { document.execCommand("copy"); bkSay("bkmsg", "Copied. Paste it somewhere safe."); }
+  catch (e) { bkSay("bkmsg", "Selected — press copy on your keyboard or long-press."); }
+});
+
+/* A download works from a file on disk and from a normal page; inside a
+   sandboxed frame it does not, and the artifact runtime has its own way. Try
+   both, and never leave the player with nothing. */
+async function offerFile(name, text){
+  try {
+    if (window.claude && typeof window.claude.use === "function") {
+      const downloads = await window.claude.use("downloads");
+      if (downloads) { await downloads.save({ filename: name, data: text }); return true; }
+    }
+  } catch (e) {}
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    return true;
+  } catch (e) { return false; }
+}
+$("bksave").addEventListener("click", async () => {
+  const text = $("bkout").value;
+  if (!text) return;
+  const ok = await offerFile("cryptowarz-backup.txt", text);
+  bkSay("bkmsg", ok ? "Saved. Keep it with your photos, not your downloads."
+                    : "This browser won't save files here — copy the line instead.", !ok);
+});
+
+$("bkload").addEventListener("click", () => {
+  const text = $("bkin").value.trim();
+  if (!text) return bkSay("bkinmsg", "Paste a backup line first.", true);
+  let read;
+  try { read = readBackup(text); }
+  catch (e) { return bkSay("bkinmsg", e.message, true); }
+  if (!read.profile) return bkSay("bkinmsg", "That line has no progress in it.", true);
+  profile = writeProfile(read.profile);
+  if (read.scores) writeScores(read.scores);
+  let note = `Restored. ${profile.runs} run${profile.runs === 1 ? "" : "s"}, ${
+    Object.values(levelsFromWins(profile.gear_wins)).reduce((a, b) => a + b, 0)} gear levels.`;
+  if (read.save) {
+    try {
+      game = saveFromDict(read.save);
+      writeSave(game);
+      note += " Your run came back too.";
+      openCoin = null;
+      render();
+    } catch (e) { note += " The run in it could not be read, but your progress is back."; }
+  } else if (game) {
+    // the run in progress keeps playing, but with the gear the new profile has
+    game.gear = levelsFromWins(profile.gear_wins);
+    render();
+  }
+  bkSay("bkinmsg", note);
+  renderBackup();
+});
+
+$("bkfile").addEventListener("click", () => $("bkpick").click());
+$("bkpick").addEventListener("change", e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { $("bkin").value = String(reader.result || "").trim(); $("bkload").click(); };
+  reader.onerror = () => bkSay("bkinmsg", "That file could not be read.", true);
+  reader.readAsText(file);
+  e.target.value = "";
 });
 
 function showGoals(){

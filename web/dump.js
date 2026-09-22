@@ -235,6 +235,52 @@ const out = {
       })(),
     };
   })(),
+  backup: (() => {
+    const loaded = () => {
+      const p = G.blankProfile();
+      p.runs = 37; p.best_net = 812345; p.best_tier_cleared = 3;
+      p.achievements = ["first_run", "in_the_black"];
+      p.gear_wins = { meme: 7, major: 3 };
+      p.gear_names = { meme: "Ratty — the good one" };
+      return p;
+    };
+    const refuses = text => { try { G.readBackup(text); return false; } catch (e) { return true; } };
+    const line = G.makeBackup(loaded());
+    const withRun = (() => {
+      const g = new G.Game(5, 1, null, {}, "hard"); g.day = 9;
+      const back = G.readBackup(G.makeBackup(loaded(), G.saveToDict(g))).save;
+      const replayed = G.saveFromDict(back);
+      return { day: replayed.day, difficulty: replayed.difficulty,
+               station: replayed.station.name, debt: Math.round(replayed.player.debt * 100) / 100 };
+    })();
+    return {
+      version: G.BACKUP_VERSION, prefix: G.BACKUP_PREFIX,
+      /* the published 32-bit FNV-1a vectors, so the checksum cannot drift */
+      fnv: ["", "a", "foobar"].map(t => G.fnv1a(t)),
+      /* a line this port wrote, for Python to read - and the profile it holds */
+      line: line,
+      round_trip: G.readBackup(line).profile,
+      short_enough_to_paste: line.length < 1000,
+      with_a_run: withRun,
+      /* it refuses rather than half-loading */
+      refuses_truncated: refuses(line.slice(0, -6)),
+      refuses_rubbish: ["", "hello", "CW1.deadbeef", "CW9.deadbeef.aaaa"].every(refuses),
+      refuses_a_newer_version: refuses(G.backupEncode({ v: G.BACKUP_VERSION + 1, profile: {} })),
+      forgives_line_breaks: (() => {
+        const wrapped = line.match(/.{1,40}/g).join("\n");
+        return G.readBackup(wrapped).profile.runs;
+      })(),
+      drops_an_unknown_goal: (() => {
+        const p = loaded(); p.achievements = p.achievements.concat(["nonsense_award"]);
+        return G.readBackup(G.makeBackup(p)).profile.achievements;
+      })(),
+      unicode: (() => {
+        const p = G.blankProfile();
+        p.gear_wins = { major: 2 }; p.gear_names = { major: "Старый — 日本" };
+        return G.readBackup(G.makeBackup(p)).profile.gear_names;
+      })(),
+    };
+  })(),
   hardness: (() => {
     const made = G.DIFFICULTIES.map(d => {
       const g = new G.Game(1, 1, null, {}, d.key);
