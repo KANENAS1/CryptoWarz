@@ -225,9 +225,27 @@ documented around:
 **The toolbars.** iOS Safari sizes `100%` and `100vh` against the viewport you
 get with the toolbars *hidden*, so a page exactly one screen tall hides its
 last row under the address bar — and with `overflow:hidden` there is no way to
-scroll it back. The RIDE THE TRAIN button was simply unreachable. The layout now
-asks for `-webkit-fill-available` and `100dvh` on top of the plain height, so
-old WebKit, new WebKit and everything else each get something they understand.
+scroll it back. The RIDE THE TRAIN button was simply unreachable.
+
+The unit is **`svh`, not `dvh`**. `dvh` is the *current* height, which is right
+until the toolbars slide back in and the layout is suddenly taller than the
+screen — top and bottom go missing for as long as they show. `svh` is the
+*smallest* viewport: the one with every piece of chrome visible. A layout built
+to that fits at all times, and when the toolbars retract the extra strip is
+just more black. `-webkit-fill-available` covers WebKit before 15.4, and the
+plain `100%` is written first for anything that knows neither.
+
+**A short viewport scrolls rather than clips.** Landscape on a phone, a split
+view, or a host that lays its own bars over the page leaves less room than the
+browser reports, and a locked-height layout answers that by hiding the top and
+bottom rows — the one failure with no way out. Below 520px tall the page
+scrolls instead: worse looking, always usable.
+
+Measured on the real CSS sizes of an iPhone SE, 13/14 and 15 Pro Max, with
+toolbars showing and hidden, and with a 47px notch and 34px home indicator
+forced in: the top row clears the notch and the button clears the home bar in
+all six, with no overflow. In landscape the page scrolls and the button still
+works.
 
 **Private Browsing.** Safari *has* `localStorage` in a private tab; it just
 throws on every write. Every write here is already wrapped, which stops that

@@ -127,13 +127,39 @@ class TestWebSourcesExist(unittest.TestCase):
         scroll it back. On a phone that means the RIDE THE TRAIN button is
         simply unreachable. Both fallbacks have to stay."""
         html = (WEB / "index.html").read_text()
-        self.assertIn("-webkit-fill-available", html, "older WebKit has no dvh")
-        self.assertIn("100dvh", html, "newer WebKit wants dvh")
+        self.assertIn("-webkit-fill-available", html, "older WebKit has no svh")
+        self.assertIn("100svh", html, "the layout must be built to the SMALL viewport")
+        self.assertNotIn("100dvh", html,
+                         "dvh is the current height; it overflows the screen the "
+                         "moment the toolbars slide back in")
         # the plain height must still be written first, for anything that
         # understands neither and would otherwise get no height at all
         app = html[html.index(".app{display:flex"):]
         app = app[:app.index("}")]
-        self.assertLess(app.index("height:100%"), app.index("height:100dvh"))
+        self.assertLess(app.index("height:100%"), app.index("height:100svh"))
+
+    def test_a_short_viewport_can_scroll_instead_of_clipping(self):
+        """A locked-height layout with overflow:hidden answers a viewport
+        smaller than it expected by hiding the top and bottom rows, and that is
+        the one failure with no way out - you cannot scroll to what is missing.
+        Below a phone-in-landscape height the page scrolls instead."""
+        html = (WEB / "index.html").read_text()
+        self.assertIn("@media (max-height: 520px)", html)
+        block = html[html.index("@media (max-height: 520px)"):]
+        block = block[:block.index("\n  }") + 4]
+        self.assertIn("body{overflow:auto", block)
+        self.assertIn(".app{height:auto", block)
+        self.assertIn("main{overflow:visible", block)
+
+    def test_the_edges_are_kept_clear_of_the_notch_and_the_home_bar(self):
+        """viewport-fit=cover puts the page under both, so every edge has to
+        pay the inset back."""
+        html = (WEB / "index.html").read_text()
+        self.assertIn("viewport-fit=cover", html)
+        for rule in ("header{background:#000", "footer{flex:none", ".sheet{position:fixed"):
+            block = html[html.index(rule):]
+            block = block[:block.index("}")]
+            self.assertIn("env(safe-area-inset-", block, rule)
 
     def test_a_browser_that_refuses_to_save_says_so(self):
         """Every write is wrapped in try/catch, which keeps a blocked store
