@@ -359,6 +359,7 @@ function Game(seed, tier, perk, gear) {
                  dice_picks: [], dice_days: [], hot_hand: false };
   this.hotHand = false;
   this.wheelAward = null;                  // a gear class for the caller to bank
+  this.gearAward = null;                   // the same, bought from a dealer
   this.log = [];
   this.state = new MarketState(this.rng);
   this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
@@ -426,6 +427,23 @@ Game.prototype.hearSomething = function () {
   this.stats.tip = { symbol: symbol, up: goingUp, day: this.day };
   const word = goingUp ? "about to run" : "about to fall over";
   return [`"Word is ${COIN[symbol].name} is ${word}." He might be wrong. He usually isn't.`];
+};
+
+/* -------------------------------- broker ----------------------------- */
+Game.prototype.buyGear = function () {
+  const cls = brokerOffer(this);
+  if (cls === null) {
+    if (this.stats.gear_bought) throw new Error("he only has the one, and you bought it");
+    if (!this.station.shop) throw new Error("nobody's dealing here. Try a stop with a shop");
+    throw new Error(`he wants ${BROKER_PRICE.toLocaleString()} in cash, and not a dollar less`);
+  }
+  this.player.cash -= BROKER_PRICE;
+  this.stats.gear_bought = true;
+  this.gearAward = cls;
+  const message = `A million dollars, in a station. He hands over the `
+    + `${GEAR_BY_KEY[cls].name} and is gone before you turn around.`;
+  this.say(message);
+  return [message];
 };
 
 /* ------------------------------ the wheel ---------------------------- */
@@ -819,6 +837,18 @@ const GEAR = [
 ];
 const GEAR_BY_KEY = Object.fromEntries(GEAR.map(g => [g.key, g]));
 const MAX_LEVEL = 3, WINS_FOR_LEVEL = [1, 3, 7], LUCK_PER_LEVEL = 0.05, WIN_AT = 2000;
+/* What a private dealer wants for a piece, in cash, during a run. Absurd on
+   purpose: a sink for a run that went enormous, and a REAL decision, because
+   the million comes straight off your net worth and therefore off your score.
+   You trade this run's place on the board for something you keep. */
+const BROKER_PRICE = 1000000;
+/* The class a dealer would sell you here, or null if there is no deal. */
+function brokerOffer(g) {
+  if (!countsForProgress(g)) return null;
+  if (!g.station.shop || g.stats.gear_bought) return null;
+  if (g.player.cash < BROKER_PRICE) return null;
+  return winningClass(g) || "meme";
+}
 
 /* Moving a banked win costs two to give one: free respec would make four
    pieces one piece with a dropdown, and a punitive rate means nobody uses it. */
@@ -1252,7 +1282,8 @@ if (typeof module !== "undefined") {
                      HISTORY_KEPT, SPARK_DAYS,
                      TIP_CHANCE, TIP_ACCURACY, TIP_MIN_RUN, TIP_FRESH_FOR,
                      RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
-                     credit_wheel: creditWheel, WHEEL, WHEEL_LINES,
+                     creditWheel, WHEEL, WHEEL_LINES,
+                     BROKER_PRICE, brokerOffer,
                      DICE_EVERY, DICE_SIDES, DICE_TOP_PRIZE, DICE_LADDER, diceTier,
                      HOT_HAND, HOT_HAND_CHANCE, HOT_HAND_MIN,
                      HOT_HAND_MAX, UNRANKED_GRADE,

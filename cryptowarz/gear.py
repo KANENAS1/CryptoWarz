@@ -142,6 +142,37 @@ def retune(profile, source: str, target: str) -> str:
             f"{GEAR_BY_KEY[target].name}. It cost {RETUNE_COST}.")
 
 
+#: What a private dealer wants for a piece, in cash, during a run.
+#:
+#: The number is deliberately absurd - most runs never see a tenth of it - and
+#: that is the point twice over. It is a sink for a run that went enormous and
+#: had nothing left to buy, and it is a REAL DECISION, because the million
+#: comes straight off your net worth and therefore straight off your score.
+#: You are trading this run's place on the board for something you keep. A
+#: money sink that costs nothing you care about is just a bigger number.
+BROKER_PRICE = 1_000_000.0
+
+
+def broker_offer(game) -> Optional[str]:
+    """The class a dealer would sell you here, or None if there is no deal.
+
+    Only at stops that already sell things, only once a run, and never on a run
+    the board will not rank - whatever hands a run free money must not let it
+    buy progression either.
+    """
+    from .progress import counts_for_progress
+
+    if not counts_for_progress(game):
+        return None
+    if not game.station.has_upgrades or game.stats.get("gear_bought"):
+        return None
+    if game.player.cash < BROKER_PRICE:
+        return None
+    # the class you are actually carrying, so a purchase reinforces a style
+    # rather than handing over a random quarter of the collection
+    return winning_class(game) or "meme"
+
+
 def level_for(wins: int) -> int:
     """How many levels that many wins is worth."""
     return sum(1 for needed in WINS_FOR_LEVEL if wins >= needed)

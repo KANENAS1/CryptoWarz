@@ -258,6 +258,9 @@ def services(game: Game) -> str:
         have.append(c("VAULT", CYAN) + c(" deposit/withdraw", GREY))
     if s.has_upgrades:
         have.append(c("SHOP", YELL) + c(" wallet/vpn", GREY))
+    from .gear import BROKER_PRICE, broker_offer
+    if broker_offer(game):
+        have.append(c("DEALER", YELL, True) + c(f" gear for {money(BROKER_PRICE)} - 'dealer'", GREY))
     if s.has_wheel:
         have.append(c("WHEEL", MAG, True) + c(" spin" if game.wheel_ready
                                               else " already spun", GREY))
@@ -317,8 +320,12 @@ def goals_board(profile) -> str:
 
 def gear_board(profile, game=None) -> str:
     """What you have earned by winning, and what it is doing for you."""
-    from .gear import (GEAR, LUCK_PER_LEVEL, MAX_LEVEL, RETUNE_COST, WINS_FOR_LEVEL,
-                       display_name, level_for)
+    from .gear import (GEAR, GEAR_BY_KEY, LUCK_PER_LEVEL, MAX_LEVEL, RETUNE_COST,
+                       WINS_FOR_LEVEL, display_name, level_for)
+
+    def GEAR_BY_KEY_NAME(prof, key):
+        return display_name(prof, GEAR_BY_KEY[key])
+
 
     levels = profile.gear_levels
     rows = ["  " + c("GEAR", MAG, True), ""]
@@ -337,6 +344,13 @@ def gear_board(profile, game=None) -> str:
         nxt = next((n for n in WINS_FOR_LEVEL if n > wins), None)
         if nxt:
             rows.append(f"        {c(f'{wins} win(s) · {nxt - wins} more for level {level + 1}', GREY)}")
+    from .gear import BROKER_PRICE, broker_offer
+    if game is not None and broker_offer(game):
+        rows += ["", "  " + c("A DEALER IS HERE", YELL, True)
+                 + c(f"  {money(BROKER_PRICE)} in cash, right now, for the "
+                     f"{GEAR_BY_KEY_NAME(profile, broker_offer(game))}.", GREY),
+                 "  " + c("It comes off your net worth, so it comes off your score. "
+                          "Type 'dealer'.", GREY)]
     if game is not None:
         held = game.luck
         rows += ["", "  " + c(f"holding right now: {held:+.0%} luck" if held
@@ -382,6 +396,7 @@ HELP = f"""
 
   {c('GAMBLE', MAG, True)}
     spin                      {c('the prize wheel - one go per stop, per run', GREY)}
+    dealer                    {c('buy a piece of gear for $1m, if he shows up', GREY)}
     gear                      {c('what you have earned · gear name · gear move', GREY)}
     giveup                    {c('end a run that has nowhere left to go', GREY)}
 

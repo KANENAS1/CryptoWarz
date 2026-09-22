@@ -286,6 +286,46 @@ Measured over 400 simulated runs of the same trading bot: **26.2% solvent with
 no gear, 32.0% with everything at full level** — about the weight of a perk.
 Shocks on a coin you're geared for went from 51.9% pumps to 67.2%.
 
+### The gear screen, and the dealer
+
+Gear used to be a footnote at the bottom of the goals sheet, which is a poor
+place for the only thing in the game you *keep*. It now has its own screen —
+the **GEAR** button in the footer, or the luck pill in the header. It shows all
+four pieces, the level of each, a bar to the next one, and an **ACTIVE** tag on
+the piece that is earning you luck *right now*, because "what am I holding for"
+is the question the screen is there to answer. The goals live underneath it.
+
+**The dealer.** Somewhere in the stations there is a man who sells a piece of
+gear for **$1,000,000** in cash. He appears at stops that already sell things,
+**once a run**, and he sells you the class you are currently carrying most of —
+so a purchase reinforces a style rather than handing over a random quarter of
+the collection.
+
+The price is absurd on purpose, and it is a *real decision* rather than a
+victory lap:
+
+*The million comes off your net worth, and therefore off your score.* You are
+trading this run's place on the leaderboard for a win banked forever. A money
+sink that costs nothing you care about is just a bigger number.
+
+*He will not serve a run the board won't rank.* Anything that hands a run free
+money must not let it buy progression either, or god mode launders cash into
+permanent luck. The same gate that keeps such a run off the board keeps it away
+from the dealer, on both front ends — `test_broker.py` and the parity suite
+both assert it.
+
+*He only has the one.* The purchase rides the save, so reloading doesn't
+restock him.
+
+A note worth recording: while wiring the dealer up, the wheel's rare **GEAR
+wedge turned out to have been banking nothing since it shipped**. In the
+browser the function is `creditWheel`; the port also exported it as
+`credit_wheel`, an alias that exists only inside the CommonJS export object the
+build strips out — so the page called a name that wasn't there, on the one
+branch in 25 that calls it, and no test ever rolled that wedge. It is fixed,
+and two structural tests in `test_web_parity.py` now fail if the page ever
+calls an export-only name again.
+
 ### The dice on the platform
 
 Every few rides somebody is running dice — **an actual die, one to six**. Free
@@ -607,7 +647,7 @@ python3 -m cryptowarz --scores     # the board
 python3 -m cryptowarz --no-save    # touch nothing on disk
 python3 -m cryptowarz --goals      # achievements, perks and tiers
 python3 -m cryptowarz --gear       # your gear and what it's worth
-#   in-game: spin · gear name · gear move · giveup
+#   in-game: spin · dealer · gear name · gear move · giveup
 python3 -m cryptowarz --daily      # your next ranked run of the day
 python3 -m cryptowarz --tier 3 --perk fixer
 ```

@@ -98,6 +98,16 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("look", "l", ""):
         return []
+    if cmd in ("dealer", "buygear"):
+        messages = game.buy_gear()
+        profile = progress_module.read_profile()
+        banked = gear_module.credit_wheel(profile, game.gear_award)
+        progress_module.write_profile(profile)
+        game.gear = profile.gear_levels
+        game.gear_award = None
+        if banked and banked[2] > banked[1]:
+            messages.append(f"{banked[0].name} is now level {banked[2]}.")
+        return messages
     if cmd in ("spin", "wheel"):
         messages = game.spin_wheel()
         if game.wheel_award:

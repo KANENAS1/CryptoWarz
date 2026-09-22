@@ -226,6 +226,8 @@ class Game:
         #: set by spin_wheel to a gear class the caller should bank, or None.
         #: The Game does not own the profile, so it cannot bank it itself.
         self.wheel_award: Optional[str] = None
+        #: the same, for a piece bought from a dealer.
+        self.gear_award: Optional[str] = None
         self.rng = random.Random(self.seed)
         self.state = MarketState(self.rng)
         self.market = generate(self.station, self.rng, self.state,
@@ -402,6 +404,28 @@ class Game:
         self.finished = True
         message = ("You give up the run at "
                    f"{self.station.name} on day {self.day}. That's it.")
+        self.say(message)
+        return [message]
+
+    # --------------------------------------------------------------- broker
+
+    def buy_gear(self) -> List[str]:
+        """Buy a banked gear win, at a price that costs you the run's score."""
+        from .gear import BROKER_PRICE, GEAR_BY_KEY, broker_offer
+
+        cls = broker_offer(self)
+        if cls is None:
+            if self.stats.get("gear_bought"):
+                raise ValueError("he only has the one, and you bought it")
+            if not self.station.has_upgrades:
+                raise ValueError("nobody's dealing here. Try a stop with a shop")
+            raise ValueError(f"he wants {BROKER_PRICE:,.0f} in cash, and not a dollar less")
+        self.player.cash -= BROKER_PRICE
+        self.stats["gear_bought"] = True
+        self.gear_award = cls
+        piece = GEAR_BY_KEY[cls]
+        message = (f"A million dollars, in a station. He hands over the "
+                   f"{piece.name} and is gone before you turn around.")
         self.say(message)
         return [message]
 

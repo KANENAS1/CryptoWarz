@@ -12,6 +12,7 @@ has no dependencies and must stay runnable anywhere.
 """
 
 import json
+import re
 import shutil
 import subprocess
 import unittest
@@ -74,6 +75,46 @@ class TestWebSourcesExist(unittest.TestCase):
         self.assertNotIn("1 to 10", html)
         self.assertIn("1 to ${DICE_SIDES}", html)
         self.assertIn("repeat(var(--faces", html, "the face grid is hardcoded")
+
+    def test_the_page_never_calls_an_export_only_alias(self):
+        """A real bug, shipped, and invisible to every other test.
+
+        game.js exports some functions under a different name for the CommonJS
+        tests - `credit_wheel: creditWheel`. That alias exists only inside the
+        export object, which the build neutralises, so a page calling
+        `credit_wheel(...)` throws at runtime and only on the branch that calls
+        it. The wheel's 4% gear wedge did exactly that: it announced a piece of
+        gear and banked nothing, for two releases, because no browser test ever
+        rolled that wedge.
+        """
+        js = (WEB / "game.js").read_text()
+        html = (WEB / "index.html").read_text()
+        exports = js[js.index("module.exports"):]
+        aliases = re.findall(r"(\w+):\s*(\w+)[,\s}]", exports)
+        declared = set(re.findall(r"function\s+(\w+)", js)) | set(
+            re.findall(r"(?:const|let|var)\s+(\w+)\s*=", js))
+        for alias, real in aliases:
+            if alias == real or alias in declared:
+                continue
+            self.assertNotRegex(html, r"\b" + re.escape(alias) + r"\s*\(",
+                                f"the page calls {alias}(), which only exists as an "
+                                f"export alias for {real}()")
+
+    def test_the_page_only_calls_functions_the_port_declares(self):
+        """The same failure with the alias spelled differently."""
+        js = (WEB / "game.js").read_text()
+        html = (WEB / "index.html").read_text()
+        declared = set(re.findall(r"function\s+(\w+)", js)) | set(
+            re.findall(r"(?:const|let|var)\s+(\w+)\s*=", js))
+        page = html[html.index("<script>", html.index("</style>")):]
+        page_own = set(re.findall(r"function\s+(\w+)", page)) | set(
+            re.findall(r"(?:const|let|var)\s+(\w+)\s*=", page))
+        for name in ("creditWheel", "creditWin", "levelsFromWins", "brokerOffer",
+                     "renameGear", "retuneGear", "displayName", "levelFor",
+                     "winningClass", "gradeFor", "runGrade", "recordDaily"):
+            if re.search(r"\b" + name + r"\s*\(", page):
+                self.assertIn(name, declared | page_own,
+                              f"the page calls {name}() and nothing declares it")
 
     def test_the_wheel_can_actually_turn(self):
         """Guarding a bug that shipped, from a cause that has now bitten twice.
@@ -369,6 +410,53 @@ class TestGearCustomisationParity(unittest.TestCase):
         self.assertTrue(self.js["refused_unearned_rename"])
         self.assertTrue(self.js["refused_broke_retune"])
         self.assertTrue(self.js["drops_the_name_when_the_piece_is_gone"])
+
+
+@requires_node
+class TestBrokerParity(unittest.TestCase):
+    """The dealer is the only thing in the game that buys progression, so the
+    two ports must agree on every fence around him - the price, the one deal
+    per run, and above all the refusal to sell to a run the board will not
+    rank. A port that let god mode buy gear would launder free money into
+    permanent luck."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["broker"]
+
+    def test_the_price_matches(self):
+        from cryptowarz.gear import BROKER_PRICE
+        self.assertEqual(self.js["price"], BROKER_PRICE)
+
+    def test_both_sides_open_the_deal_on_the_same_conditions(self):
+        self.assertEqual(self.js["at_a_shop_with_the_money"], "meme")
+        self.assertIsNone(self.js["a_dollar_short"])
+        self.assertIsNone(self.js["no_shop_no_dealer"])
+
+    def test_neither_port_sells_to_an_unrankable_run(self):
+        self.assertIsNone(self.js["unrankable_run_cannot_buy"])
+        self.assertTrue(self.js["unrankable_run_is_refused"])
+
+    def test_both_sides_sell_what_you_are_carrying(self):
+        self.assertEqual(self.js["sells_what_you_carry"], ["major", "meme"])
+
+    def test_the_million_comes_off_the_score_on_both_sides(self):
+        from cryptowarz.gear import BROKER_PRICE
+        self.assertEqual(self.js["cash_after"], 25_000)
+        self.assertEqual(self.js["off_the_score"], int(BROKER_PRICE))
+
+    def test_one_deal_per_run_on_both_sides(self):
+        second = self.js["second_visit"]
+        self.assertIsNone(second["offer"])
+        self.assertTrue(second["refused"])
+        self.assertTrue(second["kept_the_cash"], "a refused deal took money")
+
+    def test_the_purchase_banks_on_both_sides(self):
+        """The half that shipped broken once already: naming a class is not
+        banking it, and only the caller can finish the job."""
+        bought = self.js["award_banks_a_win"]
+        self.assertEqual(bought["award"], "major")
+        self.assertEqual(bought["wins"], {"major": 1})
 
 
 @requires_node

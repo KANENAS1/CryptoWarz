@@ -235,6 +235,56 @@ const out = {
       })(),
     };
   })(),
+  broker: (() => {
+    const SHOP = G.STATIONS.find(s => s.shop), BARE = G.STATIONS.find(s => !s.shop);
+    const rich = (cash, station, holding, streak) => {
+      const g = new G.Game(5);
+      g.station = station || SHOP;
+      g.player.capacity = 1e9; g.player.wallet = {};
+      g.player.cash = cash === undefined ? G.BROKER_PRICE : cash;
+      g.hotHand = !!streak;
+      if (holding) {
+        const h = g.holding(holding);
+        h.qty += 1000 / g.market.prices[holding]; h.cost += 1000;
+      }
+      return g;
+    };
+    const refuses = g => { try { g.buyGear(); return false; } catch (e) { return true; } };
+    const paid = (() => {
+      const before = rich(G.BROKER_PRICE + 25000), after = rich(G.BROKER_PRICE + 25000);
+      after.buyGear();
+      return before.finalScore() - after.finalScore();
+    })();
+    const twice = (() => {
+      const g = rich(G.BROKER_PRICE * 3); g.buyGear();
+      const cash = g.player.cash;
+      return { offer: G.brokerOffer(g), refused: refuses(g), kept_the_cash: g.player.cash === cash };
+    })();
+    const bought = (() => {
+      const g = rich(G.BROKER_PRICE, null, "BTC"); g.buyGear();
+      const profile = G.blankProfile();
+      G.creditWheel(profile, g.gearAward);
+      return { award: g.gearAward, wins: profile.gear_wins };
+    })();
+    return {
+      price: G.BROKER_PRICE,
+      /* when there is a deal */
+      at_a_shop_with_the_money: G.brokerOffer(rich()),
+      a_dollar_short: G.brokerOffer(rich(G.BROKER_PRICE - 1)),
+      no_shop_no_dealer: G.brokerOffer(rich(undefined, BARE)),
+      unrankable_run_cannot_buy: G.brokerOffer(rich(undefined, null, null, true)),
+      unrankable_run_is_refused: refuses(rich(undefined, null, null, true)),
+      sells_what_you_carry: [G.brokerOffer(rich(undefined, null, "BTC")),
+                             G.brokerOffer(rich(undefined, null, "DOGE"))],
+      /* the price is real, and it lands on the score */
+      cash_after: (() => { const g = rich(G.BROKER_PRICE + 25000); g.buyGear();
+                           return Math.round(g.player.cash); })(),
+      off_the_score: Math.round(paid),
+      /* one per run, and it banks */
+      second_visit: twice,
+      award_banks_a_win: bought,
+    };
+  })(),
   stranded: (() => {
     const BARE = G.STATIONS.find(s => !s.shark && !s.vault);
     const SHARK = G.STATIONS.find(s => s.shark);

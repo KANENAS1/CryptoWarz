@@ -205,6 +205,15 @@
   .gearrow.on .t{color:var(--paper)}
   .gearrow .d{color:var(--faint);font-size:11.5px;margin-top:2px}
   .gearrow .u{color:var(--green);font-size:10.5px;letter-spacing:.06em;margin-top:3px}
+  .gearrow.live{background:rgba(52,208,122,.07);border-left:3px solid #34d07a;padding-left:9px}
+  .nowtag{font-size:8.5px;letter-spacing:.12em;color:#34d07a;border:1px solid #34d07a;
+          border-radius:2px;padding:1px 4px;vertical-align:middle;margin-left:5px}
+  .gearbar{height:4px;border-radius:2px;background:var(--rule);margin:6px 0 4px;overflow:hidden}
+  .gearbar i{display:block;height:100%;background:var(--yellow)}
+  .deal{border:2px solid var(--yellow);border-radius:4px;padding:12px;margin-bottom:14px}
+  .deal .t{color:var(--yellow);font-weight:700;letter-spacing:.14em;font-size:11px}
+  .deal .d{color:var(--dim);font-size:12px;margin:6px 0 10px;line-height:1.45}
+  .deal .d b{color:var(--paper)}
   /* ---------- grades, the ranked slate, the leaderboard ---------- */
   .grade{font-size:56px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--yellow)}
   .grade.f{color:var(--red)} .grade.s{color:var(--green)} .grade.g{color:var(--purple)}
@@ -313,7 +322,7 @@
 
   <footer>
     <button class="go" id="ride">RIDE THE TRAIN →</button>
-    <button id="trophies" style="flex:0 0 auto;min-width:54px">GOALS</button>
+    <button id="trophies" style="flex:0 0 auto;min-width:54px">GEAR</button>
     <button id="board" style="flex:0 0 auto;min-width:54px">BOARD</button>
     <button id="newgame" style="flex:0 0 auto;min-width:50px">NEW</button>
   </footer>
@@ -341,7 +350,7 @@
 </div>
 
 <div class="sheet" id="goals">
-  <h3 id="goalstitle">GOALS</h3>
+  <h3 id="goalstitle">GEAR</h3>
   <div class="sheetscroll" id="goallist"></div>
   <div style="padding-top:10px"><button id="closegoals">BACK</button></div>
 </div>
@@ -554,6 +563,9 @@ function render(){
   if (st.shop) {
     svc.push(`<button data-act="capacity">+$25K WALLET · ${fmtMoney(g.upgradeCost())}</button>`);
     if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
+    // the rarest thing in the game should not sit two taps deep on the one run
+    // in a hundred where a player can actually afford it
+    if (brokerOffer(g)) svc.push(`<button data-act="dealer" class="go">A DEALER · ${fmtMoney(BROKER_PRICE)}</button>`);
   }
   renderWhisper();
   renderDeadEnd();
@@ -808,7 +820,7 @@ $("spin").addEventListener("click", () => {
     };
     if (game.wheelAward) {
       profile = readProfile();
-      const banked = credit_wheel(profile, game.wheelAward);
+      const banked = creditWheel(profile, game.wheelAward);
       writeProfile(profile);
       game.gear = levelsFromWins(profile.gear_wins);
       if (banked && banked[2] > banked[1]) {
@@ -916,6 +928,7 @@ $("main").addEventListener("click", e => {
     const sym = b.dataset.sell, frac = parseFloat(b.dataset.frac);
     return act(() => game.sell(sym, (game.player.wallet[sym]?.qty || 0) * frac));
   }
+  if (b.dataset.act === "dealer") return showGoals();
   const a = b.dataset.act;
   if (a === "borrow") return act(() => game.borrow(Math.min(2500, game.borrowable())));
   if (a === "repay") return act(() => game.repay(Math.min(game.player.cash, game.player.debt)));
@@ -1229,14 +1242,17 @@ $("startrun").addEventListener("click", () => {
 function showGoals(){
   profile = readProfile();
   const got = new Set(profile.achievements);
-  $("goalstitle").textContent = `GOALS — ${got.size} OF ${ACHIEVEMENTS.length}`;
-  $("goallist").innerHTML = ACHIEVEMENTS.map(a => {
+  const levels = levelsFromWins(profile.gear_wins);
+  const total = Object.values(levels).reduce((a, b) => a + b, 0);
+  $("goalstitle").textContent = `GEAR — ${total} OF ${GEAR.length * MAX_LEVEL} LEVELS`;
+  $("goallist").innerHTML = gearList() + `<h3 style="margin:26px 0 4px">GOALS — ${
+    got.size} OF ${ACHIEVEMENTS.length}</h3>` + ACHIEVEMENTS.map(a => {
     const perk = PERKS.find(p => p.by === a.key);
     return `<div class="trophy${got.has(a.key) ? " got" : ""}">
       <div class="mark">${got.has(a.key) ? "✓" : "·"}</div>
       <div><div class="t">${a.name}</div><div class="d">${a.blurb}</div>
       ${perk ? `<div class="u">UNLOCKS · ${perk.name.toUpperCase()}</div>` : ""}</div></div>`;
-  }).join("") + gearList() + `<div class="note" style="padding:14px 2px">
+  }).join("") + `<div class="note" style="padding:14px 2px">
       ${profile.runs} run${profile.runs === 1 ? "" : "s"} played · best ${fmtMoney(profile.best_net)}
       · tier ${maxTier(profile)} unlocked</div>`;
   openSheet("goals");
@@ -1245,31 +1261,65 @@ function showGoals(){
    the setup screen where a player would look for something to pick. */
 function gearList(){
   const held = game ? game.luckBySymbol() : {};
-  return `<h3 style="margin:22px 0 4px">GEAR</h3>
-    <div class="note" style="margin-bottom:8px">Win a run holding a kind of coin and you
-      keep the gear for it. Luck tilts a shock toward a pump on what you're holding and
-      keeps trouble away - you get your best piece, never the sum of them.</div>`
-    + GEAR.map(piece => {
-      const wins = (profile.gear_wins && profile.gear_wins[piece.key]) || 0;
-      const level = levelFor(wins);
-      const next = WINS_FOR_LEVEL.find(n => n > wins);
-      const active = Object.keys(held).some(sym => CLASS_OF[sym] === piece.key);
-      return `<div class="gearrow${level ? " on" : ""}" data-gear="${piece.key}">
-        <div class="pips"><b>${"●".repeat(level)}</b>${"○".repeat(MAX_LEVEL - level)}</div>
-        <div><div class="t">${esc(displayName(profile, piece))}${
-          level ? ` <span class="heat">TAP TO CUSTOMISE</span>` : ""}</div>
-          <div class="d">${esc(piece.covers)} · ${esc(piece.blurb)}</div>
-          ${level ? `<div class="u">+${Math.round(level * LUCK_PER_LEVEL * 100)}% luck while holding${
-            active ? " · ACTIVE RIGHT NOW" : ""}</div>` : ""}
-          <div class="d">${next
-            ? `${wins} win${wins === 1 ? "" : "s"} · ${next - wins} more for level ${level + 1}`
-            : `${wins} wins · fully levelled`}</div></div></div>`;
-    }).join("");
+  const offer = game ? brokerOffer(game) : null;
+  const deal = offer
+    ? `<div class="deal">
+         <div class="t">SOMEBODY IS DEALING</div>
+         <div class="d">A million in cash, right now, for the
+           <b>${esc(displayName(profile, GEAR_BY_KEY[offer]))}</b>. It comes off your
+           net worth and therefore off your score — you are buying something you
+           keep with something you were being ranked on.</div>
+         <button class="go" id="buygear">BUY IT · ${fmtMoney(BROKER_PRICE)}</button>
+       </div>`
+    : (game && game.stats.gear_bought
+        ? `<div class="note">You already bought from him this run. He only had the one.</div>`
+        : `<div class="note">A dealer turns up at stops with a shop, if you are
+             carrying ${fmtMoney(BROKER_PRICE)} in cash. Most runs never see him.</div>`);
+
+  return deal + GEAR.map(piece => {
+    const wins = (profile.gear_wins && profile.gear_wins[piece.key]) || 0;
+    const level = levelFor(wins);
+    const next = WINS_FOR_LEVEL.find(n => n > wins);
+    const active = Object.keys(held).some(sym => CLASS_OF[sym] === piece.key);
+    // how far to the next level, so the bar answers "how close am I"
+    const floor = level > 0 ? WINS_FOR_LEVEL[level - 1] : 0;
+    const frac = next ? Math.max(0, Math.min(1, (wins - floor) / (next - floor))) : 1;
+    return `<div class="gearrow${level ? " on" : ""}${active ? " live" : ""}" data-gear="${piece.key}">
+      <div class="pips"><b>${"●".repeat(level)}</b>${"○".repeat(MAX_LEVEL - level)}</div>
+      <div><div class="t">${esc(displayName(profile, piece))}${
+        active ? ` <span class="nowtag">ACTIVE</span>` : ""}</div>
+        <div class="d">${esc(piece.covers)} · ${esc(piece.blurb)}</div>
+        ${level ? `<div class="u">+${Math.round(level * LUCK_PER_LEVEL * 100)}% luck while holding${
+          active ? " — and you are" : ""}</div>` : ""}
+        <div class="gearbar"><i style="width:${(frac * 100).toFixed(0)}%"></i></div>
+        <div class="d">${next
+          ? `${wins} win${wins === 1 ? "" : "s"} · ${next - wins} more for level ${level + 1}`
+          : `${wins} wins · fully levelled`} · tap to rename or move a win</div></div></div>`;
+  }).join("");
 }
 
-/* Customising is a deliberate detour, not something you can fat-finger from the
-   list: a tap opens the choice, and moving wins names its price before it asks. */
+/* Everything you can do to a piece of gear, in one place. This handler was
+   lost once to a range-delete that cut from a function's name to the next
+   listener and took the listener with it; the buy button and the rename tap
+   both silently became decoration. */
 $("goallist").addEventListener("click", e => {
+  if (e.target.closest("#buygear")) {
+    try {
+      const said = game.buyGear();
+      profile = readProfile();
+      const banked = creditWheel(profile, game.gearAward);
+      writeProfile(profile);
+      game.gear = levelsFromWins(profile.gear_wins);
+      game.gearAward = null;
+      let line = said[0];
+      if (banked && banked[2] > banked[1]) line += ` ${banked[0].name} is now level ${banked[2]}.`;
+      flash(line, true);
+      showGoals();
+      render();
+      persist();
+    } catch (err) { flash(err.message, false); }
+    return;
+  }
   const row = e.target.closest("[data-gear]");
   if (!row) return;
   const key = row.dataset.gear, piece = GEAR_BY_KEY[key];
@@ -1284,9 +1334,9 @@ $("goallist").addEventListener("click", e => {
     displayName(profile, piece));
   if (wanted === null) return;
   try {
-    const move = wanted.trim().match(/^move\s+(\w+)$/i);
-    const said = move ? retuneGear(profile, key, move[1].toLowerCase())
-                      : renameGear(profile, key, wanted);
+    const mv = wanted.trim().match(/^move\s+(\w+)$/i);
+    const said = mv ? retuneGear(profile, key, mv[1].toLowerCase())
+                    : renameGear(profile, key, wanted);
     writeProfile(profile);
     if (game && !game.finished) game.gear = levelsFromWins(profile.gear_wins);
     flash(said, true);
@@ -1296,6 +1346,8 @@ $("goallist").addEventListener("click", e => {
 });
 
 $("trophies").addEventListener("click", showGoals);
+$("luckpill").addEventListener("click", showGoals);
+$("luckpill").style.cursor = "pointer";
 $("closegoals").addEventListener("click", closeSheets);
 
 /* ------------------------------ persistence ---------------------------- */
