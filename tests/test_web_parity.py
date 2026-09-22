@@ -120,6 +120,36 @@ class TestWebSourcesExist(unittest.TestCase):
                 self.assertIn(name, declared | page_own,
                               f"the page calls {name}() and nothing declares it")
 
+    def test_the_page_is_sized_for_a_phone_browser_with_toolbars(self):
+        """iOS Safari sizes 100% and 100vh against the viewport you get with
+        the toolbars HIDDEN, so a page exactly one screen tall puts its last
+        row under the address bar - and with overflow:hidden there is no way to
+        scroll it back. On a phone that means the RIDE THE TRAIN button is
+        simply unreachable. Both fallbacks have to stay."""
+        html = (WEB / "index.html").read_text()
+        self.assertIn("-webkit-fill-available", html, "older WebKit has no dvh")
+        self.assertIn("100dvh", html, "newer WebKit wants dvh")
+        # the plain height must still be written first, for anything that
+        # understands neither and would otherwise get no height at all
+        app = html[html.index(".app{display:flex"):]
+        app = app[:app.index("}")]
+        self.assertLess(app.index("height:100%"), app.index("height:100dvh"))
+
+    def test_a_browser_that_refuses_to_save_says_so(self):
+        """Every write is wrapped in try/catch, which keeps a blocked store
+        from ending the run - and lets somebody in Private Browsing play thirty
+        days and lose all of it without being told. The probe exists because
+        Safari HAS localStorage in private mode; it just throws on write."""
+        js = (WEB / "game.js").read_text()
+        html = (WEB / "index.html").read_text()
+        self.assertIn("function storageWorks", js)
+        self.assertIn("localStorage.setItem(probe", js)
+        self.assertIn('id="nosave"', html)
+        self.assertIn("warnIfNothingIsBeingSaved", html)
+        boot = html[html.index("function boot(){"):]
+        self.assertLess(boot.index("warnIfNothingIsBeingSaved"), boot.index("readSave"),
+                        "the warning must be up before the first render")
+
     def test_the_downloadable_page_is_a_whole_document(self):
         """A bug that shipped: the artifact build drops index.html's <head>,
         because the host page owns it. The same bytes saved as a file opened in

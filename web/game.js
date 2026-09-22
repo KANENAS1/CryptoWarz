@@ -1262,6 +1262,23 @@ const SAVE_VERSION = 1;
    lock, and the leaderboard is protected where it always was. */
 const BACKUP_VERSION = 1, BACKUP_PREFIX = "CW1";
 
+/* Whether this browser will actually keep anything.
+   Every write in this file is already wrapped in try/catch, which keeps a
+   blocked store from ending the run - and means a player in iOS Private
+   Browsing, where setItem throws, plays thirty days and loses all of it
+   without ever being told. So it is asked once, out loud, and the page says
+   so. A probe rather than a feature test, because Safari HAS localStorage in
+   private mode; it just refuses to write to it. */
+function storageWorks() {
+  try {
+    const probe = "cryptowarz.probe";
+    localStorage.setItem(probe, "1");
+    const back = localStorage.getItem(probe) === "1";
+    localStorage.removeItem(probe);
+    return back;
+  } catch (e) { return false; }
+}
+
 /* 32-bit FNV-1a: four lines in every language, so the two ports cannot drift
    on it. It catches truncation and transcription, which is all it is for. */
 function fnv1a(text) {
@@ -1483,7 +1500,7 @@ if (typeof module !== "undefined") {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
                      fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
                      BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
-                     makeBackup, readBackup, writeScores,
+                     makeBackup, readBackup, writeScores, storageWorks,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
                      DIFFICULTIES, DIFFICULTY_BY_KEY, DEFAULT_DIFFICULTY,

@@ -205,8 +205,10 @@ on a phone, with no declared charset. That shipped once; two tests now fail if
 it ever does again.
 
 **A web page.** The same file is at `docs/index.html` so GitHub Pages can serve
-it: *Settings → Pages → Source: deploy from a branch → `main` / `/docs`*. That
-gives a permanent public URL anyone can open — no account, no sign-in.
+it: *Settings → Pages → Source: deploy from a branch → `main` / `/docs`*, which
+gives a permanent URL anyone can open. Note that **Pages on a private
+repository is a paid feature** — on a free account the repo has to be public
+first.
 
 **A Claude artifact.** Private by default: it opens for the account that
 published it, and for nobody else until it is shared from the page's Share
@@ -214,6 +216,29 @@ menu. Handy, and not a link to send to a friend.
 
 All three are the same build and keep the same saves *per browser* — and the
 backup line below moves progress between them.
+
+### Safari, specifically
+
+Two things about WebKit that are worth knowing, both fixed rather than
+documented around:
+
+**The toolbars.** iOS Safari sizes `100%` and `100vh` against the viewport you
+get with the toolbars *hidden*, so a page exactly one screen tall hides its
+last row under the address bar — and with `overflow:hidden` there is no way to
+scroll it back. The RIDE THE TRAIN button was simply unreachable. The layout now
+asks for `-webkit-fill-available` and `100dvh` on top of the plain height, so
+old WebKit, new WebKit and everything else each get something they understand.
+
+**Private Browsing.** Safari *has* `localStorage` in a private tab; it just
+throws on every write. Every write here is already wrapped, which stops that
+ending a run — and would have let somebody play thirty days and lose all of it
+without ever being told. The page now probes the store on the way in and says
+so in red if nothing is being kept, with a pointer at BACKUP. Verified with
+`localStorage` rigged to throw: the warning appears, and the game still loads
+and trades normally.
+
+**Add to Home Screen** works: the page already carries the Apple web-app meta
+tags, so it opens full-screen without Safari's chrome.
 
 ## Play it on a phone
 
