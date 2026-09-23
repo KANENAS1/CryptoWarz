@@ -699,6 +699,48 @@ class TestEncounterParity(unittest.TestCase):
         self.assertTrue(self.js["carry_cuts_both_ways"]["raid_up"])
         self.assertTrue(self.js["carry_cuts_both_ways"]["stickup_down"])
 
+    def _standoff(self, kind):
+        from cryptowarz import encounter as en
+        from cryptowarz.game import Game
+        game = Game(seed=13)
+        game.player.cash = 9_000.0
+        game.player.debt = 12_000.0
+        game.player.capacity = 1e9
+        game.player.holding("BTC").qty = 1.0
+        game.player.holding("BTC").cost = 5_000.0
+        en.open_standoff(game, kind)
+        return game
+
+    def test_the_shark_s_man_costs_the_same_on_both_sides(self):
+        """Paying him is the good end - it comes off the loan - so both ports
+        have to agree on the demand and on what refusing adds."""
+        from cryptowarz import encounter as en
+        js = self.js["collector"]
+        self.assertEqual(js["options"], ["pay", "run", "fight", "weapon"][:len(js["options"])])
+        self.assertEqual(js["demand"], round(en.collector_demand(self._standoff("collector"))))
+        self.assertAlmostEqual(js["fee_ran"], en.SHARK_FEE_RAN)
+        self.assertAlmostEqual(js["fee_fought"], en.SHARK_FEE_FOUGHT)
+        for choice in ("pay", "run"):
+            game = self._standoff("collector")
+            game.resolve(choice)
+            self.assertEqual(js[choice]["cash"], round(game.player.cash), choice)
+            self.assertEqual(js[choice]["debt"], round(game.player.debt), choice)
+
+    def test_the_badge_offers_the_same_three_answers_on_both_sides(self):
+        from cryptowarz import encounter as en
+        js = self.js["badge"]
+        self.assertEqual(js["options"], ["comply", "lawyer", "run"])
+        self.assertTrue(js["no_weapon_offered"],
+                        "no port may offer to swing at a federal agent")
+        self.assertEqual(js["lawyer_cost"], round(en.lawyer_cost(self._standoff("badge"))))
+        self.assertAlmostEqual(js["lawyer_saves"], en.LAWYER_SAVES)
+        self.assertAlmostEqual(js["caught"], en.CAUGHT_MULTIPLIER)
+        for choice in ("comply", "lawyer"):
+            game = self._standoff("badge")
+            game.resolve(choice)
+            self.assertEqual(js[choice]["cash"], round(game.player.cash), choice)
+            self.assertEqual(js[choice]["raids"], game.stats["raids"], choice)
+
     def test_paying_keeps_the_bag_on_both_sides(self):
         paid = self.js["paying_keeps_the_bag"]
         self.assertEqual(paid["qty"], 1, "paying must not cost the bag")
@@ -1016,6 +1058,8 @@ class TestMarketShapeParity(unittest.TestCase):
                         f"{truth['days_recorded']} points for {truth['day']} days")
         self.assertGreaterEqual(truth["days_recorded"], 13)
         self.assertTrue(truth["first_point_is_the_opening_level"])
+        self.assertTrue(truth["shock_reaches_the_chart"],
+                        "the port's chart still misses a shock")
 
     def test_the_port_would_draw_the_peg_flat_and_the_memecoin_moving(self):
         """A sparkline scales its window, so a flat coin must be KNOWN flat."""

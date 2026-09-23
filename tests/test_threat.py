@@ -55,9 +55,12 @@ class TestTheGracePeriod(unittest.TestCase):
         raids = 0
         for _ in range(4_000):
             game.day = 9
-            if E.roll_event(game) and game.stats.get("raids"):
+            game.pending = None
+            E.roll_event(game)
+            if game.pending and game.pending.get("kind") == "badge":
                 raids += 1
                 break
+        game.pending = None
         self.assertEqual(raids, 0, "the SEC turned up during the grace period")
 
     def test_the_day_after_the_grace_it_is_back(self):
@@ -96,17 +99,24 @@ class TestTheMeterCannotLie(unittest.TestCase):
                                weights[index] / sum(weights), places=12)
 
     def test_it_measures_what_actually_happens(self):
-        """Roll it four thousand times and the meter must have been right."""
+        """Roll it four thousand times and the meter must have been right.
+
+        A raid now opens a standoff rather than resolving itself, so what is
+        counted is the agents turning up - which is exactly what the meter
+        claims to predict. The pending one is cleared each time so the next
+        roll is not refused.
+        """
         game = at(24)
         game.player.capacity = 1e9
         predicted = E.raid_chance(game, game.station, 24)
         hits = 0
         for _ in range(4_000):
             game.day = 24
-            before = game.stats.get("raids", 0)
+            game.pending = None
             E.roll_event(game)
-            if game.stats.get("raids", 0) > before:
+            if game.pending and game.pending.get("kind") == "badge":
                 hits += 1
+        game.pending = None
         self.assertAlmostEqual(hits / 4_000, predicted, delta=0.02,
                                msg="the meter and the game disagree")
 

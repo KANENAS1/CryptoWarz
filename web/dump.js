@@ -89,6 +89,15 @@ const out = {
         day: g.day,
         peg_barely_moves: range("USDC") < 0.05,
         memecoin_really_moves: range("WIF") > 0.05,
+        /* a shock corrects the day rather than adding one, so the chart shows
+           the pump it exists to show and the invariant still holds */
+        shock_reaches_the_chart: (() => {
+          const st = new G.MarketState(new G.RNG(3));
+          const before = st.history.BONK.length;
+          st.apply("BONK", 1.8, G.COIN.BONK);
+          return st.history.BONK.length === before
+                 && Math.abs(st.history.BONK[st.history.BONK.length - 1] - st.levels.BONK) < 1e-9;
+        })(),
         first_point_is_the_opening_level: Math.abs(
           new G.Game(3).state.history.DOGE[0] - new G.Game(3).state.levels.DOGE) < 1e-9,
       };
@@ -361,6 +370,33 @@ const out = {
         const i = G.EVENTS.findIndex(e => e[0] === G.stickup);
         return { raid_up: G.raidChance(armed) > G.raidChance(bare),
                  stickup_down: G.eventWeights(armed)[i] < G.eventWeights(bare)[i] };
+      })(),
+      /* the two encounters that replaced an event */
+      collector: (() => {
+        const make = () => { const g = new G.Game(13);
+          g.player.cash = 9000; g.player.debt = 12000; g.player.capacity = 1e9;
+          const h = g.holding("BTC"); h.qty = 1; h.cost = 5000;
+          G.openStandoff(g, "collector"); return g; };
+        const after = (choice) => { const g = make(); g.resolve(choice);
+          return { cash: Math.round(g.player.cash), debt: Math.round(g.player.debt) }; };
+        return { options: G.encounterChoices(make()).map(c => c.key),
+                 demand: Math.round(G.collectorDemand(make())),
+                 pay: after("pay"), run: after("run"),
+                 fee_ran: G.SHARK_FEE_RAN, fee_fought: G.SHARK_FEE_FOUGHT };
+      })(),
+      badge: (() => {
+        const make = () => { const g = new G.Game(13);
+          g.player.cash = 9000; g.player.debt = 12000; g.player.capacity = 1e9;
+          const h = g.holding("BTC"); h.qty = 1; h.cost = 5000;
+          G.openStandoff(g, "badge"); return g; };
+        const after = (choice) => { const g = make(); g.resolve(choice);
+          return { cash: Math.round(g.player.cash), raids: g.stats.raids }; };
+        return { options: G.encounterChoices(make()).map(c => c.key),
+                 no_weapon_offered: (() => { const g = make(); g.weapon = "bat";
+                   return !G.encounterChoices(g).some(c => c.key === "weapon"); })(),
+                 lawyer_cost: Math.round(G.lawyerCost(make())),
+                 lawyer_saves: G.LAWYER_SAVES, caught: G.CAUGHT_MULTIPLIER,
+                 comply: after("comply"), lawyer: after("lawyer") };
       })(),
       /* paying keeps the bag; it is the point of paying */
       paying_keeps_the_bag: (() => {

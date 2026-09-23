@@ -133,9 +133,20 @@ class MarketState:
         return self.trends.get(symbol, 0.0)
 
     def apply(self, symbol: str, factor: float, coin: Coin) -> None:
-        """A shock moves the real level, so it persists beyond one station."""
+        """A shock moves the real level, so it persists beyond one station.
+
+        It also **corrects today's history point** rather than adding one. The
+        shock lands after ``drift`` has already recorded the day, so without
+        this the chart quietly kept the pre-shock number: a coin could double
+        on a headline and the sparkline would show the day it did not move.
+        The one bad day in a fortnight is exactly the day a chart exists to
+        show, and it was the only one being left out.
+        """
         level = self.levels[symbol] * factor
         self.levels[symbol] = max(coin.low * 0.15, min(level, coin.high * 2.2))
+        past = self.history.get(symbol)
+        if past:
+            past[-1] = self.levels[symbol]      # the same day, corrected
 
 
 @dataclass

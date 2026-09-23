@@ -229,9 +229,16 @@ MarketState.prototype.drift = function (rng) {
   }
   this.remember();
 };
-MarketState.prototype.apply = function (symbol, factor, c) {
+MarketState.prototype.apply = function (symbol, factor, coin) {
+  /* A shock moves the real level, so it persists beyond one station - and it
+     CORRECTS today's history point rather than adding one. The shock lands
+     after drift has already recorded the day, so without this the chart kept
+     the pre-shock number: a coin could double on a headline and the sparkline
+     would show the day it did not move. */
   const level = this.levels[symbol] * factor;
-  this.levels[symbol] = Math.max(c.low * 0.15, Math.min(level, c.high * 2.2));
+  this.levels[symbol] = Math.max(coin.low * 0.15, Math.min(level, coin.high * 2.2));
+  const past = this.history[symbol];
+  if (past && past.length) past[past.length - 1] = this.levels[symbol];
 };
 
 function stationPrice(c, level, st, rng) {
@@ -835,16 +842,34 @@ function encounterOdds(g, choice) {
 
 const KINDS = [
   { key: "stickup", title: "SOMEBODY BLOCKS THE STAIRS", severity: 1.0, armable: true,
+    options: ["run", "fight", "weapon", "pay"],
     opening: [
       'A man steps out of the stairwell at {station} and does not move. "Phone. Wallet. Whatever\'s in the bag."',
       "Two of them, one either side of the turnstile at {station}. The one on the left is doing the talking and the one on the right is why.",
       "He has been on the platform at {station} since you got off, and now he is close enough that you can smell the cigarettes.",
     ] },
   { key: "followed", title: "YOU WERE FOLLOWED OFF THE TRAIN", severity: 0.85, armable: true,
+    options: ["run", "fight", "weapon", "pay"],
     opening: [
       "Somebody got off at {station} when you did, and took the same stairs, and is now standing closer than anybody stands by accident.",
       "He rode three cars down and got off at {station} behind you. He is not looking at his phone. Nobody on this platform is not looking at their phone.",
       "The kid who was watching your screen on the ride gets off at {station} too, and he has friends.",
+    ] },
+  { key: "collector", title: "THE SHARK SENT SOMEBODY", severity: 1.0, armable: true,
+    options: ["pay", "run", "fight", "weapon"],
+    opening: [
+      "The large man from the platform at {station} is not large by accident, and he knows your name, and he would like some of it back.",
+      '"He says you\'ve been busy." The associate does not sit down. Nobody at {station} is looking at either of you, very deliberately.',
+      "He is waiting at the bottom of the stairs at {station} with his hands where you can see them, which is somehow worse.",
+    ] },
+  /* No weapon against a badge, deliberately: a trap you can only learn by
+     falling into it is a worse teacher than a door that was never there. */
+  { key: "badge", title: "FEDERAL AGENTS AT THE TURNSTILE", severity: 1.0, armable: false,
+    options: ["comply", "lawyer", "run"],
+    opening: [
+      "Two of them at the {station} turnstile, and they were waiting for you rather than for a train.",
+      "The suit at {station} shows you something in a wallet and asks you to step to one side. He is not really asking.",
+      "They come down both stairwells at {station} at once, which tells you how long they have known.",
     ] },
 ];
 const KIND_BY_KEY = Object.fromEntries(KINDS.map(k => [k.key, k]));
@@ -862,26 +887,58 @@ function payCost(g) {
   return Math.max(150, g.player.cash * 0.22 * kind.severity);
 }
 
-/* What the player may do, with the true odds on each. Never a guess. */
+/* What a lawyer costs and what he is worth: the only answer to a badge that is
+   not a bet - you buy the seizure down instead. */
+const LAWYER_SHARE = 0.18, LAWYER_MIN = 800, LAWYER_SAVES = 0.55;
+function lawyerCost(g) { return Math.max(LAWYER_MIN, g.player.cash * LAWYER_SHARE); }
+/* What the Shark's man came for: a quarter of the debt, if you have it. */
+function collectorDemand(g) {
+  return Math.min(Math.max(0, g.player.cash - SUBWAY_FARE), g.player.debt * 0.25);
+}
+
+/* Every option a kind accepts, built in one place so the terminal, the phone
+   and the tests read one list. A kind that does not accept an answer simply
+   does not show it - no hidden options, none shown and then refused. */
 function encounterChoices(g) {
   if (!g.pending) return [];
   const kind = KIND_BY_KEY[g.pending.kind] || KINDS[0];
-  const out = [
-    { key: "run", label: "RUN", odds: encounterOdds(g, "run"),
-      note: "Down the platform and out. What you are carrying slows you down." },
-    { key: "fight", label: "SWING FIRST", odds: encounterOdds(g, "fight"),
-      note: "Bare hands. It is a coin flip and the coin is not yours." },
-  ];
   const w = weaponOf(g.weapon);
+  const n = v => Math.round(v).toLocaleString();
+  const built = {
+    run: { key: "run", label: "RUN", odds: encounterOdds(g, "run"),
+           note: "Down the platform and out. What you are carrying slows you down." },
+    fight: { key: "fight", label: "SWING FIRST", odds: encounterOdds(g, "fight"),
+             note: "Bare hands. It is a coin flip and the coin is not yours." },
+    pay: { key: "pay", label: "HAND IT OVER", odds: 1,
+           note: `Give up ${n(payCost(g))} and walk away whole. Word gets around that you do.` },
+    comply: { key: "comply", label: "HANDS WHERE THEY CAN SEE THEM", odds: 1,
+              note: "Let them take what they came for. Nothing else happens to you today." },
+  };
   if (w && kind.armable) {
-    out.push({ key: "weapon", label: `USE THE ${w.name.toUpperCase()}`,
-               odds: encounterOdds(g, "weapon"),
-               note: `${w.name}. It might not survive the night either.` });
+    built.weapon = { key: "weapon", label: `USE THE ${w.name.toUpperCase()}`,
+                     odds: encounterOdds(g, "weapon"),
+                     note: `${w.name}. It might not survive the night either.` };
   }
-  out.push({ key: "pay", label: "HAND IT OVER", odds: 1,
-             note: `Give up ${Math.round(payCost(g)).toLocaleString()} and walk away `
-                   + `whole. Word gets around that you do.` });
-  return out;
+  if (kind.key === "collector") {
+    built.pay = { key: "pay", label: "PAY HIM", odds: 1,
+                  note: `${n(collectorDemand(g))} off the cash and the same off the debt. `
+                        + `It is a payment, not a robbery.` };
+    built.run = Object.assign({}, built.run, {
+      note: "You keep the money. The Shark adds a fee for the inconvenience, and he does not forget." });
+    for (const key of ["fight", "weapon"]) {
+      if (built[key]) built[key] = Object.assign({}, built[key],
+        { note: built[key].note + " The debt stands either way." });
+    }
+  }
+  if (kind.key === "badge") {
+    built.lawyer = { key: "lawyer", label: "CALL A LAWYER", odds: 1,
+      note: `${n(lawyerCost(g))} on a retainer, and they leave with `
+            + `${Math.round((1 - LAWYER_SAVES) * 100)}% of what they came for. Certain, and it hurts.` };
+    built.run = Object.assign({}, built.run, {
+      note: "From federal agents, in a subway station. If it works you keep everything. "
+            + "They will remember you either way." });
+  }
+  return kind.options.map(k => built[k]).filter(Boolean);
 }
 
 /* The answer with the best odds, for bots and simulations - not for the game,
@@ -890,9 +947,16 @@ function encounterChoices(g) {
 function bestChoice(g) {
   const options = encounterChoices(g);
   if (!options.length) return null;
+  /* For the two encounters that replaced an event, a bot takes the answer that
+     event used to take on its own, so balance numbers stay comparable. */
+  const kind = (g.pending || {}).kind;
+  if (kind === "badge") return "comply";
+  if (kind === "collector") return "pay";
+  const keys = options.map(c => c.key);
   const fighting = options.filter(c => c.key !== "pay");
   const best = fighting.reduce((a, b) => (b.odds > a.odds ? b : a));
-  return best.odds >= 0.45 ? best.key : "pay";
+  if (best.odds >= 0.45) return best.key;
+  return keys.includes("pay") ? "pay" : best.key;
 }
 
 const TAKE_CASH = [0.30, 0.60], TAKE_BAG = [0.10, 0.26], HOSPITAL_CHANCE = 0.35;
@@ -910,6 +974,131 @@ function lossLine(cash, bag) {
   if (bag > 0) return `${m(bag)} of the bag, at cost.`;
   return "nothing, because you had nothing. Small mercies.";
 }
+/* What refusing the Shark's man costs on the loan. He does not take it
+   personally; he takes it out of the principal. */
+const SHARK_FEE_RAN = 0.08, SHARK_FEE_FOUGHT = 0.13;
+const money2 = v => "$" + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* The Shark's associate: the one encounter where paying is the GOOD end. What
+   he takes comes off the debt as well as the cash, so refusing is not saving
+   money - it is declining to pay down a loan that compounds at ten per cent a
+   day, and being charged for the privilege. */
+function collectorStandoff(g, choice, w) {
+  const out = [];
+  const finish = () => { out.forEach(m => g.say(m)); return out; };
+  const demand = collectorDemand(g);
+
+  if (choice === "pay") {
+    if (demand < 50) {
+      out.push("You turn out your pockets. He counts what is there, which does not take long, and tells you he will find you again.");
+      return finish();
+    }
+    const taken = takeCash(g, demand);
+    g.player.debt = Math.max(0, g.player.debt - taken);
+    out.push(`You pay him ${money2(taken)}. It comes straight off the loan, which is the only good thing anybody can say about it.`);
+    return finish();
+  }
+
+  const won = g.rng.random() < encounterOdds(g, choice);
+
+  if (choice === "run") {
+    if (won) {
+      g.player.debt *= (1 + SHARK_FEE_RAN);
+      out.push("You lose him on the mezzanine. Nothing leaves your pocket today.");
+      out.push(`By the evening the loan has grown ${Math.round(SHARK_FEE_RAN * 100)}%. He made a phone call before he lost you.`);
+      return finish();
+    }
+    const taken = takeCash(g, demand * 1.2);
+    g.player.debt = Math.max(0, g.player.debt - taken);
+    out.push(`He is faster than he looks. ${money2(taken)}, off the cash and off the loan, and he keeps the difference for his trouble.`);
+    return finish();
+  }
+
+  if (won) {
+    bumpRep(g, 1);
+    if (choice === "weapon" && w) {
+      out.push(`The ${w.name.toLowerCase()} settles it. He goes back up the stairs with a message you did not write down.`);
+      if (g.rng.random() < w.breaks) {
+        g.weapon = null;
+        out.push(`You leave the ${w.name.toLowerCase()} in a bin two blocks away. It was that or explain it.`);
+      }
+    } else {
+      out.push("You put him on the floor of the mezzanine. People step around both of you without breaking stride.");
+    }
+    g.player.debt *= (1 + SHARK_FEE_FOUGHT);
+    out.push(`The Shark hears about it within the hour and adds ${Math.round(SHARK_FEE_FOUGHT * 100)}% to what you owe. He can afford to be philosophical.`);
+    return finish();
+  }
+
+  bumpRep(g, -1);
+  if (choice === "weapon" && w) {
+    g.weapon = null;
+    out.push(`He takes the ${w.name.toLowerCase()} off you before you have finished deciding to use it.`);
+  }
+  const taken = takeCash(g, demand * 1.35);
+  g.player.debt = Math.max(0, g.player.debt - taken);
+  out.push(`It does not go your way. ${money2(taken)}, and he counts it twice.`);
+  if (g.rng.random() < HOSPITAL_CHANCE) {
+    g.loseADay();
+    out.push("You lose a day to it, and the loan does not stop for that either.");
+  }
+  return finish();
+}
+
+/* Running from federal agents works or it does not, and if it does not they
+   are considerably less interested in your side of it. */
+const CAUGHT_MULTIPLIER = 1.4;
+
+/* Agents at the turnstile. The seizure itself is unchanged, so every number
+   the game was balanced against still holds for anybody who complies. */
+function badgeStandoff(g, choice) {
+  const out = [];
+  const finish = () => { out.forEach(m => g.say(m)); return out; };
+  const seize = scale => {
+    const holding = Object.values(g.player.wallet).some(h => h.qty > 0);
+    if (!holding) {
+      const fine = takeCash(g, (400 + g.rng.random() * 900) * scale);
+      return `Nothing to seize, so they write you a ${money2(fine)} fine instead and take your name twice.`;
+    }
+    const fraction = Math.min(0.95, g.rng.uniform(0.18, 0.42) * scale);
+    const lost = confiscate(g, fraction);
+    return `They seize ${Math.round(fraction * 100)}% of the wallet - ${money2(lost)} at cost. Your lawyer is not returning calls.`;
+  };
+  g.stats.raids = (g.stats.raids | 0) + 1;
+
+  if (choice === "comply") {
+    out.push("You put your hands where they can see them and let it happen.");
+    out.push(seize(1));
+    return finish();
+  }
+  if (choice === "lawyer") {
+    const paid = takeCash(g, lawyerCost(g));
+    out.push(`You make the call. ${money2(paid)} on a retainer, and somebody who knows the words arrives inside the hour.`);
+    out.push(seize(1 - LAWYER_SAVES));
+    return finish();
+  }
+
+  if (g.rng.random() < encounterOdds(g, "run")) {
+    g.stats.fled_sec = (g.stats.fled_sec | 0) + 1;
+    out.push(g.rng.choice([
+      "You go over the turnstile and out through the service door before either of them is through the crowd. Nothing of yours leaves with them.",
+      "Down the stairs, along the platform, up the far exit. You are on a bus before anybody has said your name into a radio.",
+    ]));
+    out.push("They have your face now, which is a bill that arrives later.");
+    return finish();
+  }
+
+  out.push("They have you before the turnstile, and they are not gentle about the fact that you tried.");
+  out.push(seize(CAUGHT_MULTIPLIER));
+  const w = weaponOf(g.weapon);
+  if (w) {
+    g.weapon = null;
+    out.push(`They find the ${w.name.toLowerCase()}. That goes in a bag with a label on it, and so does the rest of your afternoon.`);
+    g.loseADay();
+  }
+  return finish();
+}
+
 function spoils(g) {
   const roll = g.rng.random();
   if (roll < 0.30) {
@@ -935,6 +1124,8 @@ function resolveStandoff(g, choice) {
   const w = weaponOf(g.weapon);
   const out = [];
   const finish = () => { out.forEach(m => g.say(m)); return out; };
+  if (kind.key === "collector") return collectorStandoff(g, choice, w);
+  if (kind.key === "badge") return badgeStandoff(g, choice);
 
   if (choice === "pay") {
     const paid = takeCash(g, payCost(g));
@@ -1015,7 +1206,13 @@ function takeCash(g, amount) {
   return taken;
 }
 
+/* Agents at the turnstile - and now you get to answer them. The seizure is
+   untouched, so the balance still holds for anybody who complies; what is new
+   is that complying is a choice. */
 function secRaid(g) {
+  return openStandoff(g, "badge");
+}
+function secRaidOld(g) {
   if (!hasCoins(g)) {
     g.stats.raids += 1;
     const fine = takeCash(g, 400 + g.rng.random() * 900);
@@ -1049,7 +1246,15 @@ function foundWallet(g) {
   g.player.cash += found;
   return [`A seed phrase on the back of a MetroCard. It still had $${found.toFixed(2)} on it.`];
 }
+/* The Shark's associate, also answerable now. Paying him is the good end -
+   what he takes comes off the loan. */
 function sharkVisit(g) {
+  if (g.player.debt <= 0) {
+    return ["A large man studies you on the platform, decides you're nobody, and goes back to his phone."];
+  }
+  return openStandoff(g, "collector");
+}
+function sharkVisitOld(g) {
   if (g.player.debt <= 0) return ["A large man studies you on the platform, decides you're nobody, and goes back to his phone."];
   const demand = Math.min(Math.max(0, g.player.cash - SUBWAY_FARE), g.player.debt * 0.25);
   if (demand < 50) return ["The Shark's associate finds you. You have nothing. He is patient. That's worse."];
@@ -1812,7 +2017,9 @@ if (typeof module !== "undefined") {
                      REP_MAX, REP_ODDS, repOf, bumpRep, MAX_LOAD_PENALTY,
                      RUN_BASE, FIGHT_BASE, loadPenalty, encounterOdds, KINDS,
                      KIND_BY_KEY, openStandoff, encounterChoices, resolveStandoff,
-                     payCost, stickup, bestChoice, TAKE_CASH, TAKE_BAG, HOSPITAL_CHANCE,
+                     payCost, stickup, bestChoice, TAKE_CASH, lawyerCost,
+                     collectorDemand, LAWYER_SHARE, LAWYER_MIN, LAWYER_SAVES,
+                     SHARK_FEE_RAN, SHARK_FEE_FOUGHT, CAUGHT_MULTIPLIER, TAKE_BAG, HOSPITAL_CHANCE,
                      RAID_GRACE, RAID_RAMP_TO, raidPressure, eventWeights, raidChance,
                      THREAT, THREAT_BARS, WIRE_LINES, threatLevel, standingHeat, wire, EVENTS,
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,

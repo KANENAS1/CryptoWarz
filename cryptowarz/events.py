@@ -59,16 +59,31 @@ def _take_cash(game: "Game", amount: float) -> float:
 # ---------------------------------------------------------------- the events
 
 def sec_raid(game: "Game") -> List[str]:
-    if not _has_coins(game):
-        game.stats["raids"] = game.stats.get("raids", 0) + 1
-        fine = _take_cash(game, 400.0 + game.rng.random() * 900.0)
-        return [f"SEC agents stop you at the turnstile. Nothing to seize, so they "
-                f"write you a ${fine:,.2f} fine instead."]
-    game.stats["raids"] = game.stats.get("raids", 0) + 1
-    fraction = game.rng.uniform(0.18, 0.42)
-    lost = _confiscate(game, fraction)
-    return [f"SEC raid on the platform. They seize {fraction:.0%} of your wallet - "
-            f"${lost:,.2f} at cost. Your lawyer is not returning calls."]
+    """Agents at the turnstile - and now you get to answer them.
+
+    The seizure itself is untouched, so every number the game was balanced
+    against still holds for a player who complies. What is new is that
+    complying is a *choice*: you can buy it down with a lawyer or bet the run
+    on a staircase instead.
+    """
+    from .encounter import open_standoff
+
+    return open_standoff(game, "badge")
+
+
+def shark_visit(game: "Game") -> List[str]:
+    """The Shark's associate, who is also now answerable.
+
+    Paying him is the good end here - what he takes comes off the loan - so
+    refusing is not saving money, it is declining to pay down something that
+    compounds at ten per cent a day, and being charged for it.
+    """
+    from .encounter import open_standoff
+
+    if game.player.debt <= 0:
+        return ["A large man studies you on the platform, decides you're nobody, "
+                "and goes back to his phone."]
+    return open_standoff(game, "collector")
 
 
 def phishing(game: "Game") -> List[str]:
@@ -106,20 +121,6 @@ def found_wallet(game: "Game") -> List[str]:
     game.player.cash += found
     return [f"A seed phrase on the back of a MetroCard. It still had "
             f"${found:,.2f} on it. You don't ask."]
-
-
-def shark_visit(game: "Game") -> List[str]:
-    if game.player.debt <= 0:
-        return ["A large man studies you on the platform, decides you're nobody, "
-                "and goes back to his phone."]
-    demand = min(max(0.0, game.player.cash - SUBWAY_FARE), game.player.debt * 0.25)
-    if demand < 50:
-        return ["The Shark's associate finds you. You have nothing. He is patient. "
-                "That's worse."]
-    game.player.cash -= demand
-    game.player.debt -= demand
-    return [f"The Shark's associate takes ${demand:,.2f} off you on the platform. "
-            f"Consider it a payment."]
 
 
 def whale_offer(game: "Game") -> List[str]:

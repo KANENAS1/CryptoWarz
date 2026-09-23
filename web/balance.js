@@ -4,7 +4,7 @@
    Twister produce different streams - so what is compared is the shape:
    doing nothing must lose, random play must lose badly, and better judgement
    must raise both the survival rate and the ceiling. */
-const { Game, STATIONS, COINS } = require("./game.js");
+const { Game, STATIONS, COINS, bestChoice } = require("./game.js");
 
 const RUNS = Number(process.argv[2] || 200);
 const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
@@ -57,6 +57,10 @@ function play(seed, strategy) {
     try { strategy(g); } catch (e) { /* an unaffordable move is a no-op */ }
     const options = STATIONS.map((s, i) => i).filter(i => STATIONS[i].name !== g.station.name);
     try { g.travel(g.rng.choice(options)); } catch (e) { break; }
+    // A standoff blocks every other action until it is answered. A bot that
+    // ignored one would not merely skip an event - it would stop playing, and
+    // quietly report the rest of the game as unwinnable.
+    if (g.pending) { try { g.resolve(bestChoice(g)); } catch (e) { break; } }
   }
   return g.finalScore();
 }

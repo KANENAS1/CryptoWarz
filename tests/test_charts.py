@@ -57,6 +57,25 @@ class TestTheGameRemembers(unittest.TestCase):
             self.assertAlmostEqual(game.state.history[coin.symbol][-1],
                                    game.state.levels[coin.symbol], msg=coin.symbol)
 
+    def test_a_shock_reaches_the_chart(self):
+        """A bug that hid for as long as the seeds were kind to it.
+
+        A shock lands after the day has already been recorded, so the chart
+        kept the pre-shock level: a coin could double on a headline and the
+        sparkline would show the day it did not move - the one day in a
+        fortnight a chart exists to show. The fix corrects the day rather than
+        adding one, so the point-per-day invariant still holds.
+        """
+        from cryptowarz.coins import coin as get_coin
+        from cryptowarz.market import MarketState
+
+        state = MarketState(random.Random(3))
+        before = len(state.history["BONK"])
+        state.apply("BONK", 1.8, get_coin("BONK"))
+        self.assertEqual(len(state.history["BONK"]), before, "a shock added a day")
+        self.assertAlmostEqual(state.history["BONK"][-1], state.levels["BONK"],
+                               msg="the chart missed the shock")
+
     def test_history_is_capped_so_a_save_cannot_grow_forever(self):
         game = ride(Game(seed=5), 40)
         for coin in COINS:

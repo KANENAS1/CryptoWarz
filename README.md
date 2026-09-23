@@ -122,6 +122,36 @@ a day in hospital with the Shark's clock still running. Paying is certain, costs
 The percentages are the real ones — the screen reads the same function the roll
 uses.
 
+### Everyone who comes for your money is answerable
+
+A stickup was the first one. The other two used to be weather — they happened,
+they took what they took, you read about it. Now all three stop and ask.
+
+**The Shark sent somebody.** He came for a payment, and this is the one
+encounter where **paying is the good end**: what he takes comes off the loan as
+well as the cash. So refusing him is not saving money — it is declining to pay
+down something that compounds at 10% a day, and being charged for the privilege.
+
+| | |
+|---|---|
+| **PAY HIM** | A quarter of the debt, off the cash *and* off the debt |
+| **RUN** | You keep the money; the loan grows **8%** and he does not forget |
+| **SWING FIRST** / **USE THE…** | You keep it; the loan grows **13%**; the debt stands either way |
+
+**Federal agents at the turnstile.** The seizure itself is unchanged — 18–42%
+of the bag — so every number the game was balanced against still holds for
+anybody who complies. What is new is that complying is a *choice*:
+
+| | |
+|---|---|
+| **HANDS WHERE THEY CAN SEE THEM** | The raid as it always was |
+| **CALL A LAWYER** | 18% of your cash on a retainer; they leave with **45%** of what they came for |
+| **RUN** | Your odds as normal. Get away and you keep everything; get caught and it is **1.4×**, and if they find what you are carrying that is a lost day too |
+
+**No weapon is offered against a badge**, and that is deliberate: a trap you can
+only learn by falling into it is a worse teacher than a door that was never
+there.
+
 ### What you are carrying, and what it costs you
 
 | | Edge in a fight | Heat | Breaks | Price |
@@ -161,6 +191,23 @@ event into a routine. It ships at **5.5 — about 1.7 a run**, taking the
 buy-the-cheapest bot from 50% to 47% solvent. Often enough that carrying
 something is a real question; rare enough that meeting somebody on the stairs
 still registers.
+
+### Two bugs this turned up
+
+**A shock never reached the chart.** A headline moves the real price level, but
+it lands *after* the day has been recorded — so the sparkline kept the
+pre-shock number. A coin could double on a pump and the chart would show the
+day it did not move, which is precisely the day a chart exists to show. A shock
+now corrects the day rather than adding one, so the point-per-day invariant
+still holds. It hid for as long as the seeds happened to be kind.
+
+**The JS balance bot had stopped playing.** A standoff blocks every other
+action until answered, and the bot never answered — so from its first mugger it
+was not skipping an event, it was standing still for the rest of the run and
+reporting the game as unwinnable (23% solvent against Python's 48%). Both bots
+now answer the way a player does. They take the answer each event used to take
+on its own — comply with the badge, pay the collector — so every number measured
+before these became choices stays comparable afterwards.
 
 ### A lost day now moves the market
 
