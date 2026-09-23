@@ -2096,6 +2096,17 @@ function writeSave(g) {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveToDict(g))); return true; }
   catch (e) { return false; }
 }
+/* When this browser's copy was written, or 0. Read from the raw record
+   rather than the rebuilt Game, which does not carry the timestamp - the
+   cloud restore needs to know which copy is newer. */
+function savedAt() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return 0;
+    const data = JSON.parse(raw);
+    return (data && !data.finished && data.saved_at) ? data.saved_at : 0;
+  } catch (e) { return 0; }
+}
 function readSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
@@ -2153,7 +2164,7 @@ function fmtMoney(v) {
 if (typeof module !== "undefined") {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
                      fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
-                     BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
+                     savedAt, BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
                      makeBackup, readBackup, writeScores, storageWorks,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,

@@ -222,6 +222,37 @@ class TestWebSourcesExist(unittest.TestCase):
         self.assertIn("signed in", note)
         self.assertIn("open-web version", note)
 
+    def test_progress_is_also_kept_off_this_browser(self):
+        """localStorage is the wrong place to be the ONLY place.
+
+        Safari treats a framed page as third-party and can refuse it storage or
+        throw the contents away between visits - which is exactly where the
+        published artifact runs on a phone. Every write was already wrapped in
+        try/catch, so it failed silently, correctly, and lost everything.
+
+        The second copy goes to this viewer's own private subtree, which the
+        platform keeps private per viewer. Three things have to hold: the path
+        is the per-viewer one, the id is awaited (an un-awaited promise is not
+        a valid path segment and the builder throws), and a restore compares
+        against the timestamp from BEFORE boot wrote anything - boot starts a
+        fresh run when the browser has nothing, and comparing live made that
+        day-one run look newer than the real one on the server.
+        """
+        html = (WEB / "index.html").read_text()
+        self.assertIn('claude.use("db")', html)
+        self.assertIn('claude.use("user")', html)
+        self.assertIn('"data/users/" + c.uid', html, "the per-viewer subtree")
+        self.assertIn("const uid = await user.id()", html, "the id must be awaited")
+        self.assertIn("cloudRestore(mineAtBoot)", html)
+        self.assertIn("const mineAtBoot = savedAt()", html)
+        boot = html[html.index("function boot(){"):]
+        boot = boot[:boot.index("\n}")]
+        self.assertLess(boot.index("mineAtBoot = savedAt()"), boot.index("readSave()"),
+                        "the timestamp must be read before anything writes")
+        # a late answer must never yank a live run away
+        self.assertIn("touchedThisLoad", html)
+        self.assertIn("if (!body || touchedThisLoad) return;", html)
+
     def test_a_browser_that_refuses_to_save_says_so(self):
         """Every write is wrapped in try/catch, which keeps a blocked store
         from ending the run - and lets somebody in Private Browsing play thirty

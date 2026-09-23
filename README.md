@@ -962,6 +962,42 @@ supposed to buy you.
 
 </details>
 
+## Progress is kept off your browser too
+
+`localStorage` is the wrong place to be the *only* place. Safari treats a page
+in a frame as third-party and can refuse it storage or throw the contents away
+between visits — which is exactly where the published artifact runs on a phone.
+Every write was already wrapped in try/catch, so it failed silently, correctly,
+and lost everything anyway.
+
+So the run and the profile are **also written server-side**, to the viewer's own
+private subtree (`data/users/<id>/`), which the platform keeps private per
+viewer — the artifact's owner included. It survives cleared site data, a new
+phone and Safari's opinions, and it is the same progress on any device you open
+the page from.
+
+Three details that took a measurement each:
+
+*The id must be awaited.* An un-awaited promise is not a valid path segment and
+the path builder throws. A null id means no private subtree, so the feature
+turns itself off for that visit rather than relocating the data somewhere
+shared.
+
+*A restore compares against the timestamp from before boot wrote anything.*
+Boot starts a fresh run when the browser has nothing — so comparing against the
+live value made that day-one run look newer than the real one waiting on the
+server, and the restore never fired. That cost two debugging rounds.
+
+*A late answer never yanks a live run away.* The server can reply after you have
+already started playing; any real action marks the load, and a restore that
+arrives late stands down.
+
+Verified end to end in a browser against a stand-in server: played to day 7,
+**cleared `localStorage` entirely** the way Safari would, reloaded — day 7,
+$1,985, Grand Central, 12 runs and the gear all came back. With no runtime at
+all the page behaves exactly as before, and a run in progress survived a server
+answer that arrived 1.5 seconds late.
+
 ## Nothing here is trapped in one browser
 
 The save and the profile live in whatever browser or home directory you played

@@ -1319,6 +1319,112 @@ function setName(name){
   return me;
 }
 
+/* ------------------------- keeping your progress ----------------------
+   localStorage is the wrong place to be the ONLY place.
+
+   Safari treats a page in a frame as third-party and can refuse it storage
+   or throw the contents away between visits, which is exactly where the
+   published artifact runs on a phone: you play thirty days, come back, and
+   the run and the gear are gone. Every write here was already wrapped in
+   try/catch, so it failed silently and correctly and lost everything anyway.
+
+   So the run and the profile are also written server-side, to this viewer's
+   own private subtree - `data/users/<id>/`, which the platform keeps private
+   per viewer, the owner included. It survives cleared site data, a new phone,
+   and Safari's opinions, and it is the same progress on any device you open
+   the page from.
+
+   Everything below degrades to exactly the old behaviour when there is no
+   runtime, no grant, or no id: this is a second copy, never the only one. */
+let cloudReady = null;
+function cloud(){
+  if (!cloudReady) {
+    cloudReady = (async () => {
+      if (!(window.claude && typeof window.claude.use === "function")) return null;
+      try {
+        const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
+        if (!db || !user) return null;
+        const uid = await user.id();
+        // no id means no private subtree; the feature is off for this visit
+        // rather than relocated somewhere shared
+        return uid ? { db: db, uid: String(uid) } : null;
+      } catch (e) { return null; }
+    })();
+  }
+  return cloudReady;
+}
+function cloudDoc(c, name){ return c.db.doc("data/users/" + c.uid + "/" + name); }
+
+/* One write at a time per document, and only after a real change: a burst of
+   taps coalesces into one write when the player pauses. */
+let cloudTimer = null, cloudInFlight = false, cloudDirty = false;
+function cloudPush(){
+  cloudDirty = true;
+  if (cloudTimer) return;
+  cloudTimer = setTimeout(async () => {
+    cloudTimer = null;
+    if (cloudInFlight) { cloudPush(); return; }
+    const c = await cloud();
+    if (!c) return;
+    cloudInFlight = true;
+    cloudDirty = false;
+    try {
+      const body = { updated_at: Date.now() / 1000, profile: readProfile(),
+                     scores: readScores().slice(0, 15) };
+      if (game && !game.finished) body.run = saveToDict(game);
+      await cloudDoc(c, "progress").set(body);
+    } catch (e) { /* a refused or offline write must never end a run */ }
+    cloudInFlight = false;
+    if (cloudDirty) cloudPush();
+  }, 1200);
+}
+
+/* Read it back on the way in. The page has already rendered from whatever is
+   in this browser, so this only steps in when the copy on the server is newer
+   AND nothing has been touched yet - adopting a run out from under somebody
+   mid-tap would be worse than losing one. */
+let touchedThisLoad = false;
+async function cloudRestore(mineAtBoot){
+  const c = await cloud();
+  if (!c) return;
+  let body = null;
+  try {
+    const snap = await cloudDoc(c, "progress").get();
+    if (!snap.exists) return;
+    body = snap.data();
+  } catch (e) { return; }
+  if (!body || touchedThisLoad) return;
+
+  const localProfile = readProfile();
+  const cloudProfile = body.profile;
+  const newer = (cloudProfile && (cloudProfile.updated_at || 0) > (localProfile.updated_at || 0));
+  let took = [];
+  if (newer) {
+    profile = writeProfile(Object.assign(blankProfile(), cloudProfile,
+                                         { version: PROGRESS_VERSION }));
+    if (Array.isArray(body.scores)) writeScores(body.scores);
+    took.push("progress");
+  }
+  // the timestamp from BEFORE boot wrote anything. Boot starts a fresh run
+  // when this browser has nothing, and saves it - so comparing against the
+  // live value made that day-one run look newer than the real one waiting on
+  // the server, and the restore never fired.
+  const mine = mineAtBoot || 0;
+  const theirs = body.run ? (body.run.saved_at || 0) : 0;
+  if (body.run && theirs > mine + 1) {
+    try {
+      game = saveFromDict(body.run);
+      writeSave(game);
+      openCoin = null;
+      took.push(`day ${game.day}`);
+    } catch (e) { /* a run this build cannot read is not worth breaking over */ }
+  }
+  if (!took.length) return;
+  if (newer) game.gear = levelsFromWins(profile.gear_wins);
+  render();
+  flash(`Picked up where you left off — ${took.join(", ")}.`, true);
+}
+
 /* ---------------------------- the board ------------------------------- */
 /* The shared leaderboard rides the artifact's db capability, which exists only
    on the published page. Everything below degrades to your own scores when it
@@ -1738,7 +1844,11 @@ $("closegoals").addEventListener("click", closeSheets);
 /* The run is written after every move, so closing the tab mid-game loses
    nothing. The saved RNG state means reopening replays the same dice - you
    cannot close the tab to dodge a raid you have already walked into. */
-function persist(){ if (game && !game.finished) writeSave(game); }
+function persist(){
+  touchedThisLoad = true;            // a late restore must not undo a live run
+  if (game && !game.finished) writeSave(game);
+  cloudPush();                       // the copy that survives cleared storage
+}
 
 /* Whether a shared board could exist here at all.
    Two different absences, and telling them apart matters: on the published
@@ -1844,14 +1954,24 @@ function openSetup(){
 
 /* Asked once, on the way in: a player who cannot save must be told on day one,
    not discover it on day thirty. */
-function warnIfNothingIsBeingSaved(){
+async function warnIfNothingIsBeingSaved(){
   const el = $("nosave");
   if (!el) return;
-  el.hidden = storageWorks();
+  const local = storageWorks();
+  el.hidden = local;
+  if (local) return;
+  // storage is blocked - but if the server copy is working, nothing is
+  // actually being lost, and saying so would be a lie that costs trust
+  const c = await cloud();
+  if (!c) return;
+  el.innerHTML = `<b>THIS BROWSER ISN'T SAVING.</b> Your progress is being kept
+    on your Claude account instead, so it will still be here next time — but
+    <b>BACKUP</b> on the gear screen is worth a copy anyway.`;
 }
 
 function boot(){
   warnIfNothingIsBeingSaved();
+  const mineAtBoot = savedAt();      // before anything below writes
   const resumed = readSave();
   if (resumed && !resumed.finished) {
     game = resumed;
@@ -1870,6 +1990,14 @@ function boot(){
     start(slot === null ? Math.floor(Math.random() * 1e9) : dailySeeds()[slot],
           1, null, slot);
   }
+  // and then ask the server whether it has something better. Never blocks the
+  // first paint: the page is already playable by the time this resolves.
+  //
+  // Boot's own save is not a player action, and it had been setting the very
+  // flag that tells a late restore to stand down - so the restore always found
+  // the page "touched" and did nothing. The flag starts counting from here.
+  touchedThisLoad = false;
+  cloudRestore(mineAtBoot);
 }
 
 $("newgame").addEventListener("click", () => {
