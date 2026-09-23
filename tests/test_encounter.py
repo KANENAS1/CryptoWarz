@@ -202,3 +202,91 @@ class TestTheShop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEveryMoneyTakerIsAnswerable(unittest.TestCase):
+    """The promise: nothing takes money without asking first.
+
+    Four things used to reach into your pockets on their own - the mugger, the
+    Shark's man, the SEC and a drainer - plus gas, which is not a person but is
+    still a bill. All five stop now. This test is the list, so a future event
+    that quietly takes money has to be added to it on purpose.
+    """
+
+    TAKERS = ("stickup", "followed", "collector", "badge", "drain", "gas")
+
+    def test_every_one_of_them_offers_at_least_two_answers(self):
+        for kind in self.TAKERS:
+            game = cornered()
+            game.pending = None
+            E.open_standoff(game, kind)
+            options = [c["key"] for c in game.choices()]
+            self.assertGreaterEqual(len(options), 2, kind)
+            self.assertEqual(len(options), len(set(options)), kind)
+
+    def test_every_offered_answer_actually_resolves(self):
+        """No option may be shown and then refused, and every one must clear."""
+        for kind in self.TAKERS:
+            for option in [c["key"] for c in
+                           (lambda g: (E.open_standoff(g, kind), g.choices())[1])(cornered())]:
+                game = cornered(weapon="bat", cash=9_000.0)
+                game.pending = None
+                game.player.debt = 12_000.0
+                game.player.capacity = 1e9
+                game.player.holding("BTC").qty = 1.0
+                game.player.holding("BTC").cost = 5_000.0
+                E.open_standoff(game, kind)
+                if option not in {c["key"] for c in game.choices()}:
+                    continue
+                game.resolve(option)
+                # "check" deliberately re-opens the same one, with the answer showing
+                if option == "check":
+                    self.assertTrue(game.pending["known"])
+                    game.resolve("walk")
+                self.assertIsNone(game.pending, f"{kind}/{option} left it open")
+
+    def test_none_of_them_can_take_the_last_fare(self):
+        from cryptowarz.game import SUBWAY_FARE
+        for kind in self.TAKERS:
+            for seed in range(20):
+                game = cornered(cash=40.0, seed=seed)
+                game.pending = None
+                game.player.debt = 5_000.0
+                E.open_standoff(game, kind)
+                options = [c["key"] for c in game.choices()]
+                game.resolve(options[-1])
+                if game.pending:                 # "check" re-opens; finish it
+                    game.resolve("walk")
+                self.assertGreaterEqual(game.player.cash, min(40.0, SUBWAY_FARE) - 1e-9,
+                                        f"{kind} seed {seed}")
+
+
+class TestNerve(unittest.TestCase):
+    def test_carrying_something_is_worth_luck(self):
+        from cryptowarz.game import Game
+        game = Game(seed=3)
+        self.assertEqual(game.luck, 0.0)
+        game.weapon = "taser"
+        self.assertAlmostEqual(game.luck, E.WEAPON_BY_KEY["taser"].nerve)
+
+    def test_it_never_stacks_on_gear(self):
+        """The rule the whole luck system rests on: the best single bonus you
+        have, never the sum. A weapon is not an exception."""
+        from cryptowarz.game import Game
+        from cryptowarz.gear import LUCK_PER_LEVEL, MAX_LEVEL
+        game = Game(seed=3, gear={"major": MAX_LEVEL})
+        game.player.holding("BTC").qty = 1.0
+        bare = game.luck
+        game.weapon = "taser"
+        self.assertAlmostEqual(game.luck, bare)
+        self.assertAlmostEqual(game.luck, MAX_LEVEL * LUCK_PER_LEVEL)
+
+    def test_it_is_junior_to_gear_at_every_step(self):
+        from cryptowarz.gear import LUCK_PER_LEVEL, MAX_LEVEL
+        best = max(w.nerve for w in E.WEAPONS)
+        self.assertLess(best, MAX_LEVEL * LUCK_PER_LEVEL / 2,
+                        "a weapon must never rival a full set of gear")
+
+    def test_better_weapons_carry_more_of_it(self):
+        by_edge = sorted(E.WEAPONS, key=lambda w: w.edge)
+        self.assertEqual([w.nerve for w in by_edge], sorted(w.nerve for w in by_edge))

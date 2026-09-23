@@ -398,6 +398,46 @@ const out = {
                  lawyer_saves: G.LAWYER_SAVES, caught: G.CAUGHT_MULTIPLIER,
                  comply: after("comply"), lawyer: after("lawyer") };
       })(),
+      /* a weapon is worth luck, and luck is still never a sum */
+      nerve: G.WEAPONS.map(w => w.nerve),
+      nerve_is_luck: (() => { const g = new G.Game(3); g.weapon = "taser"; return g.luck; })(),
+      nerve_never_stacks: (() => {
+        const g = new G.Game(3, 1, null, { major: 3 });
+        g.holding("BTC").qty = 1; g.weapon = "taser";
+        return g.luck;
+      })(),
+      drain: (() => {
+        const make = () => { const g = new G.Game(4);
+          g.player.cash = 9000; g.player.capacity = 1e9;
+          const h = g.holding("BTC"); h.qty = 1; h.cost = 5000;
+          G.openStandoff(g, "drain"); return g; };
+        const g = make();
+        const real = g.pending.real;
+        const afterCheck = (() => { const x = make(); x.resolve("check");
+          return { known: !!x.pending.known, options: x.choices().map(c => c.key),
+                   cash: Math.round(x.player.cash) }; })();
+        return { options: g.choices().map(c => c.key), real_rate: G.DRAIN_REAL,
+                 check_cost: Math.round(G.checkCost(g)), after_check: afterCheck,
+                 walk_costs_nothing: (() => { const x = make();
+                   const before = x.player.cash; x.resolve("walk");
+                   return x.player.cash === before; })() };
+      })(),
+      gas: (() => {
+        const make = () => { const g = new G.Game(4);
+          g.player.cash = 9000; g.player.capacity = 1e9;
+          const h = g.holding("BTC"); h.qty = 1; h.cost = 5000;
+          G.openStandoff(g, "gas"); return g; };
+        const g = make();
+        return { options: g.choices().map(c => c.key), fee: Math.round(g.pending.fee),
+                 relay_share: G.RELAY_SHARE, relay_base: G.RELAY_BASE,
+                 paid: (() => { const x = make(); x.resolve("paygas");
+                   return Math.round(x.player.cash); })(),
+                 /* nerve tilts the relay, which is the one place it pays off
+                    outside a fight */
+                 relay_odds_bare: G.encounterOdds(make(), "relay"),
+                 relay_odds_armed: (() => { const x = make(); x.weapon = "taser";
+                   return Math.round(G.encounterOdds(x, "relay") * 10000) / 10000; })() };
+      })(),
       /* paying keeps the bag; it is the point of paying */
       paying_keeps_the_bag: (() => {
         const g = cornered(10000);

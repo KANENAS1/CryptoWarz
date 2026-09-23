@@ -741,6 +741,63 @@ class TestEncounterParity(unittest.TestCase):
             self.assertEqual(js[choice]["cash"], round(game.player.cash), choice)
             self.assertEqual(js[choice]["raids"], game.stats["raids"], choice)
 
+    def test_a_weapon_is_worth_luck_on_both_sides(self):
+        """Nerve: carrying something changes how you move, and the game already
+        has a number for that. Junior to gear, and never added to it."""
+        from cryptowarz import encounter as en
+        from cryptowarz.game import Game
+        self.assertEqual(self.js["nerve"], [w.nerve for w in en.WEAPONS])
+        bare = Game(seed=3)
+        bare.weapon = "taser"
+        self.assertAlmostEqual(self.js["nerve_is_luck"], bare.luck)
+        geared = Game(seed=3, gear={"major": 3})
+        geared.player.holding("BTC").qty = 1.0
+        geared.weapon = "taser"
+        self.assertAlmostEqual(self.js["nerve_never_stacks"], geared.luck)
+        self.assertAlmostEqual(geared.luck, 0.15,
+                               msg="nerve stacked on top of full gear")
+
+    def _drain_game(self, kind="drain"):
+        from cryptowarz import encounter as en
+        from cryptowarz.game import Game
+        game = Game(seed=4)
+        game.player.cash = 9_000.0
+        game.player.capacity = 1e9
+        game.player.holding("BTC").qty = 1.0
+        game.player.holding("BTC").cost = 5_000.0
+        en.open_standoff(game, kind)
+        return game
+
+    def test_the_signature_request_matches(self):
+        """Paying to read the contract must reveal a fact that already exists,
+        on both sides - otherwise checking is a second roll rather than the
+        same one seen clearly."""
+        from cryptowarz import encounter as en
+        js = self.js["drain"]
+        self.assertEqual(js["options"], ["sign", "check", "walk"])
+        self.assertAlmostEqual(js["real_rate"], en.DRAIN_REAL)
+        self.assertEqual(js["check_cost"], round(en.check_cost(self._drain_game())))
+        game = self._drain_game()
+        game.resolve("check")
+        self.assertTrue(js["after_check"]["known"])
+        self.assertTrue(game.pending["known"])
+        self.assertEqual(js["after_check"]["options"], [c["key"] for c in game.choices()])
+        self.assertEqual(js["after_check"]["cash"], round(game.player.cash))
+        self.assertTrue(js["walk_costs_nothing"])
+
+    def test_the_gas_squeeze_matches(self):
+        from cryptowarz import encounter as en
+        js = self.js["gas"]
+        self.assertEqual(js["options"], ["paygas", "relay"])
+        self.assertAlmostEqual(js["relay_share"], en.RELAY_SHARE)
+        self.assertAlmostEqual(js["relay_base"], en.RELAY_BASE)
+        self.assertAlmostEqual(js["relay_odds_bare"], en.RELAY_BASE)
+        armed = self._drain_game("gas")
+        armed.weapon = "taser"
+        self.assertAlmostEqual(js["relay_odds_armed"], round(en.odds(armed, "relay"), 4))
+        self.assertGreater(js["relay_odds_armed"], js["relay_odds_bare"],
+                           "nerve must tilt the relay")
+
     def test_paying_keeps_the_bag_on_both_sides(self):
         paid = self.js["paying_keeps_the_bag"]
         self.assertEqual(paid["qty"], 1, "paying must not cost the bag")

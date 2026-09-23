@@ -433,9 +433,13 @@ Object.defineProperty(Game.prototype, "sharkRate", {
     const rate = difficultyOf(this.difficulty).shark;
     return this.perk === "fixer" ? rate * 0.85 : rate;
   } });
-/* The best gear bonus you are holding for right now, 0 to 0.15. */
+/* The best SINGLE bonus you have right now, 0 to 0.15: gear you are holding
+   for, or the nerve of whatever is in your coat - whichever is larger, never
+   the two added. "Never a sum" is the rule the luck system rests on, and a
+   weapon is not an exception; what carrying something buys is a floor, which
+   matters most early, when you have no gear at all. */
 Object.defineProperty(Game.prototype, "luck", {
-  get() { return bestLuck(this.gear, this.player.wallet); } });
+  get() { return Math.max(bestLuck(this.gear, this.player.wallet), nerveOf(this)); } });
 Game.prototype.luckBySymbol = function () { return luckBySymbol(this.gear, this.player.wallet); };
 
 /* ------------------------------- dead end ---------------------------- */
@@ -794,24 +798,26 @@ Game.prototype.verdict = function () {
 const WEAPONS = [
   { key: "brick",  name: "Half a Brick",
     blurb: "It was holding a door open. Now it is holding your nerve together.",
-    edge: 0.12, heat: 0.02, breaks: 0.45, price: 0 },
+    edge: 0.12, heat: 0.02, breaks: 0.45, price: 0, nerve: 0.01 },
   { key: "pipe",   name: "Length of Pipe",
     blurb: "Scaffolding offcut. Heavier than it looks, which is the entire idea.",
-    edge: 0.18, heat: 0.06, breaks: 0.20, price: 400 },
+    edge: 0.18, heat: 0.06, breaks: 0.20, price: 400, nerve: 0.02 },
   { key: "cutter", name: "Box Cutter",
     blurb: "Nobody wants to find out whether you would. That is usually enough.",
-    edge: 0.26, heat: 0.14, breaks: 0.10, price: 1200 },
+    edge: 0.26, heat: 0.14, breaks: 0.10, price: 1200, nerve: 0.03 },
   { key: "bat",    name: "Louisville Slugger",
     blurb: "You tell people you play softball. Nobody has ever believed you.",
-    edge: 0.33, heat: 0.20, breaks: 0.06, price: 3200 },
+    edge: 0.33, heat: 0.20, breaks: 0.06, price: 3200, nerve: 0.04 },
   { key: "taser",  name: "Stun Gun",
     blurb: "Legal in some states. This is not one of them, and it is the good kind.",
-    edge: 0.42, heat: 0.28, breaks: 0.14, price: 9000 },
+    edge: 0.42, heat: 0.28, breaks: 0.14, price: 9000, nerve: 0.05 },
 ];
 const WEAPON_BY_KEY = Object.fromEntries(WEAPONS.map(w => [w.key, w]));
 const FOR_SALE = WEAPONS.filter(w => w.price > 0).map(w => w.key);
 function weaponOf(key) { return key ? (WEAPON_BY_KEY[key] || null) : null; }
 function carryHeat(g) { const w = weaponOf(g.weapon); return w ? w.heat : 0; }
+/* The luck a weapon is worth just by being in your coat. */
+function nerveOf(g) { const w = weaponOf(g.weapon); return w ? w.nerve : 0; }
 
 const REP_MAX = 3, REP_ENCOUNTER = 0.06, REP_ODDS = 0.05;
 function repOf(g) { return Math.max(-REP_MAX, Math.min(REP_MAX, (g.stats.rep | 0))); }
@@ -826,6 +832,11 @@ function loadPenalty(g) {
 function encounterOdds(g, choice) {
   const rep = repOf(g);
   let chance;
+  if (choice === "relay") {
+    /* the same coin every gamble here is flipped on: luck tilts it, which is
+       the one place nerve pays off outside a fight */
+    return Math.max(0.05, Math.min(0.95, RELAY_BASE + g.luck));
+  }
   if (choice === "run") {
     chance = RUN_BASE - loadPenalty(g) + rep * REP_ODDS;
   } else if (choice === "fight" || choice === "weapon") {
@@ -871,13 +882,34 @@ const KINDS = [
       "The suit at {station} shows you something in a wallet and asks you to step to one side. He is not really asking.",
       "They come down both stairwells at {station} at once, which tells you how long they have known.",
     ] },
+  { key: "drain", title: "A SIGNATURE REQUEST", severity: 1.0, armable: false,
+    options: ["sign", "check", "walk"],
+    opening: [
+      "Your wallet lights up at {station}. A contract wants permission for something, and the name on it is one letter off a name you trust.",
+      "The airdrop everybody has been posting about wants you to sign. It is either the one they mean or the one pretending to be it.",
+      "A DM, a link, a connect prompt, and a countdown. Everything about it is designed to make you hurry.",
+    ] },
+  { key: "gas", title: "THE NETWORK IS ON FIRE", severity: 1.0, armable: false,
+    options: ["paygas", "relay"],
+    opening: [
+      "Every block at {station} is a bidding war. Moving your own money is going to cost you today.",
+      "Fees have gone vertical. Somebody minted something and the whole chain is paying for it.",
+      "The mempool is a car park. You can pay to get out of it or you can find another way round.",
+    ] },
 ];
 const KIND_BY_KEY = Object.fromEntries(KINDS.map(k => [k.key, k]));
 
 function openStandoff(g, kindKey) {
   const kind = KIND_BY_KEY[kindKey] || KINDS[0];
   const line = g.rng.choice(kind.opening).replace(/\{station\}/g, g.station.name);
-  g.pending = { kind: kind.key, day: g.day, station: g.station.name, line: line };
+  const pending = { kind: kind.key, day: g.day, station: g.station.name, line: line };
+  /* decided now, not when you answer: paying to read the contract has to
+     reveal something that already exists, or "check" would be a different roll
+     rather than the same one seen clearly. It rides the save for the same
+     reason. */
+  if (kind.key === "drain") pending.real = g.rng.random() < DRAIN_REAL ? 1 : 0;
+  if (kind.key === "gas") pending.fee = 120 + g.rng.random() * 700;
+  g.pending = pending;
   g.stats.standoffs = (g.stats.standoffs | 0) + 1;
   return [line];
 }
@@ -889,6 +921,15 @@ function payCost(g) {
 
 /* What a lawyer costs and what he is worth: the only answer to a badge that is
    not a bet - you buy the seizure down instead. */
+/* How often a signature request is the airdrop it claims to be. Under half on
+   purpose: signing has to be a bad bet you sometimes take anyway, or "read the
+   contract" would be a tax rather than a choice. */
+const DRAIN_REAL = 0.25, DRAIN_PAYS = [350, 1800], DRAIN_TAKES = [0.08, 0.22];
+const CHECK_SHARE = 0.04, CHECK_MIN = 220;
+const RELAY_SHARE = 0.10, RELAY_BASE = 0.72, RELAY_TAKES = [0.06, 0.15];
+function checkCost(g) { return Math.max(CHECK_MIN, g.player.cash * CHECK_SHARE); }
+function gasFee(g) { return ((g.pending || {}).fee) || 400; }
+
 const LAWYER_SHARE = 0.18, LAWYER_MIN = 800, LAWYER_SAVES = 0.55;
 function lawyerCost(g) { return Math.max(LAWYER_MIN, g.player.cash * LAWYER_SHARE); }
 /* What the Shark's man came for: a quarter of the debt, if you have it. */
@@ -930,6 +971,28 @@ function encounterChoices(g) {
         { note: built[key].note + " The debt stands either way." });
     }
   }
+  if (kind.key === "drain") {
+    const real = (g.pending.real | 0), known = !!g.pending.known;
+    built.sign = { key: "sign", label: "SIGN IT",
+      odds: known ? (real ? 1 : 0) : DRAIN_REAL,
+      note: known ? (real ? "It is the real one. Sign." : "It is a drainer. Do not.")
+                  : `Roughly ${Math.round(DRAIN_REAL * 100)}% of these are the airdrop `
+                    + `they say they are. The rest empty a share of your bag.` };
+    built.check = { key: "check", label: "READ THE CONTRACT", odds: 1,
+      note: known ? "Already read."
+                  : `${n(checkCost(g))} to somebody who can read Solidity. You will `
+                    + `know which it is, and then you decide.` };
+    built.walk = { key: "walk", label: "IGNORE IT", odds: 1,
+      note: "Costs nothing. You will never know what it was." };
+    if (known) delete built.check;
+  }
+  if (kind.key === "gas") {
+    built.paygas = { key: "paygas", label: "PAY THE FEE", odds: 1,
+      note: `About ${n(gasFee(g))} to move your own money. Annoying, certain, over with.` };
+    built.relay = { key: "relay", label: "USE A PRIVATE RELAY",
+      odds: encounterOdds(g, "relay"),
+      note: `A tenth of the fee, through somebody you found on a forum. Usually fine.` };
+  }
   if (kind.key === "badge") {
     built.lawyer = { key: "lawyer", label: "CALL A LAWYER", odds: 1,
       note: `${n(lawyerCost(g))} on a retainer, and they leave with `
@@ -952,6 +1015,8 @@ function bestChoice(g) {
   const kind = (g.pending || {}).kind;
   if (kind === "badge") return "comply";
   if (kind === "collector") return "pay";
+  if (kind === "gas") return "paygas";
+  if (kind === "drain") return "sign";   // the naive answer the old event forced
   const keys = options.map(c => c.key);
   const fighting = options.filter(c => c.key !== "pay");
   const best = fighting.reduce((a, b) => (b.odds > a.odds ? b : a));
@@ -1099,6 +1164,72 @@ function badgeStandoff(g, choice) {
   return finish();
 }
 
+/* A signature request that is either the airdrop or the thing wearing it. The
+   decision is information, not odds: take the bet blind, pay to know and then
+   take it with your eyes open, or walk and never find out. Ignoring it is
+   always free, which is what stops "read it" being a tax. */
+function drainStandoff(g, choice, was) {
+  const out = [];
+  const finish = () => { out.forEach(m => g.say(m)); return out; };
+  const real = !!(was.real | 0);
+
+  if (choice === "walk") {
+    out.push("You close the tab. Whatever it was, it was not worth finding out at that speed.");
+    return finish();
+  }
+  if (choice === "check") {
+    const paid = takeCash(g, checkCost(g));
+    g.pending = Object.assign({}, was, { known: true });
+    g.pending.line = `${money2(paid)} later, somebody who reads Solidity for a living tells you `
+      + (real ? "it is exactly what it says it is."
+              : "the approval is unlimited and the recipient is not the project.");
+    out.push(g.pending.line);
+    return finish();
+  }
+  if (real) {
+    const pool = COINS.filter(c => c.symbol !== "USDC");
+    const target = g.rng.choice(pool);
+    const value = g.rng.uniform(DRAIN_PAYS[0], DRAIN_PAYS[1]);
+    const price = g.market.prices[target.symbol];
+    if (g.freeCapacity() < value) {
+      out.push(`It was real, and your wallet is full. The ${target.symbol} expires unclaimed, which is its own kind of answer.`);
+      return finish();
+    }
+    const h = g.holding(target.symbol);
+    h.qty += value / price; h.cost += value;
+    out.push(`It was the real one. ${fmtQty(value / price)} ${target.symbol} (~${money2(value)}) lands while you are still reading the tweet.`);
+    return finish();
+  }
+  const fraction = g.rng.uniform(DRAIN_TAKES[0], DRAIN_TAKES[1]);
+  const lost = confiscate(g, fraction);
+  if (lost <= 0) {
+    out.push("You signed something you should not have. There was nothing in there to take, which is the first time that has been good news.");
+    return finish();
+  }
+  out.push(`You signed it. The approval was unlimited and the wallet on the other end was not the project's. ${money2(lost)} of the bag, gone in one block.`);
+  return finish();
+}
+
+/* Fees have gone vertical. Pay them, or go round and risk it. */
+function gasStandoff(g, choice, was) {
+  const out = [];
+  const finish = () => { out.forEach(m => g.say(m)); return out; };
+  const fee = was.fee || 400;
+  if (choice === "paygas") {
+    const paid = takeCash(g, fee);
+    out.push(`You pay it. ${money2(paid)} to move your own money, and the block still takes four minutes.`);
+    return finish();
+  }
+  const cheap = takeCash(g, fee * RELAY_SHARE);
+  if (g.rng.random() < encounterOdds(g, "relay")) {
+    out.push(`The relay works. ${money2(cheap)} instead of ${money2(fee)}, and nobody asks where the transaction came from.`);
+    return finish();
+  }
+  const lost = confiscate(g, g.rng.uniform(RELAY_TAKES[0], RELAY_TAKES[1]));
+  out.push(`The relay was somebody's honeypot. ${money2(cheap)} in fees and ${money2(lost)} of the bag with it. The forum post is gone too.`);
+  return finish();
+}
+
 function spoils(g) {
   const roll = g.rng.random();
   if (roll < 0.30) {
@@ -1120,12 +1251,16 @@ function resolveStandoff(g, choice) {
   const kind = KIND_BY_KEY[g.pending.kind] || KINDS[0];
   const valid = encounterChoices(g).map(c => c.key);
   if (!valid.includes(choice)) throw new Error(`you can't do that here; try ${valid.sort().join(", ")}`);
+  const wasPending = Object.assign({}, g.pending);   // before it goes
   g.pending = null;
   const w = weaponOf(g.weapon);
   const out = [];
   const finish = () => { out.forEach(m => g.say(m)); return out; };
+  const was = wasPending;
   if (kind.key === "collector") return collectorStandoff(g, choice, w);
   if (kind.key === "badge") return badgeStandoff(g, choice);
+  if (kind.key === "drain") return drainStandoff(g, choice, was);
+  if (kind.key === "gas") return gasStandoff(g, choice, was);
 
   if (choice === "pay") {
     const paid = takeCash(g, payCost(g));
@@ -1222,12 +1357,23 @@ function secRaidOld(g) {
   const f = g.rng.uniform(0.18, 0.42), lost = confiscate(g, f);
   return [`SEC raid on the platform. They seize ${Math.round(f * 100)}% of your wallet - $${lost.toFixed(2)} at cost.`];
 }
+/* A signature request, which you now get to look at before you sign it. */
 function phishing(g) {
+  if (!Object.values(g.player.wallet).some(h => h.qty > 0)) {
+    return ["A DM offers you a free NFT. You ignore it. Small victories."];
+  }
+  return openStandoff(g, "drain");
+}
+function phishingOld(g) {
   if (!hasCoins(g)) return ["A DM offers you a free NFT. You ignore it. Small victories."];
   const lost = confiscate(g, g.rng.uniform(0.08, 0.22));
   return [`You signed something you shouldn't have. A drainer takes $${lost.toFixed(2)} of your bags.`];
 }
+/* Fees have gone vertical: pay them, or find a way round and risk it. */
 function gasSpike(g) {
+  return openStandoff(g, "gas");
+}
+function gasSpikeOld(g) {
   const fee = takeCash(g, 120 + g.rng.random() * 700);
   return [`Network congestion. Gas eats $${fee.toFixed(2)} just to move your own money.`];
 }
@@ -2019,6 +2165,8 @@ if (typeof module !== "undefined") {
                      KIND_BY_KEY, openStandoff, encounterChoices, resolveStandoff,
                      payCost, stickup, bestChoice, TAKE_CASH, lawyerCost,
                      collectorDemand, LAWYER_SHARE, LAWYER_MIN, LAWYER_SAVES,
+                     DRAIN_REAL, DRAIN_PAYS, DRAIN_TAKES, CHECK_SHARE, CHECK_MIN,
+                     RELAY_SHARE, RELAY_BASE, RELAY_TAKES, checkCost, gasFee, nerveOf,
                      SHARK_FEE_RAN, SHARK_FEE_FOUGHT, CAUGHT_MULTIPLIER, TAKE_BAG, HOSPITAL_CHANCE,
                      RAID_GRACE, RAID_RAMP_TO, raidPressure, eventWeights, raidChance,
                      THREAT, THREAT_BARS, WIRE_LINES, threatLevel, standingHeat, wire, EVENTS,

@@ -55,6 +55,14 @@ class Weapon:
     heat: float
     #: chance it breaks, is dropped, or has to be left behind after a fight
     breaks: float
+    #: **nerve**: luck, the same currency gear pays in. Carrying something
+    #: changes how you move - you take the stairs nobody else takes and you
+    #: hold when other people fold - and the game already has a number for
+    #: that. Deliberately junior to gear (a third of a full set at best) and
+    #: deliberately NOT additive with it: luck is still the best single bonus
+    #: you have, never the sum, which is the rule that stops any build
+    #: stacking its way to immunity.
+    nerve: float
     #: what a shop wants for it. Zero means it is not sold anywhere - the only
     #: way to hold one is to find it.
     price: float
@@ -63,19 +71,19 @@ class Weapon:
 WEAPONS: List[Weapon] = [
     Weapon("brick", "Half a Brick",
            "It was holding a door open. Now it is holding your nerve together.",
-           edge=0.12, heat=0.02, breaks=0.45, price=0.0),
+           edge=0.12, heat=0.02, breaks=0.45, price=0.0, nerve=0.01),
     Weapon("pipe", "Length of Pipe",
            "Scaffolding offcut. Heavier than it looks, which is the entire idea.",
-           edge=0.18, heat=0.06, breaks=0.20, price=400.0),
+           edge=0.18, heat=0.06, breaks=0.20, price=400.0, nerve=0.02),
     Weapon("cutter", "Box Cutter",
            "Nobody wants to find out whether you would. That is usually enough.",
-           edge=0.26, heat=0.14, breaks=0.10, price=1_200.0),
+           edge=0.26, heat=0.14, breaks=0.10, price=1_200.0, nerve=0.03),
     Weapon("bat", "Louisville Slugger",
            "You tell people you play softball. Nobody has ever believed you.",
-           edge=0.33, heat=0.20, breaks=0.06, price=3_200.0),
+           edge=0.33, heat=0.20, breaks=0.06, price=3_200.0, nerve=0.04),
     Weapon("taser", "Stun Gun",
            "Legal in some states. This is not one of them, and it is the good kind.",
-           edge=0.42, heat=0.28, breaks=0.14, price=9_000.0),
+           edge=0.42, heat=0.28, breaks=0.14, price=9_000.0, nerve=0.05),
 ]
 WEAPON_BY_KEY: Dict[str, Weapon] = {w.key: w for w in WEAPONS}
 #: what a shop will actually stock; the brick you have to come across
@@ -84,6 +92,12 @@ FOR_SALE: Tuple[str, ...] = tuple(w.key for w in WEAPONS if w.price > 0)
 
 def weapon_of(key: Optional[str]) -> Optional[Weapon]:
     return WEAPON_BY_KEY.get(key) if key else None
+
+
+def nerve(game) -> float:
+    """The luck a weapon is worth just by being in your coat."""
+    weapon = weapon_of(getattr(game, "weapon", None))
+    return weapon.nerve if weapon else 0.0
 
 
 def carry_heat(game) -> float:
@@ -134,6 +148,10 @@ FIGHT_BASE = 0.34
 def odds(game, choice: str) -> float:
     """The real chance a choice comes off, 0.0 - 1.0. What the UI shows."""
     rep = rep_of(game)
+    if choice == "relay":
+        # the same coin every gamble here is flipped on: luck tilts it, which
+        # is the one place nerve pays off outside a fight
+        return max(0.05, min(0.95, RELAY_BASE + game.luck))
     if choice == "run":
         chance = RUN_BASE - load_penalty(game) + rep * REP_ODDS
     elif choice in ("fight", "weapon"):
@@ -208,6 +226,26 @@ KINDS.extend([
          severity=1.0, armable=False,
          options=("comply", "lawyer", "run")),
 ])
+KINDS.extend([
+    Kind("drain", "A SIGNATURE REQUEST",
+         ("Your wallet lights up at {station}. A contract wants permission for "
+          "something, and the name on it is one letter off a name you trust.",
+          "The airdrop everybody has been posting about wants you to sign. It is "
+          "either the one they mean or the one pretending to be it.",
+          "A DM, a link, a connect prompt, and a countdown. Everything about it is "
+          "designed to make you hurry."),
+         severity=1.0, armable=False,
+         options=("sign", "check", "walk")),
+    Kind("gas", "THE NETWORK IS ON FIRE",
+         ("Every block at {station} is a bidding war. Moving your own money is "
+          "going to cost you today.",
+          "Fees have gone vertical. Somebody minted something and the whole chain "
+          "is paying for it.",
+          "The mempool is a car park. You can pay to get out of it or you can find "
+          "another way round."),
+         severity=1.0, armable=False,
+         options=("paygas", "relay")),
+])
 KIND_BY_KEY: Dict[str, Kind] = {k.key: k for k in KINDS}
 
 
@@ -217,14 +255,53 @@ def open_standoff(game, kind_key: str = "stickup") -> List[str]:
     """Put somebody in front of the player and stop the run until answered."""
     kind = KIND_BY_KEY.get(kind_key, KINDS[0])
     line = game.rng.choice(kind.opening).format(station=game.station.name)
-    game.pending = {
+    pending = {
         "kind": kind.key,
         "day": game.day,
         "station": game.station.name,
         "line": line,
     }
+    if kind.key == "drain":
+        # decided now, not when you answer: paying to read the contract has to
+        # reveal something that already exists, or "check" would be a different
+        # roll rather than the same one seen clearly
+        pending["real"] = int(game.rng.random() < DRAIN_REAL)
+    if kind.key == "gas":
+        pending["fee"] = 120.0 + game.rng.random() * 700.0
+    game.pending = pending
     game.stats["standoffs"] = int(game.stats.get("standoffs", 0)) + 1
     return [line]
+
+
+#: How often a signature request is the airdrop it claims to be.
+#:
+#: A quarter, measured rather than guessed. At 38% and a bigger payout the
+#: naive bot's solvency went from 48% to 56% - blind-signing had become a good
+#: bet, which is the opposite of what a drainer is for. At a quarter the
+#: arithmetic is right: once you are holding anything worth taking, signing is
+#: clearly negative, and the number that makes it negative is the size of your
+#: own bag. It punishes the rich, which is the correct shape.
+DRAIN_REAL = 0.25
+#: What a real one pays, and what a fake one takes.
+DRAIN_PAYS = (350.0, 1_800.0)
+DRAIN_TAKES = (0.08, 0.22)
+#: Reading it costs a flat fee plus a slice, so it is cheap when you are broke
+#: and never free when you are not.
+CHECK_SHARE = 0.04
+CHECK_MIN = 220.0
+#: The relay is a tenth of the fee and usually fine.
+RELAY_SHARE = 0.10
+RELAY_BASE = 0.72               # how often "usually" is
+RELAY_TAKES = (0.06, 0.15)
+
+
+def check_cost(game) -> float:
+    return max(CHECK_MIN, game.player.cash * CHECK_SHARE)
+
+
+def gas_fee(game) -> float:
+    pending = getattr(game, "pending", None)
+    return float((pending or {}).get("fee", 400.0))
 
 
 #: What a lawyer costs, and what he is worth. Certain, expensive, and the only
@@ -288,6 +365,32 @@ def choices(game) -> List[Dict[str, object]]:
             if key in built:
                 built[key] = {**built[key],
                               "note": built[key]["note"] + " The debt stands either way."}
+    if kind.key == "drain":
+        real = int(pending.get("real", 0))       # what it actually is, hidden
+        known = bool(pending.get("known"))
+        built["sign"] = {"key": "sign", "label": "SIGN IT",
+                         "odds": DRAIN_REAL if not known else (1.0 if real else 0.0),
+                         "note": ("It is the real one. Sign." if known and real else
+                                  "It is a drainer. Do not." if known else
+                                  f"Roughly {DRAIN_REAL:.0%} of these are the airdrop "
+                                  f"they say they are. The rest empty a share of your "
+                                  f"bag.")}
+        built["check"] = {"key": "check", "label": "READ THE CONTRACT", "odds": 1.0,
+                          "note": (f"{check_cost(game):,.0f} to somebody who can read "
+                                   f"Solidity. You will know which it is, and then you "
+                                   f"decide." if not known else "Already read.")}
+        built["walk"] = {"key": "walk", "label": "IGNORE IT", "odds": 1.0,
+                         "note": "Costs nothing. You will never know what it was."}
+        if known:
+            del built["check"]
+    if kind.key == "gas":
+        built["paygas"] = {"key": "paygas", "label": "PAY THE FEE", "odds": 1.0,
+                           "note": f"About {gas_fee(game):,.0f} to move your own money. "
+                                   f"Annoying, certain, over with."}
+        built["relay"] = {"key": "relay", "label": "USE A PRIVATE RELAY",
+                          "odds": odds(game, "relay"),
+                          "note": f"A tenth of the fee, through somebody you found on "
+                                  f"a forum. Usually fine."}
     if kind.key == "badge":
         built["lawyer"] = {"key": "lawyer", "label": "CALL A LAWYER", "odds": 1.0,
                            "note": f"{lawyer_cost(game):,.0f} on a retainer, and they "
@@ -297,6 +400,16 @@ def choices(game) -> List[Dict[str, object]]:
                         "note": "From federal agents, in a subway station. If it works "
                                 "you keep everything. They will remember you either way."}
     return [built[key] for key in kind.options if key in built]
+
+
+def _pending_real(game) -> bool:
+    """Whether the signature request in front of you is genuine.
+
+    Stored on the standoff itself so it rides the save: a reload must not be a
+    way to re-roll a contract you have already been shown.
+    """
+    pending = getattr(game, "pending", None)
+    return bool((pending or {}).get("real", 0))
 
 
 def pay_cost(game) -> float:
@@ -353,6 +466,7 @@ def resolve(game, choice: str) -> List[str]:
     if choice not in valid:
         raise ValueError(f"you can't do that here; try {', '.join(sorted(valid))}")
 
+    was = dict(pending)                   # the one in front of you, before it goes
     game.pending = None                   # answered, whatever happens next
     weapon = weapon_of(getattr(game, "weapon", None))
     out: List[str] = []
@@ -361,6 +475,10 @@ def resolve(game, choice: str) -> List[str]:
         return _collector(game, kind, choice, weapon)
     if kind.key == "badge":
         return _badge(game, kind, choice)
+    if kind.key == "drain":
+        return _drain(game, choice, was)
+    if kind.key == "gas":
+        return _gas(game, choice, was)
 
     if choice == "pay":
         from .events import _take_cash
@@ -572,6 +690,89 @@ def _badge(game, kind, choice) -> List[str]:
     return _finish(game, out)
 
 
+def _drain(game, choice, was: dict) -> List[str]:
+    """A signature request that is either the airdrop or the thing wearing it.
+
+    The decision is information, not odds: you can take the bet blind, pay to
+    know and then take it with your eyes open, or walk and never find out. That
+    third option is what stops "read it" being a tax - ignoring it is always
+    free, so paying has to buy you something you actually want.
+    """
+    from .coins import COINS
+    from .events import _confiscate, _take_cash
+
+    pending_real = bool(was.get("real", 0))     # decided when it opened
+    out: List[str] = []
+
+    if choice == "walk":
+        out.append("You close the tab. Whatever it was, it was not worth "
+                   "finding out at that speed.")
+        return _finish(game, out)
+
+    if choice == "check":
+        paid = _take_cash(game, check_cost(game))
+        # re-open it, now with the answer showing
+        game.pending = {**was, "known": True}
+        game.pending["line"] = (
+            f"${paid:,.2f} later, somebody who reads Solidity for a living tells you "
+            + ("it is exactly what it says it is." if pending_real
+               else "the approval is unlimited and the recipient is not the project."))
+        out.append(game.pending["line"])
+        return _finish(game, out)
+
+    # signing it
+    if pending_real:
+        target = game.rng.choice([c for c in COINS if c.symbol != "USDC"])
+        value = game.rng.uniform(*DRAIN_PAYS)
+        price = game.market.price(target.symbol)
+        if game.player.free_capacity < value:
+            out.append(f"It was real, and your wallet is full. The {target.symbol} "
+                       f"expires unclaimed, which is its own kind of answer.")
+            return _finish(game, out)
+        held = game.player.holding(target.symbol)
+        held.qty += value / price
+        held.cost += value
+        out.append(f"It was the real one. {value / price:,.6f} {target.symbol} "
+                   f"(~${value:,.2f}) lands while you are still reading the tweet.")
+        return _finish(game, out)
+
+    fraction = game.rng.uniform(*DRAIN_TAKES)
+    lost = _confiscate(game, fraction)
+    if lost <= 0:
+        out.append("You signed something you should not have. There was nothing in "
+                   "there to take, which is the first time that has been good news.")
+        return _finish(game, out)
+    out.append(f"You signed it. The approval was unlimited and the wallet on the "
+               f"other end was not the project's. ${lost:,.2f} of the bag, gone "
+               f"in one block.")
+    return _finish(game, out)
+
+
+def _gas(game, choice, was: dict) -> List[str]:
+    """Fees have gone vertical. Pay them, or go round."""
+    from .events import _confiscate, _take_cash
+
+    out: List[str] = []
+    fee = float(was.get("fee", 400.0))      # from the standoff, not from thin air
+
+    if choice == "paygas":
+        paid = _take_cash(game, fee)
+        out.append(f"You pay it. ${paid:,.2f} to move your own money, and the "
+                   f"block still takes four minutes.")
+        return _finish(game, out)
+
+    cheap = _take_cash(game, fee * RELAY_SHARE)
+    if game.rng.random() < odds(game, "relay"):
+        out.append(f"The relay works. ${cheap:,.2f} instead of ${fee:,.2f}, and "
+                   f"nobody asks where the transaction came from.")
+        return _finish(game, out)
+    fraction = game.rng.uniform(*RELAY_TAKES)
+    lost = _confiscate(game, fraction)
+    out.append(f"The relay was somebody's honeypot. ${cheap:,.2f} in fees and "
+               f"${lost:,.2f} of the bag with it. The forum post is gone too.")
+    return _finish(game, out)
+
+
 def _spoils(game) -> List[str]:
     """What standing your ground is occasionally worth."""
     roll = game.rng.random()
@@ -604,17 +805,21 @@ def best_choice(game) -> Optional[str]:
     if not options:
         return None
     keys = {str(c["key"]) for c in options}
-    # For the two encounters that replaced an event, a bot takes the answer
-    # that event used to take on its own - comply with the badge, pay the
-    # collector - so every balance number measured before these became choices
-    # stays comparable afterwards. The new options are the player's edge, and a
-    # bot that used them would quietly flatter the game.
+    # For the encounters that replaced an event, a bot takes the answer that
+    # event used to take on its own, so every balance number measured before
+    # these became choices stays comparable. The new options are the player's
+    # edge, and a bot that used them would quietly flatter the game.
     pending = getattr(game, "pending", None)
     kind = str((pending or {}).get("kind", ""))
     if kind == "badge":
         return "comply"
     if kind == "collector":
         return "pay"
+    if kind == "gas":
+        return "paygas"
+    if kind == "drain":
+        # the naive answer, which is what the old event did to you anyway
+        return "sign"
     # elsewhere: paying always "works", so a bot picking purely on odds would
     # pay every time and measure a game nobody plays. It is the fallback.
     fighting = [c for c in options if c["key"] != "pay"]

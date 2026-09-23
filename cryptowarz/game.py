@@ -326,9 +326,17 @@ class Game:
 
     @property
     def luck(self) -> float:
-        """The best gear bonus you are holding for right now, 0.0 to 0.15."""
+        """The best single bonus you have right now, 0.0 to 0.15.
+
+        Gear you are holding for, or the nerve of whatever is in your coat -
+        whichever is larger, and never the two added together. "Never a sum" is
+        the rule the whole luck system rests on, and a weapon is not an
+        exception to it: what carrying something buys is a floor under your
+        luck, which matters most early, when you have no gear at all.
+        """
+        from .encounter import nerve
         from .gear import best_luck
-        return best_luck(self.gear, self.player.wallet)
+        return max(best_luck(self.gear, self.player.wallet), nerve(self))
 
     def _luck_by_symbol(self) -> Dict[str, float]:
         from .gear import luck_by_symbol

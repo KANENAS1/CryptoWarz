@@ -87,17 +87,25 @@ def shark_visit(game: "Game") -> List[str]:
 
 
 def phishing(game: "Game") -> List[str]:
+    """A signature request, which you now get to look at before you sign it.
+
+    It is either the airdrop it claims to be or the thing wearing its name, and
+    which one is decided when it appears rather than when you answer - so
+    paying somebody to read the contract reveals a fact instead of rolling a
+    different die.
+    """
+    from .encounter import open_standoff
+
     if not _has_coins(game):
         return ["A DM offers you a free NFT. You ignore it. Small victories."]
-    fraction = game.rng.uniform(0.08, 0.22)
-    lost = _confiscate(game, fraction)
-    return [f"You signed something you shouldn't have. A drainer takes "
-            f"${lost:,.2f} of your bags."]
+    return open_standoff(game, "drain")
 
 
 def gas_spike(game: "Game") -> List[str]:
-    fee = _take_cash(game, 120.0 + game.rng.random() * 700.0)
-    return [f"Network congestion. Gas eats ${fee:,.2f} just to move your own money."]
+    """Fees have gone vertical: pay them, or find a way round and risk it."""
+    from .encounter import open_standoff
+
+    return open_standoff(game, "gas")
 
 
 def airdrop(game: "Game") -> List[str]:

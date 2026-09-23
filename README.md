@@ -122,6 +122,34 @@ a day in hospital with the Shark's clock still running. Paying is certain, costs
 The percentages are the real ones — the screen reads the same function the roll
 uses.
 
+### Nothing takes your money without asking
+
+Five things used to reach into your pockets on their own. All five stop and ask
+now, and a test holds the list so a future event cannot quietly join it.
+
+**A signature request.** Either the airdrop everyone is posting about or the
+thing wearing its name — and **which one is decided when it appears, not when
+you answer**, so paying somebody to read the contract reveals a fact rather
+than rolling a different die.
+
+| | |
+|---|---|
+| **SIGN IT** | **25%** it is real. The rest empty 8–22% of the bag |
+| **READ THE CONTRACT** | 4% of your cash (min $220). Now you know, and *then* you decide |
+| **IGNORE IT** | Free. You never find out what it was |
+
+Ignoring it is always free, which is exactly what stops "read it" being a tax:
+paying has to buy something you actually want. And because the loss scales with
+your bag while the payout does not, **signing blind punishes the rich** — it is
+clearly negative the moment you are holding anything worth taking.
+
+**The network is on fire.** Not a person, still a bill:
+
+| | |
+|---|---|
+| **PAY THE FEE** | $120–820. Annoying, certain, over with |
+| **USE A PRIVATE RELAY** | A tenth of that, and **72%** fine. The rest is somebody's honeypot |
+
 ### Everyone who comes for your money is answerable
 
 A stickup was the first one. The other two used to be weather — they happened,
@@ -154,13 +182,25 @@ there.
 
 ### What you are carrying, and what it costs you
 
-| | Edge in a fight | Heat | Breaks | Price |
-|---|---|---|---|---|
-| Half a Brick | +12% | +2% | 45% | *found only* |
-| Length of Pipe | +18% | +6% | 20% | $400 |
-| Box Cutter | +26% | +14% | 10% | $1,200 |
-| Louisville Slugger | +33% | +20% | 6% | $3,200 |
-| Stun Gun | +42% | +28% | 14% | $9,000 |
+| | Edge in a fight | Nerve | Heat | Breaks | Price |
+|---|---|---|---|---|---|
+| Half a Brick | +12% | +1% | +2% | 45% | *found only* |
+| Length of Pipe | +18% | +2% | +6% | 20% | $400 |
+| Box Cutter | +26% | +3% | +14% | 10% | $1,200 |
+| Louisville Slugger | +33% | +4% | +20% | 6% | $3,200 |
+| Stun Gun | +42% | +5% | +28% | 14% | $9,000 |
+
+**Nerve.** Carrying something also changes how you move — you take the stairs
+nobody else takes, you hold when other people fold — and the game already has a
+number for that. Each weapon carries **1–5% luck**, the same currency gear pays
+in. It tilts a shock toward a pump, keeps trouble away, lifts the dice prize
+and tilts the private relay.
+
+It is deliberately **junior to gear** (a third of a full set at best) and
+deliberately **not added to it**: your luck is the better of the two, never the
+sum. "Never a sum" is the rule the whole system rests on, and a weapon is not
+an exception — what carrying something buys is a *floor* under your luck, which
+matters most early, when you have no gear at all.
 
 **Heat is the whole trade.** What makes a mugger reconsider is exactly what
 makes a federal agent look twice: carrying the Stun Gun raises your raid odds
@@ -191,6 +231,16 @@ event into a routine. It ships at **5.5 — about 1.7 a run**, taking the
 buy-the-cheapest bot from 50% to 47% solvent. Often enough that carrying
 something is a real question; rare enough that meeting somebody on the stairs
 still registers.
+
+### What making the drainer a choice cost
+
+Honestly: at first it made the game *easier*. Turning a guaranteed loss into a
+38% chance of a payout took the naive bot from 48% to 56% solvent — blind
+signing had become a good bet, which is the opposite of what a drainer is for.
+Retuned to **25% real** with a smaller payout, it sits at 51/60 against 48/56
+before. The residue is the feature working as intended: the event is no longer
+an automatic loss, and a player who reads the contract or walks away does
+better still.
 
 ### Two bugs this turned up
 
