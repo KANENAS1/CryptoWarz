@@ -38,6 +38,12 @@
      layout built to that fits at all times, and when the toolbars retract the
      extra strip is just more black. Each height is written after the last, so
      a browser that knows none of them still gets the plain 100%. */
+  /* Framed: percentages only. See the script at the top of the body - iOS
+     resolves viewport units in a frame against the whole screen, which makes a
+     page sized in svh taller than the frame that holds it. */
+  html[data-framed], html[data-framed] body{height:100%}
+  html[data-framed] .app{height:100%}
+  html[data-framed] .sheet{height:100%}
   html{height:100%;height:-webkit-fill-available}
   html,body{height:100%;margin:0}
   body{height:100%;height:-webkit-fill-available;height:100svh}
@@ -351,6 +357,22 @@
 </style>
 </head>
 <body>
+<script>
+/* Runs before anything is laid out, and it is three lines for a reason.
+
+   Inside a frame, WebKit on iOS resolves viewport units - vh, svh, dvh - against
+   the TOP-LEVEL viewport rather than against the frame. The artifact runs in a
+   frame that is shorter than the phone screen, so a page sized with 100svh comes
+   out taller than the box holding it: the footer, and therefore every button,
+   ends up past the bottom edge with empty space above the header.
+
+   Inside a frame, percentage height is the only unit guaranteed to mean "this
+   frame", so that is what a framed copy uses. A page opened on its own keeps svh,
+   which is what makes it survive Safari's toolbars. Reading window.top across
+   origins throws, and a throw is itself proof of being framed. */
+try { if (window.self !== window.top) document.documentElement.dataset.framed = "1"; }
+catch (e) { document.documentElement.dataset.framed = "1"; }
+</script>
 <div class="app">
   <header>
     <div class="dayband">

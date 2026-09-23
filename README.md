@@ -422,6 +422,17 @@ to that fits at all times, and when the toolbars retract the extra strip is
 just more black. `-webkit-fill-available` covers WebKit before 15.4, and the
 plain `100%` is written first for anything that knows neither.
 
+**A framed copy does not trust viewport units at all.** WebKit on iOS resolves
+`vh`, `svh` and `dvh` inside a frame against the *top-level* viewport rather
+than the frame. The artifact runs in a frame shorter than the phone screen, so
+a page sized in `svh` came out taller than the box holding it — footer past the
+bottom edge, empty space above the header, and no way to reach the buttons.
+Percentage height is the only unit guaranteed to mean "this frame", so three
+lines at the top of the body set `data-framed` and a framed copy switches to
+percentages. A page opened on its own keeps `svh`, which is what makes it
+survive Safari's toolbars. Reading `window.top` across origins throws, and the
+throw is itself the proof.
+
 **A short viewport scrolls rather than clips.** Landscape on a phone, a split
 view, or a host that lays its own bars over the page leaves less room than the
 browser reports, and a locked-height layout answers that by hiding the top and

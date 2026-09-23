@@ -140,6 +140,29 @@ class TestWebSourcesExist(unittest.TestCase):
         app = app[:app.index("}")]
         self.assertLess(app.index("height:100%"), app.index("height:100svh"))
 
+    def test_a_framed_copy_does_not_trust_viewport_units(self):
+        """WebKit on iOS resolves vh/svh/dvh inside a frame against the
+        TOP-LEVEL viewport, not the frame. The artifact runs in a frame shorter
+        than the phone screen, so a page sized in svh comes out taller than the
+        box holding it - footer past the bottom edge, empty space above the
+        header. Percentages are the only height guaranteed to mean "this
+        frame", so a framed copy uses those and a standalone one keeps svh.
+
+        The flag has to be set before layout, and reading window.top across
+        origins throws - a throw being itself proof of being framed."""
+        html = (WEB / "index.html").read_text()
+        head = html[html.index("<body>"):html.index("<div class=\"app\">")]
+        self.assertIn("window.self !== window.top", head,
+                      "the framed flag must be set before anything is laid out")
+        self.assertIn("catch", head, "a cross-origin read throws; that is the signal")
+        self.assertIn('dataset.framed', head)
+        for rule in ("html[data-framed], html[data-framed] body{height:100%}",
+                     "html[data-framed] .app{height:100%}",
+                     "html[data-framed] .sheet{height:100%}"):
+            self.assertIn(rule, html, rule)
+        # and the framed rules must outrank the svh ones by specificity
+        self.assertIn("100svh", html, "a standalone page still needs svh")
+
     def test_the_escape_hatch_does_not_fire_at_ordinary_heights(self):
         """The bug this is here for: the hatch was set at 520px, and the
         artifact frame on a phone is shorter than that. An ordinary place to be
