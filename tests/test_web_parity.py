@@ -140,14 +140,34 @@ class TestWebSourcesExist(unittest.TestCase):
         app = app[:app.index("}")]
         self.assertLess(app.index("height:100%"), app.index("height:100svh"))
 
+    def test_the_escape_hatch_does_not_fire_at_ordinary_heights(self):
+        """The bug this is here for: the hatch was set at 520px, and the
+        artifact frame on a phone is shorter than that. An ordinary place to be
+        unspooled the layout into a 1,347px document with the footer - and so
+        every button - below the fold.
+
+        The header and footer together are about 210px, so anything above ~380
+        has room for the market to scroll inside main the way it is meant to.
+        The number is asserted rather than the behaviour because the behaviour
+        needs a browser; the sweep that proved it lives in the commit message,
+        and a regression here is a one-line diff to notice."""
+        html = (WEB / "index.html").read_text()
+        import re as _re
+        found = _re.findall(r"@media \(max-height: (\d+)px\)", html)
+        self.assertTrue(found, "the escape hatch disappeared")
+        for value in found:
+            self.assertLessEqual(int(value), 420,
+                                 "an ordinary phone-sized frame must not trip the "
+                                 "escape hatch")
+
     def test_a_short_viewport_can_scroll_instead_of_clipping(self):
         """A locked-height layout with overflow:hidden answers a viewport
         smaller than it expected by hiding the top and bottom rows, and that is
         the one failure with no way out - you cannot scroll to what is missing.
         Below a phone-in-landscape height the page scrolls instead."""
         html = (WEB / "index.html").read_text()
-        self.assertIn("@media (max-height: 520px)", html)
-        block = html[html.index("@media (max-height: 520px)"):]
+        self.assertIn("@media (max-height: 380px)", html)
+        block = html[html.index("@media (max-height: 380px)"):]
         block = block[:block.index("\n  }") + 4]
         self.assertIn("body{overflow:auto", block)
         self.assertIn(".app{height:auto", block)

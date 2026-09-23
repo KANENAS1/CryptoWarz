@@ -47,12 +47,16 @@
 
   .app{display:flex;flex-direction:column;height:100%;height:100svh;
        max-width:620px;margin:0 auto}
-  /* The escape hatch. A phone in landscape, a split view, or a host that lays
-     its own bars over the page leaves less room than the browser reports -
-     and a locked-height layout with overflow:hidden answers that by clipping,
-     which is the one failure with no way out. Below this height the page
-     scrolls instead: worse looking, always usable. */
-  @media (max-height: 520px) {
+  /* The escape hatch, for a viewport too short to hold the game at all.
+     380px, not 520px. At 520 this fired inside the artifact frame on a phone -
+     an ordinary place to be - and unspooled the layout into a 1,347px
+     document with the footer, and therefore every button, below the fold. The
+     header and footer together are about 210px, so anything above ~380 has
+     room for the market to scroll inside main the way it is meant to, and
+     only below that is a scrolling page genuinely the lesser evil.
+     The lesson is in test_web_parity: this now has to hold across a RANGE of
+     heights, not at one convenient size. */
+  @media (max-height: 380px) {
     body{overflow:auto;height:auto}
     .app{height:auto;min-height:100%}
     main{overflow:visible}
