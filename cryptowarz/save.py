@@ -85,6 +85,12 @@ def to_dict(game) -> Dict[str, Any]:
         # version 1 shipped and read with a default, so an in-progress save from
         # the older build still loads - it simply resumes as practice.
         "daily_slot": getattr(game, "daily_slot", None),
+        # what you are carrying, and anybody currently waiting for an answer.
+        # The standoff rides the save on purpose: without it a reload is a way
+        # to walk away from a man with a knife, which is savescumming with
+        # extra steps. Both read with a default, so an older save still loads.
+        "weapon": getattr(game, "weapon", None),
+        "pending": getattr(game, "pending", None),
         # stations is a set in memory; JSON needs a list, and the reload
         # converts it back so achievement checks keep working after a resume
         "stats": {**game.stats, "stations": sorted(game.stats.get("stations", []))},
@@ -143,6 +149,9 @@ def from_dict(data: Dict[str, Any]):
         game.stats = {**stats, "stations": set(stats.get("stations", []))}
     # carried in stats, so it reloads with the run and a reload cannot shake it
     game.hot_hand = bool(game.stats.get("hot_hand", False))
+    game.weapon = data.get("weapon") or None
+    pending = data.get("pending")
+    game.pending = dict(pending) if isinstance(pending, dict) else None
     game.rng = _decode_rng(data["rng"])
     game.day = int(data["day"])
     game.finished = bool(data.get("finished", False))

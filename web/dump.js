@@ -5,6 +5,14 @@
 const COINS_EQUAL = (a, b) =>
   JSON.stringify(a) === JSON.stringify(b);
 const G = require("./game.js");
+/* Bots face the same standoffs a player does rather than being exempt: a
+   pending encounter blocks every other action, so a harness that ignored one
+   would simply stop. */
+function travelAndAnswer(g, to) {
+  const said = g.travel(to);
+  if (g.pending) for (const m of g.resolve(G.bestChoice(g))) said.push(m);
+  return said;
+}
 
 const out = {
   constants: {
@@ -64,7 +72,7 @@ const out = {
       for (let i = 0; i < 12; i++) {
         g.player.cash += 800;
         const here = G.STATIONS.findIndex(s => s.name === g.station.name);
-        try { g.travel((here + 3) % G.STATIONS.length); } catch (e) { break; }
+        try { travelAndAnswer(g, (here + 3) % G.STATIONS.length); } catch (e) { break; }
       }
       const range = sym => {
         const h = g.state.history[sym];
@@ -73,6 +81,12 @@ const out = {
       };
       return {
         days_recorded: g.state.history.DOGE.length,
+        /* the invariant, not a magic number: one price per day, INCLUDING the
+           days a stopped train or a beating takes off you - those used to move
+           the clock without moving the market, which is exactly how the older
+           bug hid */
+        one_point_per_day: g.state.history.DOGE.length === g.day,
+        day: g.day,
         peg_barely_moves: range("USDC") < 0.05,
         memecoin_really_moves: range("WIF") > 0.05,
         first_point_is_the_opening_level: Math.abs(
@@ -107,7 +121,7 @@ const out = {
       for (let i = 0; i < n; i++) {
         g.player.cash += 500;
         const here = G.STATIONS.findIndex(s => s.name === g.station.name);
-        g.travel((here + 3) % G.STATIONS.length);
+        travelAndAnswer(g, (here + 3) % G.STATIONS.length);
       }
     };
     const play = picks => {
@@ -278,6 +292,82 @@ const out = {
         const p = G.blankProfile();
         p.gear_wins = { major: 2 }; p.gear_names = { major: "Старый — 日本" };
         return G.readBackup(G.makeBackup(p)).profile.gear_names;
+      })(),
+    };
+  })(),
+  encounter: (() => {
+    const cornered = (cash, weapon, rep, load) => {
+      const g = new G.Game(11);
+      g.player.cash = cash === undefined ? 8000 : cash;
+      g.player.capacity = 25000;
+      g.weapon = weapon || null;
+      g.stats.rep = rep || 0;
+      if (load) { const h = g.holding("DOGE"); h.cost = g.player.capacity * load; h.qty = 1; }
+      G.openStandoff(g);
+      return g;
+    };
+    const blocked = () => {
+      const calls = [["buy", ["BTC", 0.001]], ["sell", ["BTC", 0.001]], ["travel", [0]],
+                     ["spinWheel", []], ["rollDice", [3]], ["borrow", [100]],
+                     ["repay", [10]], ["deposit", [10]], ["withdraw", [10]],
+                     ["buyCapacity", []], ["buyVpn", []], ["buyWeapon", ["pipe"]]];
+      return calls.every(([name, args]) => {
+        const g = cornered();
+        try { g[name].apply(g, args); return false; }
+        catch (e) { return /in front of you/.test(e.message); }
+      });
+    };
+    return {
+      weapons: G.WEAPONS.map(w => ({ key: w.key, name: w.name, blurb: w.blurb,
+        edge: w.edge, heat: w.heat, breaks: w.breaks, price: w.price })),
+      for_sale: G.FOR_SALE,
+      kinds: G.KINDS.map(k => ({ key: k.key, title: k.title, severity: k.severity,
+        armable: k.armable, opening: k.opening })),
+      numbers: { run: G.RUN_BASE, fight: G.FIGHT_BASE, load: G.MAX_LOAD_PENALTY,
+                 rep_max: G.REP_MAX, rep_odds: G.REP_ODDS,
+                 take_cash: G.TAKE_CASH, take_bag: G.TAKE_BAG,
+                 hospital: G.HOSPITAL_CHANCE },
+      /* the properties the feature stands on */
+      blocks_everything: blocked(),
+      survives_a_save: (() => {
+        const g = cornered(8000, "bat");
+        const back = G.saveFromDict(G.saveToDict(g));
+        let stillBlocked = false;
+        try { back.travel(0); } catch (e) { stillBlocked = /in front of you/.test(e.message); }
+        return { kind: back.pending && back.pending.kind, weapon: back.weapon,
+                 blocked: stillBlocked };
+      })(),
+      old_save_has_neither: (() => {
+        const data = G.saveToDict(new G.Game(4));
+        delete data.pending; delete data.weapon;
+        const back = G.saveFromDict(data);
+        return back.pending === null && back.weapon === null;
+      })(),
+      /* the odds, which are the whole decision */
+      odds_empty: G.encounterOdds(cornered(8000, null, 0, 0), "run"),
+      odds_loaded: G.encounterOdds(cornered(8000, null, 0, 1), "run"),
+      odds_by_weapon: G.WEAPONS.map(w =>
+        Math.round(G.encounterOdds(cornered(8000, w.key), "weapon") * 10000) / 10000),
+      odds_rep: [-3, 0, 3].map(r =>
+        Math.round(G.encounterOdds(cornered(8000, null, r), "fight") * 10000) / 10000),
+      pay_is_certain: G.encounterOdds(cornered(), "pay"),
+      pay_cost: Math.round(G.payCost(cornered(10000))),
+      choices_bare: G.encounterChoices(cornered()).map(c => c.key),
+      choices_armed: G.encounterChoices(cornered(8000, "bat")).map(c => c.key),
+      /* a weapon cuts both ways */
+      carry_cuts_both_ways: (() => {
+        const bare = new G.Game(5), armed = new G.Game(5);
+        bare.day = armed.day = 22; armed.weapon = "taser";
+        const i = G.EVENTS.findIndex(e => e[0] === G.stickup);
+        return { raid_up: G.raidChance(armed) > G.raidChance(bare),
+                 stickup_down: G.eventWeights(armed)[i] < G.eventWeights(bare)[i] };
+      })(),
+      /* paying keeps the bag; it is the point of paying */
+      paying_keeps_the_bag: (() => {
+        const g = cornered(10000);
+        g.holding("BTC").qty = 1;
+        g.resolve("pay");
+        return { qty: g.holding("BTC").qty, rep: G.repOf(g), cheaper: g.player.cash < 10000 };
       })(),
     };
   })(),
@@ -483,7 +573,7 @@ if (process.argv.includes("--save")) {
   const g = new G.Game(21);
   const q = g.maxBuyable("DOGE") * 0.3;
   if (q > 0) g.buy("DOGE", q);
-  try { g.travel(0); } catch (e) { /* fare */ }
+  try { travelAndAnswer(g, 0); } catch (e) { /* fare */ }
   process.stdout.write(JSON.stringify({ save_version: G.SAVE_VERSION, save: G.saveToDict(g) }, null, 2));
 } else {
   process.stdout.write(JSON.stringify(out, null, 2));

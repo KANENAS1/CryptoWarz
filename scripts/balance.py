@@ -80,6 +80,14 @@ STRATEGIES = [
 ]
 
 
+def _answer(game: Game) -> None:
+    """A bot faces the same standoffs a player does rather than being exempt."""
+    from cryptowarz.encounter import best_choice
+
+    if game.pending:
+        game.resolve(best_choice(game))
+
+
 def play(seed: int, strategy) -> float:
     game = Game(seed=seed)
     for _ in range(DAYS):
@@ -94,6 +102,7 @@ def play(seed: int, strategy) -> float:
             game.travel(game.rng.choice(options))
         except ValueError:
             break
+        _answer(game)
     return game.final_score()
 
 

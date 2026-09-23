@@ -41,6 +41,9 @@ def draw(game: Game) -> None:
     stuck = ui.dead_end(game)
     if stuck:
         print(stuck)
+    trouble = ui.standoff(game)
+    if trouble:
+        print(trouble)
     print()
 
 
@@ -100,6 +103,20 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_capacity()]
     if cmd == "vpn":
         return [game.buy_vpn()]
+    if cmd in ("carry", "buyweapon", "arm"):
+        from .encounter import FOR_SALE, WEAPON_BY_KEY
+        if not args:
+            rows = [f"  {ui.c(k.ljust(7), ui.YELL, True)} "
+                    f"{ui.c(WEAPON_BY_KEY[k].name.ljust(20), ui.WHITE)} "
+                    f"{ui.money(WEAPON_BY_KEY[k].price).rjust(11)}  "
+                    f"{ui.c(f'+{WEAPON_BY_KEY[k].edge:.0%} fight, +{WEAPON_BY_KEY[k].heat:.0%} heat', ui.GREY)}"
+                    for k in FOR_SALE]
+            return ["\n".join(["  They keep a few things under the counter."] + rows
+                               + ["  " + ui.c("'carry pipe' to buy one. One at a time.", ui.GREY)])]
+        return game.buy_weapon(args[0].lower())
+    if cmd in ("run", "fight", "swing", "weapon", "use", "pay", "hand"):
+        answer = {"swing": "fight", "use": "weapon", "hand": "pay"}.get(cmd, cmd)
+        return game.resolve(answer)
     if cmd in ("look", "l", ""):
         return []
     if cmd in ("dealer", "buygear"):

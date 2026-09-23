@@ -35,6 +35,7 @@ def ride(game, rides=1):
         game.player.cash += 500.0
         here = [s.name for s in STATIONS].index(game.station.name)
         game.travel(STATIONS[(here + 3) % len(STATIONS)].name)
+        _answer_any(game)
 
 
 def to_first_offer(seed=5):
@@ -42,6 +43,19 @@ def to_first_offer(seed=5):
     while not game.dice_ready:
         ride(game)
     return game
+
+
+def _answer_any(game):
+    """These tests ride trains; a standoff blocks everything until answered.
+
+    The encounter is a real part of a run now, so a harness that ignored one
+    would simply stop at the first mugger. Answering with the best odds is what
+    a player does and what the balance bots do.
+    """
+    from cryptowarz.encounter import best_choice
+
+    if getattr(game, "pending", None):
+        game.resolve(best_choice(game))
 
 
 class TestWhenTheDiceAreOut(unittest.TestCase):

@@ -9,6 +9,19 @@ from cryptowarz.market import generate
 from cryptowarz.stations import STATIONS, station
 
 
+def _answer_any(game):
+    """These tests ride trains; a standoff blocks everything until answered.
+
+    The encounter is a real part of a run now, so a harness that ignored one
+    would simply stop at the first mugger. Answering with the best odds is what
+    a player does and what the balance bots do.
+    """
+    from cryptowarz.encounter import best_choice
+
+    if getattr(game, "pending", None):
+        game.resolve(best_choice(game))
+
+
 class TestCoins(unittest.TestCase):
     def test_every_coin_has_a_real_spread(self):
         for c in COINS:
@@ -121,6 +134,7 @@ class TestMarket(unittest.TestCase):
             try:
                 g.player.cash = max(g.player.cash, 50.0)
                 g.travel(next(s.name for s in STATIONS if s.name != g.station.name))
+                _answer_any(g)
             except ValueError:
                 break
             prices.append(g.market.price("USDC"))
@@ -279,6 +293,7 @@ class TestCannotStrandYourself(unittest.TestCase):
             g.buy("DOGE", qty)
             try:
                 g.travel(next(s.name for s in STATIONS if s.name != g.station.name))
+                _answer_any(g)
             except ValueError:
                 stranded.append(seed)
         self.assertEqual(stranded, [], f"stranded after BUY MAX on seeds {stranded[:5]}")
@@ -370,6 +385,7 @@ class TestTravel(unittest.TestCase):
         while not g.finished:
             g.player.cash = max(g.player.cash, 100.0)
             g.travel(next(n for n in names if n != g.station.name))
+            _answer_any(g)
         self.assertGreaterEqual(g.day, DAYS)
         self.assertTrue(g.finished)
 

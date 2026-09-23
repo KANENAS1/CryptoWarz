@@ -114,6 +114,8 @@ class TestWebSourcesExist(unittest.TestCase):
                      "renameGear", "retuneGear", "displayName", "levelFor",
                      "winningClass", "gradeFor", "runGrade", "recordDaily",
                      "wire", "raidChance", "threatLevel", "difficultyOf",
+                     "weaponOf", "repOf", "encounterOdds", "encounterChoices",
+                     "resolveStandoff", "openStandoff", "payCost",
                      "raidPressure", "eventWeights", "makeBackup", "readBackup",
                      "writeScores", "standingHeat"):
             if re.search(r"\b" + name + r"\s*\(", page):
@@ -606,6 +608,105 @@ class TestBackupParity(unittest.TestCase):
 
 
 @requires_node
+class TestEncounterParity(unittest.TestCase):
+    """A blocking, save-riding decision is the easiest thing in this game to
+    get subtly wrong on one side only: a port that forgot one guard would let
+    a phone player trade past a man with a knife, and a port that forgot to
+    save the standoff would let them reload out of it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["encounter"]
+
+    def test_the_armoury_matches(self):
+        from cryptowarz.encounter import FOR_SALE, WEAPONS
+        self.assertEqual([w["key"] for w in self.js["weapons"]], [w.key for w in WEAPONS])
+        self.assertEqual(self.js["for_sale"], list(FOR_SALE))
+        for js, py in zip(self.js["weapons"], WEAPONS):
+            self.assertEqual(js["name"], py.name, py.key)
+            self.assertEqual(js["blurb"], py.blurb, py.key)
+            for field in ("edge", "heat", "breaks", "price"):
+                self.assertAlmostEqual(js[field], getattr(py, field), msg=f"{py.key}.{field}")
+
+    def test_the_script_matches_word_for_word(self):
+        from cryptowarz.encounter import KINDS
+        self.assertEqual([k["key"] for k in self.js["kinds"]], [k.key for k in KINDS])
+        for js, py in zip(self.js["kinds"], KINDS):
+            self.assertEqual(js["title"], py.title, py.key)
+            self.assertAlmostEqual(js["severity"], py.severity, msg=py.key)
+            self.assertEqual(js["armable"], py.armable, py.key)
+            self.assertEqual(list(js["opening"]), list(py.opening), py.key)
+
+    def test_the_numbers_match(self):
+        from cryptowarz import encounter as en
+        n = self.js["numbers"]
+        self.assertAlmostEqual(n["run"], en.RUN_BASE)
+        self.assertAlmostEqual(n["fight"], en.FIGHT_BASE)
+        self.assertAlmostEqual(n["load"], en.MAX_LOAD_PENALTY)
+        self.assertEqual(n["rep_max"], en.REP_MAX)
+        self.assertAlmostEqual(n["rep_odds"], en.REP_ODDS)
+        self.assertEqual(tuple(n["take_cash"]), en.TAKE_CASH)
+        self.assertEqual(tuple(n["take_bag"]), en.TAKE_BAG)
+        self.assertAlmostEqual(n["hospital"], en.HOSPITAL_CHANCE)
+
+    def test_both_ports_stop_the_run_dead(self):
+        """Twelve calls, every one refused, on both sides."""
+        self.assertTrue(self.js["blocks_everything"])
+
+    def test_both_ports_keep_him_there_across_a_reload(self):
+        from cryptowarz import save as sv
+        from cryptowarz import encounter as en
+        from cryptowarz.game import Game
+        game = Game(seed=11)
+        game.weapon = "bat"
+        en.open_standoff(game)
+        back = sv.from_dict(sv.to_dict(game))
+        self.assertEqual(self.js["survives_a_save"]["kind"], back.pending["kind"])
+        self.assertEqual(self.js["survives_a_save"]["weapon"], back.weapon)
+        self.assertTrue(self.js["survives_a_save"]["blocked"])
+        self.assertTrue(self.js["old_save_has_neither"])
+
+    def test_the_odds_match_choice_for_choice(self):
+        from cryptowarz import encounter as en
+        from cryptowarz.game import Game
+
+        def cornered(weapon=None, rep=0, load=0.0):
+            game = Game(seed=11)
+            game.player.cash = 8_000.0
+            game.player.capacity = 25_000.0
+            game.weapon = weapon
+            game.stats["rep"] = rep
+            if load:
+                game.player.holding("DOGE").cost = game.player.capacity * load
+                game.player.holding("DOGE").qty = 1.0
+            en.open_standoff(game)
+            return game
+
+        self.assertAlmostEqual(self.js["odds_empty"], en.odds(cornered(), "run"))
+        self.assertAlmostEqual(self.js["odds_loaded"], en.odds(cornered(load=1.0), "run"))
+        self.assertEqual(self.js["odds_by_weapon"],
+                         [round(en.odds(cornered(weapon=w.key), "weapon"), 4)
+                          for w in en.WEAPONS])
+        self.assertEqual(self.js["odds_rep"],
+                         [round(en.odds(cornered(rep=r), "fight"), 4) for r in (-3, 0, 3)])
+        self.assertEqual(self.js["pay_is_certain"], 1)
+
+    def test_both_ports_offer_the_same_options(self):
+        self.assertEqual(self.js["choices_bare"], ["run", "fight", "pay"])
+        self.assertEqual(self.js["choices_armed"], ["run", "fight", "weapon", "pay"])
+
+    def test_a_weapon_cuts_both_ways_on_both_sides(self):
+        self.assertTrue(self.js["carry_cuts_both_ways"]["raid_up"])
+        self.assertTrue(self.js["carry_cuts_both_ways"]["stickup_down"])
+
+    def test_paying_keeps_the_bag_on_both_sides(self):
+        paid = self.js["paying_keeps_the_bag"]
+        self.assertEqual(paid["qty"], 1, "paying must not cost the bag")
+        self.assertEqual(paid["rep"], -1)
+        self.assertTrue(paid["cheaper"])
+
+
+@requires_node
 class TestDifficultyParity(unittest.TestCase):
     """A second scoring axis is exactly the kind of thing that drifts: one port
     multiplies by it, the other forgets, and the same run is worth two numbers
@@ -906,8 +1007,15 @@ class TestMarketShapeParity(unittest.TestCase):
         self.assertEqual(self.js["spark_days"], SPARK_DAYS)
 
     def test_the_port_records_a_day_per_day(self):
-        self.assertEqual(self.js["chart_truth"]["days_recorded"], 13)
-        self.assertTrue(self.js["chart_truth"]["first_point_is_the_opening_level"])
+        """The invariant rather than a fixed count. A stopped train or a
+        beating takes a day off you, and both used to move the clock without
+        moving the market - which froze prices for a day and broke the one
+        point per day the sparklines are drawn from."""
+        truth = self.js["chart_truth"]
+        self.assertTrue(truth["one_point_per_day"],
+                        f"{truth['days_recorded']} points for {truth['day']} days")
+        self.assertGreaterEqual(truth["days_recorded"], 13)
+        self.assertTrue(truth["first_point_is_the_opening_level"])
 
     def test_the_port_would_draw_the_peg_flat_and_the_memecoin_moving(self):
         """A sparkline scales its window, so a flat coin must be KNOWN flat."""

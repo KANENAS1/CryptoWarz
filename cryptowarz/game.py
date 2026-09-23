@@ -237,6 +237,12 @@ class Game:
         self.wheel_award: Optional[str] = None
         #: the same, for a piece bought from a dealer.
         self.gear_award: Optional[str] = None
+        #: somebody standing in front of you, waiting for an answer. While this
+        #: is set the run is stopped: see `_not_now`. It rides the save, so a
+        #: reload cannot be used to walk away from it.
+        self.pending: Optional[dict] = None
+        #: what you are carrying, by key; see encounter.WEAPONS. One at a time.
+        self.weapon: Optional[str] = None
         self.rng = random.Random(self.seed)
         self.state = MarketState(self.rng)
         self.market = generate(self.station, self.rng, self.state,
@@ -246,6 +252,70 @@ class Game:
                  f"${self.player.cash:,.0f} and a ${self.player.debt:,.0f} problem.")
         if self.market.headline:
             self.say(self.market.headline)
+
+    def lose_a_day(self) -> None:
+        """A day gone that you did not spend travelling.
+
+        Two things in the game can take one - a stopped train and a beating -
+        and both used to do it by incrementing the clock alone. That froze the
+        market for a day, which is both wrong fiction and a small free lunch:
+        prices cannot move against a player who is unconscious. It also broke
+        the one-price-per-day invariant the sparklines are drawn from, which is
+        how it was finally noticed.
+        """
+        self.day += 1
+        self.player.debt *= (1.0 + self.shark_rate)
+        self.player.vault *= (1.0 + VAULT_RATE)
+        self.state.drift(self.rng)
+        self.market = generate(self.station, self.rng, self.state,
+                               luck=self._luck_by_symbol())
+        self._mark_stats()
+
+    # -------------------------------------------------------------- standoff
+
+    def _not_now(self) -> None:
+        """Refuse anything that is not an answer while somebody is waiting.
+
+        Every door out of the standoff goes through `resolve`. Without this the
+        player could simply buy, sell and ride away from a man holding a knife,
+        which would make the whole encounter a message rather than a decision.
+        """
+        if self.pending:
+            raise ValueError("there is somebody in front of you. Answer him first")
+
+    @property
+    def standoff(self) -> Optional[dict]:
+        return self.pending
+
+    def choices(self) -> List[dict]:
+        from .encounter import choices
+        return choices(self)
+
+    def resolve(self, choice: str) -> List[str]:
+        from .encounter import resolve
+        return resolve(self, choice)
+
+    def buy_weapon(self, key: str) -> List[str]:
+        """Buy something to carry. One at a time, and only where they sell it."""
+        from .encounter import FOR_SALE, WEAPON_BY_KEY, weapon_of
+
+        self._not_now()
+        if not self.station.has_upgrades:
+            raise ValueError("nobody here sells that. Try a stop with a shop")
+        if key not in FOR_SALE:
+            raise ValueError(f"no such thing; they stock {', '.join(FOR_SALE)}")
+        want = WEAPON_BY_KEY[key]
+        if self.player.cash < want.price:
+            raise ValueError(f"the {want.name} is ${want.price:,.0f} and you have "
+                             f"${self.player.cash:,.2f}")
+        had = weapon_of(self.weapon)
+        self.player.cash -= want.price
+        self.weapon = want.key
+        message = f"You buy the {want.name}. ${want.price:,.0f}, no receipt."
+        if had:
+            message += f" The {had.name.lower()} goes in a bin on the way out."
+        self.say(message)
+        return [message]
 
     # --------------------------------------------------------------- tracking
 
@@ -303,6 +373,7 @@ class Game:
         return max(0.0, min(spendable / price, self.player.free_capacity / price))
 
     def buy(self, symbol: str, qty: float) -> str:
+        self._not_now()
         symbol = symbol.upper()
         if symbol not in {c.symbol for c in COINS}:
             raise ValueError(f"nobody here trades {symbol}")
@@ -321,6 +392,7 @@ class Game:
         return f"Bought {qty:,.6f} {symbol} at ${price:,.6f} for ${cost:,.2f}"
 
     def sell(self, symbol: str, qty: float) -> str:
+        self._not_now()
         symbol = symbol.upper()
         h = self.player.holding(symbol)
         if qty <= 0:
@@ -355,6 +427,7 @@ class Game:
 
     def spin_wheel(self) -> List[str]:
         """One spin. Sets ``wheel_award`` to a gear class on a rare wedge."""
+        self._not_now()
         if not self.wheel_ready:
             raise ValueError("no wheel here, or you've already had your spin")
 
@@ -428,6 +501,7 @@ class Game:
 
     def buy_gear(self) -> List[str]:
         """Buy a banked gear win, at a price that costs you the run's score."""
+        self._not_now()
         from .gear import BROKER_PRICE, GEAR_BY_KEY, broker_offer
 
         cls = broker_offer(self)
@@ -526,6 +600,7 @@ class Game:
 
     def roll_dice(self, pick: int) -> List[str]:
         """Call a number. Costs nothing, and once in a while pays."""
+        self._not_now()
         if not self.dice_ready:
             raise ValueError("nobody's running dice right now")
         try:
@@ -594,6 +669,7 @@ class Game:
         return max(0.0, self.borrow_limit() - self.player.debt)
 
     def borrow(self, amount: float) -> str:
+        self._not_now()
         if not self.station.has_shark:
             raise ValueError("The Shark doesn't work this station")
         if amount <= 0:
@@ -606,6 +682,7 @@ class Game:
         return f"Borrowed ${amount:,.2f}. The Shark smiles. That's never good."
 
     def repay(self, amount: float) -> str:
+        self._not_now()
         if not self.station.has_shark:
             raise ValueError("The Shark doesn't work this station")
         amount = min(amount, self.player.debt, self.player.cash)
@@ -617,6 +694,7 @@ class Game:
         return f"Repaid ${amount:,.2f}.{tail}"
 
     def deposit(self, amount: float) -> str:
+        self._not_now()
         if not self.station.has_vault:
             raise ValueError("no vault at this station")
         amount = min(amount, self.player.cash)
@@ -627,6 +705,7 @@ class Game:
         return f"Deposited ${amount:,.2f}. It earns {VAULT_RATE:.0%} a day in there."
 
     def withdraw(self, amount: float) -> str:
+        self._not_now()
         if not self.station.has_vault:
             raise ValueError("no vault at this station")
         amount = min(amount, self.player.vault)
@@ -644,6 +723,7 @@ class Game:
         return 3_500.0 * (1.7 ** steps)
 
     def buy_capacity(self) -> str:
+        self._not_now()
         if not self.station.has_upgrades:
             raise ValueError("nowhere to buy hardware here")
         price = self.upgrade_cost()
@@ -655,6 +735,7 @@ class Game:
                 f"Capacity now ${self.player.capacity:,.0f}.")
 
     def buy_vpn(self) -> str:
+        self._not_now()
         if not self.station.has_upgrades:
             raise ValueError("nowhere to buy hardware here")
         price = 2_200.0 * (2.0 ** self.player.vpn)
@@ -670,6 +751,7 @@ class Game:
 
     def travel(self, name: str) -> List[str]:
         """Ride to another station. Costs a day - the only thing you can't buy."""
+        self._not_now()
         from .events import roll_event
 
         was_ready = self.dice_ready          # so the offer is announced once

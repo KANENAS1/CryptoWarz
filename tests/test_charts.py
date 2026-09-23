@@ -26,9 +26,18 @@ def ride(game, rides):
         here = [s.name for s in STATIONS].index(game.station.name)
         try:
             game.travel(STATIONS[(here + 3) % len(STATIONS)].name)
+            _answer_any(game)
         except ValueError:
             break
     return game
+
+
+def _answer_any(game):
+    """These tests ride trains; a standoff blocks everything until answered."""
+    from cryptowarz.encounter import best_choice
+
+    if getattr(game, "pending", None):
+        game.resolve(best_choice(game))
 
 
 class TestTheGameRemembers(unittest.TestCase):

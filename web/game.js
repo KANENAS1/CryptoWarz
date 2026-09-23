@@ -362,6 +362,11 @@ function Game(seed, tier, perk, gear, difficulty) {
   this.hotHand = false;
   this.wheelAward = null;                  // a gear class for the caller to bank
   this.gearAward = null;                   // the same, bought from a dealer
+  /* somebody standing in front of you, waiting for an answer. While this is
+     set the run is stopped, and it rides the save, so a reload is not a way
+     to walk away from a man with a knife. */
+  this.pending = null;
+  this.weapon = null;                      // what you are carrying; one at a time
   this.log = [];
   this.state = new MarketState(this.rng);
   this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
@@ -369,6 +374,44 @@ function Game(seed, tier, perk, gear, difficulty) {
   this.say(`Day 1. You're at ${this.station.name} with $${Math.round(this.player.cash).toLocaleString()} and a $${Math.round(this.player.debt).toLocaleString()} problem.`);
   if (this.market.headline) this.say(this.market.headline);
 }
+/* Refuse anything that is not an answer while somebody is waiting. Without
+   this a player could buy, sell and ride away from a man holding a knife,
+   which would make the encounter a message rather than a decision. */
+Game.prototype.notNow = function () {
+  if (this.pending) throw new Error("there is somebody in front of you. Answer him first");
+};
+Game.prototype.choices = function () { return encounterChoices(this); };
+Game.prototype.resolve = function (choice) { return resolveStandoff(this, choice); };
+/* Buy something to carry. One at a time, and only where they sell it. */
+Game.prototype.buyWeapon = function (key) {
+  this.notNow();
+  if (!this.station.shop) throw new Error("nobody here sells that. Try a stop with a shop");
+  if (!FOR_SALE.includes(key)) throw new Error(`no such thing; they stock ${FOR_SALE.join(", ")}`);
+  const want = WEAPON_BY_KEY[key];
+  if (this.player.cash < want.price) {
+    throw new Error(`the ${want.name} is $${want.price.toLocaleString()} and you have `
+                    + `$${this.player.cash.toFixed(2)}`);
+  }
+  const had = weaponOf(this.weapon);
+  this.player.cash -= want.price;
+  this.weapon = want.key;
+  let message = `You buy the ${want.name}. $${want.price.toLocaleString()}, no receipt.`;
+  if (had) message += ` The ${had.name.toLowerCase()} goes in a bin on the way out.`;
+  this.say(message);
+  return [message];
+};
+/* A day gone that you did not spend travelling: a stopped train or a beating.
+   Both used to move the clock alone, which froze the market for a day - wrong
+   fiction, a small free lunch, and a break in the one-price-per-day invariant
+   the sparklines are drawn from. */
+Game.prototype.loseADay = function () {
+  this.day += 1;
+  this.player.debt *= (1 + this.sharkRate);
+  this.player.vault *= (1 + VAULT_RATE);
+  this.state.drift(this.rng);
+  this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
+  this.markStats();
+};
 Game.prototype.markStats = function () {
   const worth = this.netWorth();
   this.stats.peak_worth = Math.max(this.stats.peak_worth, worth);
@@ -438,6 +481,7 @@ Game.prototype.hearSomething = function () {
 
 /* -------------------------------- broker ----------------------------- */
 Game.prototype.buyGear = function () {
+  this.notNow();
   const cls = brokerOffer(this);
   if (cls === null) {
     if (this.stats.gear_bought) throw new Error("he only has the one, and you bought it");
@@ -461,6 +505,7 @@ Object.defineProperty(Game.prototype, "wheelReady", {
 /* Sets wheelAward to a gear class on the rare wedge; the caller banks it,
    because the Game does not own the profile. */
 Game.prototype.spinWheel = function () {
+  this.notNow();
   if (!this.wheelReady) throw new Error("no wheel here, or you've already had your spin");
   this.wheelAward = null;
   (this.stats.wheels = this.stats.wheels || []).push(this.station.name);
@@ -521,6 +566,7 @@ Game.prototype.streakGift = function () {
                    "The turnstile blesses you");
 };
 Game.prototype.rollDice = function (pick) {
+  this.notNow();
   if (!this.diceReady) throw new Error("nobody's running dice right now");
   pick = parseInt(pick, 10);
   if (!(pick >= 1 && pick <= DICE_SIDES)) throw new Error(`call a number from 1 to ${DICE_SIDES}`);
@@ -591,6 +637,7 @@ Game.prototype.maxBuyable = function (sym) {
   return Math.max(0, Math.min(spendable / p, this.freeCapacity() / p));
 };
 Game.prototype.buy = function (sym, qty) {
+  this.notNow();
   if (!COIN[sym]) throw new Error(`nobody here trades ${sym}`);
   if (!(qty > 0)) throw new Error("buy how much?");
   const price = this.market.prices[sym], cost = price * qty;
@@ -601,6 +648,7 @@ Game.prototype.buy = function (sym, qty) {
   return { text: `Bought ${fmtQty(qty)} ${sym} for $${cost.toFixed(2)}`, good: true };
 };
 Game.prototype.sell = function (sym, qty) {
+  this.notNow();
   const h = this.holding(sym);
   if (!(qty > 0)) throw new Error("sell how much?");
   if (qty > h.qty + 1e-12) throw new Error(`you only hold ${fmtQty(h.qty)} ${sym}`);
@@ -627,6 +675,7 @@ Game.prototype.borrowable = function () {
   return Math.max(0, this.borrowLimit() - this.player.debt);
 };
 Game.prototype.borrow = function (amount) {
+  this.notNow();
   if (!this.station.shark) throw new Error("The Shark doesn't work this station");
   if (!(amount > 0)) throw new Error("borrow how much?");
   if (this.player.debt + amount > this.borrowLimit())
@@ -635,6 +684,7 @@ Game.prototype.borrow = function (amount) {
   return { text: `Borrowed $${amount.toFixed(2)}. The Shark smiles. That's never good.`, good: false };
 };
 Game.prototype.repay = function (amount) {
+  this.notNow();
   if (!this.station.shark) throw new Error("The Shark doesn't work this station");
   amount = Math.min(amount, this.player.debt, this.player.cash);
   if (!(amount > 0)) throw new Error("nothing to repay, or nothing to repay it with");
@@ -642,6 +692,7 @@ Game.prototype.repay = function (amount) {
   return { text: `Repaid $${amount.toFixed(2)}.${this.player.debt <= 0 ? " Debt cleared. You can breathe." : ""}`, good: true };
 };
 Game.prototype.deposit = function (amount) {
+  this.notNow();
   if (!this.station.vault) throw new Error("no vault at this station");
   amount = Math.min(amount, this.player.cash);
   if (!(amount > 0)) throw new Error("deposit how much?");
@@ -649,6 +700,7 @@ Game.prototype.deposit = function (amount) {
   return { text: `Deposited $${amount.toFixed(2)}. It earns 4% a day in there.`, good: true };
 };
 Game.prototype.withdraw = function (amount) {
+  this.notNow();
   if (!this.station.vault) throw new Error("no vault at this station");
   amount = Math.min(amount, this.player.vault);
   if (!(amount > 0)) throw new Error("withdraw how much?");
@@ -661,6 +713,7 @@ Game.prototype.upgradeCost = function () {
 };
 Game.prototype.vpnCost = function () { return 2200 * Math.pow(2, this.player.vpn); };
 Game.prototype.buyCapacity = function () {
+  this.notNow();
   if (!this.station.shop) throw new Error("nowhere to buy hardware here");
   const price = this.upgradeCost();
   if (this.player.cash < price) throw new Error(`a bigger cold wallet costs $${price.toFixed(2)}`);
@@ -668,6 +721,7 @@ Game.prototype.buyCapacity = function () {
   return { text: `New cold wallet. Capacity now $${this.player.capacity.toLocaleString()}.`, good: true };
 };
 Game.prototype.buyVpn = function () {
+  this.notNow();
   if (!this.station.shop) throw new Error("nowhere to buy hardware here");
   if (this.player.vpn >= 3) throw new Error("you are already as invisible as this gets");
   const price = this.vpnCost();
@@ -676,6 +730,7 @@ Game.prototype.buyVpn = function () {
   return { text: `VPN level ${this.player.vpn}. You draw less attention now.`, good: true };
 };
 Game.prototype.travel = function (index) {
+  this.notNow();
   const wasReady = this.diceReady;         // so the offer is announced once
   const target = STATIONS[index];
   if (target.name === this.station.name) throw new Error("you're already here");
@@ -714,6 +769,232 @@ Game.prototype.verdict = function () {
   if (s < 500000) return "You cleaned up. Somebody is going to ask questions.";
   return "Legendary. They'll name a station after you.";
 };
+
+/* --------------------------- encounter.py -----------------------------
+   Somebody is standing in front of you, and the game stops to ask.
+
+   Every other bad thing here happens TO you and you read about it afterwards.
+   That is right for weather and wrong for a person: a person blocking the
+   stairs is a decision. So a stickup does not resolve - it waits, it blocks
+   every other action, and it rides the save, so a reload is not a way out.
+
+   Every option is bad in a different way. Running is free and usually works,
+   but a full wallet is a slow wallet - the run that most needs to walk away is
+   the one least able to. Fighting is a coin flip that can cost a day. Paying
+   is certain, expensive, and advertises you. A weapon makes the fight a
+   favourite and makes the SEC look twice, which is the trade the armoury is
+   built on. */
+const WEAPONS = [
+  { key: "brick",  name: "Half a Brick",
+    blurb: "It was holding a door open. Now it is holding your nerve together.",
+    edge: 0.12, heat: 0.02, breaks: 0.45, price: 0 },
+  { key: "pipe",   name: "Length of Pipe",
+    blurb: "Scaffolding offcut. Heavier than it looks, which is the entire idea.",
+    edge: 0.18, heat: 0.06, breaks: 0.20, price: 400 },
+  { key: "cutter", name: "Box Cutter",
+    blurb: "Nobody wants to find out whether you would. That is usually enough.",
+    edge: 0.26, heat: 0.14, breaks: 0.10, price: 1200 },
+  { key: "bat",    name: "Louisville Slugger",
+    blurb: "You tell people you play softball. Nobody has ever believed you.",
+    edge: 0.33, heat: 0.20, breaks: 0.06, price: 3200 },
+  { key: "taser",  name: "Stun Gun",
+    blurb: "Legal in some states. This is not one of them, and it is the good kind.",
+    edge: 0.42, heat: 0.28, breaks: 0.14, price: 9000 },
+];
+const WEAPON_BY_KEY = Object.fromEntries(WEAPONS.map(w => [w.key, w]));
+const FOR_SALE = WEAPONS.filter(w => w.price > 0).map(w => w.key);
+function weaponOf(key) { return key ? (WEAPON_BY_KEY[key] || null) : null; }
+function carryHeat(g) { const w = weaponOf(g.weapon); return w ? w.heat : 0; }
+
+const REP_MAX = 3, REP_ENCOUNTER = 0.06, REP_ODDS = 0.05;
+function repOf(g) { return Math.max(-REP_MAX, Math.min(REP_MAX, (g.stats.rep | 0))); }
+function bumpRep(g, d) { g.stats.rep = Math.max(-REP_MAX, Math.min(REP_MAX, repOf(g) + d)); }
+
+/* A full wallet is a slow wallet - the sharpest idea in the encounter. */
+const MAX_LOAD_PENALTY = 0.28, RUN_BASE = 0.62, FIGHT_BASE = 0.34;
+function loadPenalty(g) {
+  const cap = Math.max(1, g.player.capacity);
+  return MAX_LOAD_PENALTY * Math.min(1, g.usedCapacity() / cap);
+}
+function encounterOdds(g, choice) {
+  const rep = repOf(g);
+  let chance;
+  if (choice === "run") {
+    chance = RUN_BASE - loadPenalty(g) + rep * REP_ODDS;
+  } else if (choice === "fight" || choice === "weapon") {
+    chance = FIGHT_BASE + rep * REP_ODDS;
+    if (choice === "weapon") {
+      const w = weaponOf(g.weapon);
+      if (!w) return 0;
+      chance += w.edge;
+    }
+    chance += g.luck * 0.5;
+  } else { return 1; }
+  return Math.max(0.05, Math.min(0.95, chance));
+}
+
+const KINDS = [
+  { key: "stickup", title: "SOMEBODY BLOCKS THE STAIRS", severity: 1.0, armable: true,
+    opening: [
+      'A man steps out of the stairwell at {station} and does not move. "Phone. Wallet. Whatever\'s in the bag."',
+      "Two of them, one either side of the turnstile at {station}. The one on the left is doing the talking and the one on the right is why.",
+      "He has been on the platform at {station} since you got off, and now he is close enough that you can smell the cigarettes.",
+    ] },
+  { key: "followed", title: "YOU WERE FOLLOWED OFF THE TRAIN", severity: 0.85, armable: true,
+    opening: [
+      "Somebody got off at {station} when you did, and took the same stairs, and is now standing closer than anybody stands by accident.",
+      "He rode three cars down and got off at {station} behind you. He is not looking at his phone. Nobody on this platform is not looking at their phone.",
+      "The kid who was watching your screen on the ride gets off at {station} too, and he has friends.",
+    ] },
+];
+const KIND_BY_KEY = Object.fromEntries(KINDS.map(k => [k.key, k]));
+
+function openStandoff(g, kindKey) {
+  const kind = KIND_BY_KEY[kindKey] || KINDS[0];
+  const line = g.rng.choice(kind.opening).replace(/\{station\}/g, g.station.name);
+  g.pending = { kind: kind.key, day: g.day, station: g.station.name, line: line };
+  g.stats.standoffs = (g.stats.standoffs | 0) + 1;
+  return [line];
+}
+
+function payCost(g) {
+  const kind = KIND_BY_KEY[(g.pending || {}).kind] || KINDS[0];
+  return Math.max(150, g.player.cash * 0.22 * kind.severity);
+}
+
+/* What the player may do, with the true odds on each. Never a guess. */
+function encounterChoices(g) {
+  if (!g.pending) return [];
+  const kind = KIND_BY_KEY[g.pending.kind] || KINDS[0];
+  const out = [
+    { key: "run", label: "RUN", odds: encounterOdds(g, "run"),
+      note: "Down the platform and out. What you are carrying slows you down." },
+    { key: "fight", label: "SWING FIRST", odds: encounterOdds(g, "fight"),
+      note: "Bare hands. It is a coin flip and the coin is not yours." },
+  ];
+  const w = weaponOf(g.weapon);
+  if (w && kind.armable) {
+    out.push({ key: "weapon", label: `USE THE ${w.name.toUpperCase()}`,
+               odds: encounterOdds(g, "weapon"),
+               note: `${w.name}. It might not survive the night either.` });
+  }
+  out.push({ key: "pay", label: "HAND IT OVER", odds: 1,
+             note: `Give up ${Math.round(payCost(g)).toLocaleString()} and walk away `
+                   + `whole. Word gets around that you do.` });
+  return out;
+}
+
+/* The answer with the best odds, for bots and simulations - not for the game,
+   where a standoff is the player's to answer. It exists so the balance bots
+   face the same decisions a player does rather than being exempt from them. */
+function bestChoice(g) {
+  const options = encounterChoices(g);
+  if (!options.length) return null;
+  const fighting = options.filter(c => c.key !== "pay");
+  const best = fighting.reduce((a, b) => (b.odds > a.odds ? b : a));
+  return best.odds >= 0.45 ? best.key : "pay";
+}
+
+const TAKE_CASH = [0.30, 0.60], TAKE_BAG = [0.10, 0.26], HOSPITAL_CHANCE = 0.35;
+function rob(g, scale) {
+  const cashShare = g.rng.uniform(TAKE_CASH[0], TAKE_CASH[1]) * scale;
+  const bagShare = Math.min(0.9, g.rng.uniform(TAKE_BAG[0], TAKE_BAG[1]) * scale);
+  const cash = takeCash(g, g.player.cash * cashShare);
+  const bag = confiscate(g, bagShare);
+  return [cash, bag];
+}
+function lossLine(cash, bag) {
+  const m = v => "$" + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (cash > 0 && bag > 0) return `${m(cash)} and ${m(bag)} of the bag, at cost.`;
+  if (cash > 0) return `${m(cash)}.`;
+  if (bag > 0) return `${m(bag)} of the bag, at cost.`;
+  return "nothing, because you had nothing. Small mercies.";
+}
+function spoils(g) {
+  const roll = g.rng.random();
+  if (roll < 0.30) {
+    const found = 80 + g.rng.random() * 620;
+    g.player.cash += found;
+    return [`He leaves $${found.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} on the platform. You are not too proud.`];
+  }
+  if (roll < 0.44 && !g.weapon) {
+    const dropped = g.rng.choice(WEAPONS.filter(w => w.price <= 3200));
+    g.weapon = dropped.key;
+    return [`He drops what he was holding. ${dropped.name}. It is yours now.`];
+  }
+  return [];
+}
+
+/* Answer the standoff. Clears it either way - there is no third option. */
+function resolveStandoff(g, choice) {
+  if (!g.pending) throw new Error("nobody is in front of you");
+  const kind = KIND_BY_KEY[g.pending.kind] || KINDS[0];
+  const valid = encounterChoices(g).map(c => c.key);
+  if (!valid.includes(choice)) throw new Error(`you can't do that here; try ${valid.sort().join(", ")}`);
+  g.pending = null;
+  const w = weaponOf(g.weapon);
+  const out = [];
+  const finish = () => { out.forEach(m => g.say(m)); return out; };
+
+  if (choice === "pay") {
+    const paid = takeCash(g, payCost(g));
+    bumpRep(g, -1);
+    out.push(`You hand it over. $${paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, `
+             + `and he counts it in front of you to make the point. Word gets around.`);
+    return finish();
+  }
+
+  const won = g.rng.random() < encounterOdds(g, choice);
+
+  if (choice === "run") {
+    if (won) {
+      out.push(g.rng.choice([
+        "You go down the platform and through the crowd at the far stairs. Nobody follows you up. Your heart does not get the message for another ten minutes.",
+        "You move before he finishes the sentence. Two flights, one turnstile, and a street you do not recognise. Everything you had, you still have.",
+        "He is not as interested as he looked. You are three blocks away before you slow down.",
+      ]));
+      return finish();
+    }
+    const [cash, bag] = rob(g, kind.severity);
+    out.push("You get four steps. The bag is the problem - it always is.");
+    out.push(`They take ${lossLine(cash, bag)}`);
+    return finish();
+  }
+
+  if (won) {
+    bumpRep(g, 1);
+    if (choice === "weapon" && w) {
+      out.push(g.rng.choice([
+        `You bring the ${w.name.toLowerCase()} out and the conversation ends. He decides, quickly, that this is not his night.`,
+        `One swing. It does not connect and it does not have to - he is already going the other way.`,
+      ]));
+      if (g.rng.random() < w.breaks) {
+        g.weapon = null;
+        out.push(`The ${w.name.toLowerCase()} does not survive the night. You leave it where it lands.`);
+      }
+    } else {
+      out.push(g.rng.choice([
+        "You swing first, which is the only part of this you get to choose. He goes down the stairs the fast way and does not come back up.",
+        "It is short, ugly and entirely unlike the movies. You are still standing at the end of it, and he is not.",
+      ]));
+    }
+    for (const m of spoils(g)) out.push(m);
+    return finish();
+  }
+
+  bumpRep(g, -1);
+  if (choice === "weapon" && w) {
+    g.weapon = null;
+    out.push(`He takes the ${w.name.toLowerCase()} off you, which is worse than not having had one.`);
+  }
+  const [cash, bag] = rob(g, kind.severity * 1.25);
+  out.push(`It goes badly. They take ${lossLine(cash, bag)}`);
+  if (g.rng.random() < HOSPITAL_CHANCE) {
+    g.loseADay();
+    out.push("You come round on a bench with a day gone and the Shark's clock still running.");
+  }
+  return finish();
+}
 
 /* ----------------------------- events.py ------------------------------ */
 function confiscate(game, fraction) {
@@ -788,13 +1069,24 @@ function delayEvent(g) {
   if (g.perk === "metrocard") {
     return ["Signal problems at Chambers St. You know the workaround and reroute without losing the day."];
   }
-  g.day += 1; g.player.debt *= (1 + g.sharkRate);
+  g.loseADay();
   return ["Signal problems at Chambers St. You lose a day on a stopped train while your debt keeps compounding."];
 }
+/* The only event that does not resolve itself: it sets a standoff, the
+   standoff blocks everything else, and it rides the save. */
+function stickup(g) {
+  // a reputation for standing your ground makes the next one pick somebody
+  // else; a reputation for paying up is an advertisement
+  if (g.rng.random() < repOf(g) * 0.12) {
+    return ["Somebody clocks you on the platform, thinks about it, and finds something else to look at."];
+  }
+  return openStandoff(g, g.rng.random() < 0.45 ? "followed" : "stickup");
+}
+
 const quiet = () => [];
 
 const EVENTS = [
-  [secRaid, 10, true], [phishing, 8, true], [gasSpike, 9, false], [sharkVisit, 7, false],
+  [secRaid, 10, true], [stickup, 5.5, true], [phishing, 8, true], [gasSpike, 9, false], [sharkVisit, 7, false],
   [delayEvent, 5, false], [airdrop, 8, false], [foundWallet, 6, false], [whaleOffer, 6, false],
   [quiet, 34, false],
 ];
@@ -825,9 +1117,13 @@ function eventWeights(game, station, day) {
   // gear you are currently holding for; the best piece, never the sum
   shelter *= 1 - game.luck;
   const pressure = raidPressure(game, day);
+  // what makes a mugger reconsider is exactly what makes an agent look twice
+  const armed = 1 + carryHeat(game);
   return EVENTS.map(([fn, w, scales]) => {
     let out = scales ? w * (0.35 + 1.4 * heat) * shelter : w;
-    if (fn === secRaid) out *= pressure;
+    if (fn === secRaid) out *= pressure * armed;
+    // the grace period is the SEC's alone; the city never signed it
+    if (fn === stickup) out *= Math.max(0.35, 1 - carryHeat(game) * 2);
     return out;
   });
 }
@@ -1369,6 +1665,11 @@ function saveToDict(g) {
        version 1 shipped and read with a default, so an in-progress save from
        the older build still loads - it simply resumes as practice. */
     daily_slot: g.dailySlot === undefined ? null : g.dailySlot,
+    /* what you are carrying, and anybody waiting for an answer. The standoff
+       rides the save on purpose: without it a reload walks away from a man
+       with a knife. Both read with a default, so an older save still loads. */
+    weapon: g.weapon || null,
+    pending: g.pending || null,
     stats: g.stats,
     day: g.day,
     finished: g.finished,
@@ -1408,6 +1709,8 @@ function saveFromDict(data) {
   if (data.stats) g.stats = data.stats;
   // carried in stats, so it reloads with the run and a reload cannot shake it
   g.hotHand = !!(g.stats && g.stats.hot_hand);
+  g.weapon = data.weapon || null;
+  g.pending = (data.pending && typeof data.pending === "object") ? Object.assign({}, data.pending) : null;
   g.day = data.day;
   g.finished = !!data.finished;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
@@ -1505,6 +1808,11 @@ if (typeof module !== "undefined") {
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,
                      DIFFICULTIES, DIFFICULTY_BY_KEY, DEFAULT_DIFFICULTY,
                      difficultyOf, difficultyMult,
+                     WEAPONS, WEAPON_BY_KEY, FOR_SALE, weaponOf, carryHeat,
+                     REP_MAX, REP_ODDS, repOf, bumpRep, MAX_LOAD_PENALTY,
+                     RUN_BASE, FIGHT_BASE, loadPenalty, encounterOdds, KINDS,
+                     KIND_BY_KEY, openStandoff, encounterChoices, resolveStandoff,
+                     payCost, stickup, bestChoice, TAKE_CASH, TAKE_BAG, HOSPITAL_CHANCE,
                      RAID_GRACE, RAID_RAMP_TO, raidPressure, eventWeights, raidChance,
                      THREAT, THREAT_BARS, WIRE_LINES, threatLevel, standingHeat, wire, EVENTS,
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,

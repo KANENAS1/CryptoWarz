@@ -169,6 +169,25 @@
   .wire.t2 .lvl,.wire.t3 .lvl{color:var(--yellow)} .wire.t4 .lvl{color:var(--red)}
   .wire .txt{font-size:12.5px;color:var(--paper);margin-top:2px}
   .wire .odds{font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:2px}
+  /* ---------- the standoff ----------
+     Deliberately a full-screen sheet with no way out but an answer: it is the
+     one moment the game stops and asks, and a dismissable panel would make it
+     a message again. */
+  .sochoice{display:block;width:100%;text-align:left;background:var(--panel2);
+            border:1px solid var(--rule);border-radius:9px;padding:12px 13px;
+            margin-bottom:9px;color:var(--paper);font:inherit;cursor:pointer}
+  .sochoice:active{background:#2a2a32}
+  .sochoice .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .sochoice .lab{font-weight:700;font-size:14px;letter-spacing:.02em}
+  .sochoice .od{font-family:var(--mono);font-weight:700;font-size:14px}
+  .sochoice .od.good{color:#34d07a} .sochoice .od.mid{color:var(--yellow)}
+  .sochoice .od.bad{color:var(--red)} .sochoice .od.sure{color:var(--dim)}
+  .sochoice .nt{font-size:12px;color:var(--dim);margin-top:4px;line-height:1.3}
+  .sowho{background:var(--red);color:#fff;border-radius:9px;padding:12px 13px;
+         font-size:14px;line-height:1.35;margin-bottom:14px}
+  .sowho b{display:block;font-size:10px;letter-spacing:.16em;opacity:.85;margin-bottom:5px}
+  .socarry{font-size:11px;color:var(--dim);margin-bottom:12px;letter-spacing:.04em}
+  .pill.carry{border-color:var(--orange);color:var(--orange)}
   .nosave{background:var(--red);color:#fff;font-size:12.5px;line-height:1.3;
           border-radius:7px;padding:9px 11px;margin:0 0 10px}
   .nosave b{font-weight:700;letter-spacing:.04em}
@@ -333,6 +352,7 @@
       <span class="day" id="day">DAY 1 OF 30</span>
       <span class="pill tier" id="tierpill" hidden>OFF PEAK</span>
       <span class="pill luck" id="luckpill" hidden>+5% LUCK</span>
+      <span class="pill carry" id="carrypill" hidden>PIPE</span>
       <div class="cap" aria-label="wallet capacity used"><i id="capbar" style="width:0%"></i></div>
       <span class="day num" id="capnum" style="color:var(--dim)">$0 / $25,000</span>
     </div>
@@ -433,6 +453,15 @@
   <div style="padding-top:10px;display:flex;gap:9px">
     <button id="closegoals">BACK</button>
     <button id="openbackup" style="flex:0 0 auto;min-width:104px">BACKUP</button>
+  </div>
+</div>
+
+<div class="sheet" id="standoff">
+  <h3 id="sotitle">TROUBLE</h3>
+  <div class="sheetscroll">
+    <div class="sowho" id="sowho"></div>
+    <div class="socarry" id="socarry"></div>
+    <div id="sochoices"></div>
   </div>
 </div>
 
@@ -584,6 +613,9 @@ function render(){
   $("day").textContent = `DAY ${Math.min(g.day, g.days)} OF ${g.days}`;
   const tierInfo = TIER_BY_LEVEL[g.tier];
   const pill = $("tierpill");
+  const carry = weaponOf(g.weapon);
+  $("carrypill").hidden = !carry;
+  if (carry) $("carrypill").textContent = carry.name.toUpperCase();
   $("luckpill").hidden = g.luck <= 0;
   $("luckpill").textContent = `+${Math.round(g.luck * 100)}% LUCK`;
   pill.hidden = g.tier === 1 && !g.perk && !g.isDaily && !g.hotHand;
@@ -659,6 +691,10 @@ function render(){
     </div>`;
   }).join("");
 
+  // Somebody is waiting. This is checked on every render, so it survives a
+  // reload and cannot be dismissed by closing the sheet.
+  if (g.pending) renderStandoff();
+
   // The wire: the real odds of a raid at this stop, on this day, as news.
   // Drawn from the same weight table the roll uses, so it cannot disagree.
   const w = wire(g);
@@ -693,6 +729,15 @@ function render(){
     // the rarest thing in the game should not sit two taps deep on the one run
     // in a hundred where a player can actually afford it
     if (brokerOffer(g)) svc.push(`<button data-act="dealer" class="go">A DEALER · ${fmtMoney(BROKER_PRICE)}</button>`);
+    // one button, offering the best thing you can actually afford that beats
+    // what you are already carrying - a five-item shop for one decision is a
+    // menu, and this is a game about the subway, not about shopping
+    const have = weaponOf(g.weapon);
+    const better = WEAPONS.filter(w => w.price > 0 && w.price <= p.cash
+                                       && (!have || w.edge > have.edge))
+                          .sort((a2, b2) => b2.edge - a2.edge)[0];
+    if (better) svc.push(`<button data-act="carry" data-weapon="${better.key}">CARRY: ${
+      better.name.toUpperCase()} · ${fmtMoney(better.price)}</button>`);
   }
   renderWhisper();
   renderDeadEnd();
@@ -1063,6 +1108,7 @@ $("main").addEventListener("click", e => {
   if (a === "withdraw") return act(() => game.withdraw(game.player.vault));
   if (a === "capacity") return act(() => game.buyCapacity());
   if (a === "vpn") return act(() => game.buyVpn());
+  if (a === "carry") return act(() => game.buyWeapon(b.dataset.weapon));
 });
 
 $("main").addEventListener("keydown", e => {
@@ -1209,7 +1255,7 @@ function showFinal(){
 /* One function owns which overlay is visible. Opening a sheet without closing
    the others left two stacked full-screen panels, and the one later in the
    document silently swallowed every tap meant for the one beneath it. */
-const SHEETS = ["setup", "goals", "scores", "travel", "over", "backup"];
+const SHEETS = ["setup", "goals", "scores", "travel", "over", "backup", "standoff"];
 function openSheet(id){
   SHEETS.forEach(s => $(s).classList.toggle("on", s === id));
 }
@@ -1396,6 +1442,46 @@ $("setupcancel").addEventListener("click", closeSheets);
 $("startrun").addEventListener("click", () => {
   closeSheets();
   start(Math.floor(Math.random() * 1e9), pickedTier, pickedPerk, null, pickedHard);
+});
+
+/* ---------------------------- the standoff ---------------------------
+   The one screen with no way out but an answer. Opened by render() whenever a
+   standoff is pending, which means it also comes straight back after a reload
+   - the pending state rides the save, so closing the tab is not a way out. */
+function renderStandoff(){
+  const p = game && game.pending;
+  if (!p) return;
+  const kind = KIND_BY_KEY[p.kind] || KINDS[0];
+  $("sotitle").textContent = kind.title;
+  $("sowho").innerHTML = `<b>DAY ${p.day} · ${esc(p.station)}</b>${esc(p.line)}`;
+  const w = weaponOf(game.weapon);
+  const rep = repOf(game);
+  const bits = [];
+  if (w) bits.push(`carrying the ${w.name}`);
+  bits.push(`${Math.round(game.usedCapacity() / Math.max(1, game.player.capacity) * 100)}% loaded`);
+  if (rep) bits.push(rep > 0 ? `you have a name (+${rep})` : `they think you are soft (${rep})`);
+  $("socarry").textContent = bits.join(" · ").toUpperCase();
+  $("sochoices").innerHTML = game.choices().map(c => {
+    const pct = c.odds >= 1 ? "CERTAIN" : Math.round(c.odds * 100) + "%";
+    const cls = c.odds >= 1 ? "sure" : c.odds >= 0.6 ? "good" : c.odds >= 0.4 ? "mid" : "bad";
+    return `<button class="sochoice" data-answer="${c.key}">
+      <div class="top"><span class="lab">${esc(c.label)}</span>
+        <span class="od ${cls}">${pct}</span></div>
+      <div class="nt">${esc(c.note)}</div></button>`;
+  }).join("");
+  openSheet("standoff");
+}
+$("sochoices").addEventListener("click", e => {
+  const b = e.target.closest("[data-answer]");
+  if (!b) return;
+  let said;
+  try { said = game.resolve(b.dataset.answer); }
+  catch (err) { return flash(err.message, false); }
+  closeSheets();
+  render();
+  persist();
+  // every line of it, newest last, because this is the story of the run
+  for (const line of said.slice().reverse()) flash(line, true);
 });
 
 /* ------------------------------ backup -------------------------------

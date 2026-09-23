@@ -203,6 +203,18 @@ def wallet_panel(game: Game) -> str:
     if game.luck > 0:
         lines.append(f"  {c('luck', GREY)}     {c(f'+{game.luck:.0%}', GREEN)}"
                      f"{c(' on what you are holding', GREY)}")
+    from .encounter import rep_of, weapon_of
+    weapon = weapon_of(getattr(game, "weapon", None))
+    if weapon:
+        lines.append(f"  {c('carrying', GREY)} {c(weapon.name, YELL, True)}"
+                     f"{c(f' · +{weapon.edge:.0%} in a fight · +{weapon.heat:.0%} heat', GREY)}")
+    rep = rep_of(game)
+    if rep:
+        word = ("nobody leans on you" if rep > 1 else "you have a name" if rep > 0
+                else "they think you are soft" if rep > -2 else "they line up for you")
+        lines.append(f"  {c('word', GREY)}     "
+                     f"{c(('+' if rep > 0 else '') + str(rep), GREEN if rep > 0 else RED)}"
+                     f"{c(' · ' + word, GREY)}")
     return "\n".join(lines)
 
 
@@ -233,6 +245,31 @@ def wire(game: Game, station=None) -> str:
         odds = c(f"1 in {one_in:.0f} per stop · {w['two_stops']:.0%} over the next two", GREY)
     return (f"  {head} {bar} {label}  {odds}\n"
             f"  {c(str(w['text']), WHITE)}")
+
+
+def standoff(game: Game) -> str:
+    """The man on the stairs, and what you can do about him.
+
+    The odds printed are the real ones - ``encounter.odds`` is what the roll
+    uses - because a choice you cannot price is not a choice, it is a button.
+    """
+    pending = getattr(game, "pending", None)
+    if not pending:
+        return ""
+    from .encounter import KIND_BY_KEY, KINDS
+
+    kind = KIND_BY_KEY.get(str(pending.get("kind")), KINDS[0])
+    lines = ["", "  " + c("── " + kind.title + " " + "─" * max(0, 44 - len(kind.title)), RED, True),
+             "  " + c(str(pending.get("line", "")), WHITE)]
+    for choice in game.choices():
+        odds = float(choice["odds"])
+        shown = "certain" if odds >= 1.0 else f"{odds:.0%}"
+        colour = GREEN if odds >= 0.6 else (YELL if odds >= 0.4 else RED)
+        lines.append(f"    {c(str(choice['key']).ljust(7), YELL, True)} "
+                     f"{c(str(choice['label']).ljust(26), WHITE)} "
+                     f"{c(shown.rjust(7), colour, True)}  {c(str(choice['note']), GREY)}")
+    lines.append("  " + c("Nothing else happens until you answer.", GREY))
+    return "\n".join(lines)
 
 
 def whisper(game: Game) -> str:
@@ -291,7 +328,7 @@ def services(game: Game) -> str:
     if s.has_vault:
         have.append(c("VAULT", CYAN) + c(" deposit/withdraw", GREY))
     if s.has_upgrades:
-        have.append(c("SHOP", YELL) + c(" wallet/vpn", GREY))
+        have.append(c("SHOP", YELL) + c(" wallet/vpn/carry", GREY))
     from .gear import BROKER_PRICE, broker_offer
     if broker_offer(game):
         have.append(c("DEALER", YELL, True) + c(f" gear for {money(BROKER_PRICE)} - 'dealer'", GREY))
@@ -457,13 +494,17 @@ HELP = f"""
 
   {c('MOVE', MAG, True)}
     go <number>               {c('ride to a station - costs one day', GREY)}
-    roll <1-10>               {c("call a number when there's dice on the platform", GREY)}
+    roll <1-6>                {c("call a number when there's dice on the platform", GREY)}
     map                       {c('list the stations', GREY)}
+
+  {c('TROUBLE', MAG, True)}
+    run · fight · weapon · pay   {c('answer the man on the stairs', GREY)}
+    carry [thing]                {c('what a shop keeps under the counter', GREY)}
 
   {c('MONEY', MAG, True)}
     borrow <amt> / repay <amt|all>   {c('only where The Shark works ($)', GREY)}
     deposit <amt> / withdraw <amt>   {c('only at a vault (V)', GREY)}
-    wallet <n> / vpn                 {c('upgrades at a shop (S)', GREY)}
+    wallet <n> / vpn / carry         {c('upgrades at a shop (S)', GREY)}
 
   {c('ELSE', MAG, True)}
     look        {c('redraw the market', GREY)}

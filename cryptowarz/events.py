@@ -141,10 +141,27 @@ def delay(game: "Game") -> List[str]:
     if getattr(game, "perk", None) == "metrocard":
         return ["Signal problems at Chambers St. You know the workaround and "
                 "reroute without losing the day."]
-    game.day += 1
-    game.player.debt *= (1.0 + game.shark_rate)
+    game.lose_a_day()
     return ["Signal problems at Chambers St. You lose a day on a stopped train "
             "while your debt keeps compounding."]
+
+
+def stickup(game: "Game") -> List[str]:
+    """Somebody blocks the stairs - and the game stops to ask what you do.
+
+    The only event that does not resolve itself. See encounter.py: it sets a
+    standoff, the standoff blocks every other action, and it rides the save so
+    a reload cannot walk away from it.
+    """
+    from .encounter import open_standoff, rep_of
+
+    # a reputation for standing your ground makes the next one pick somebody
+    # else; a reputation for paying up is an advertisement
+    if game.rng.random() < rep_of(game) * 0.12:
+        return ["Somebody clocks you on the platform, thinks about it, and finds "
+                "something else to look at."]
+    kind = "followed" if game.rng.random() < 0.45 else "stickup"
+    return open_standoff(game, kind)
 
 
 def quiet(game: "Game") -> List[str]:
@@ -182,6 +199,11 @@ def raid_pressure(game, day: Optional[int] = None) -> float:
 #: (function, base weight, scales_with_heat)
 EVENTS: List[Tuple[Callable[["Game"], List[str]], float, bool]] = [
     (sec_raid,     10.0, True),
+    # 5.5, not 8: measured, weight 8 meant 2.4 standoffs a run and turned the
+    # encounter from an event into a routine. At 5.5 it is 1.7 - often enough
+    # that carrying something is a real question, rare enough that meeting
+    # somebody on the stairs still registers.
+    (stickup,       5.5, True),
     (phishing,      8.0, True),
     (gas_spike,     9.0, False),
     (shark_visit,   7.0, False),
@@ -213,13 +235,19 @@ def event_weights(game: "Game", station=None, day: Optional[int] = None) -> List
     # build stacks its way to immunity
     shelter *= 1.0 - game.luck
     pressure = raid_pressure(game, day)
+    # what makes a mugger reconsider is exactly what makes an agent look twice
+    from .encounter import carry_heat
+    armed = 1.0 + carry_heat(game)
     weights = []
     for fn, weight, scales in EVENTS:
         w = weight
         if scales:
             w *= (0.35 + 1.4 * heat) * shelter
         if fn is sec_raid:
-            w *= pressure
+            w *= pressure * armed
+        if fn is stickup:
+            # the grace period is the SEC's alone; the city never signed it
+            w *= max(0.35, 1.0 - carry_heat(game) * 2.0)
         weights.append(w)
     return weights
 

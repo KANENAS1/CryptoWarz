@@ -93,6 +93,85 @@ space.
 your odds, and the safest stations pay the worst prices. **They leave you alone
 for the first fifteen days** — see below.
 
+## Somebody blocks the stairs, and the game stops to ask
+
+Every other bad thing here happens *to* you: the raid takes a third of the bag
+and you read about it afterwards. That is right for weather and wrong for a
+person. A person blocking the stairs is a **decision**.
+
+So a stickup does not resolve. It waits. The run stops dead — you cannot trade,
+travel, spin a wheel or call the dice until you answer — and **it rides the
+save**, so closing the tab is not a way out.
+
+```
+SOMEBODY BLOCKS THE STAIRS          CARRYING THE STUN GUN · 0% LOADED
+
+RUN            62%   Down the platform and out. What you are carrying slows you down.
+SWING FIRST    34%   Bare hands. It is a coin flip and the coin is not yours.
+USE THE STUN GUN  76%   Stun Gun. It might not survive the night either.
+HAND IT OVER  CERTAIN   Give up $2,200 and walk away whole. Word gets around.
+```
+
+**Every option is bad in a different way.** Running is free and usually works —
+but a full wallet is a slow wallet, and that is the sharpest idea here: the run
+that most needs to walk away is the one least able to. Fully loaded, running
+drops from **62% to 34%**. Fighting bare-handed is a coin flip that can cost you
+a day in hospital with the Shark's clock still running. Paying is certain, costs
+22% of your cash, and advertises you.
+
+The percentages are the real ones — the screen reads the same function the roll
+uses.
+
+### What you are carrying, and what it costs you
+
+| | Edge in a fight | Heat | Breaks | Price |
+|---|---|---|---|---|
+| Half a Brick | +12% | +2% | 45% | *found only* |
+| Length of Pipe | +18% | +6% | 20% | $400 |
+| Box Cutter | +26% | +14% | 10% | $1,200 |
+| Louisville Slugger | +33% | +20% | 6% | $3,200 |
+| Stun Gun | +42% | +28% | 14% | $9,000 |
+
+**Heat is the whole trade.** What makes a mugger reconsider is exactly what
+makes a federal agent look twice: carrying the Stun Gun raises your raid odds
+and lowers the chance of being jumped at all. A better weapon always costs more
+attention — that ordering is asserted by a test, so the table can never drift
+into a free upgrade.
+
+### The story is your own answers
+
+Standing your ground builds a reputation; paying up builds a different one.
+Reputation runs −3 to +3 and changes **both** your odds in the next standoff
+and the chance of there being one — at +3, some of them look at you and find
+something else to look at. Nothing is scripted. Two runs on the same seed can
+read completely differently because you answered differently, and that is the
+dynamic part: it is not a branching story, it is consequences.
+
+Win a fight and you might take what he was carrying — which is how you get a
+weapon without paying for one.
+
+**Nothing here can end the run outright.** The worst case is a slice of the bag
+and a lost day. No death, no game over, no unrecoverable state — the same rule
+that stops an event taking your last subway fare.
+
+### What it cost the balance
+
+Measured over 400 runs, weight 8 meant **2.4 standoffs a run** and turned an
+event into a routine. It ships at **5.5 — about 1.7 a run**, taking the
+buy-the-cheapest bot from 50% to 47% solvent. Often enough that carrying
+something is a real question; rare enough that meeting somebody on the stairs
+still registers.
+
+### A lost day now moves the market
+
+Found while building this. A stopped train and a beating both take a day off
+you, and both used to advance the clock *without* moving prices — wrong fiction,
+a small free lunch (prices cannot move against you while you are unconscious),
+and a break in the one-price-per-day invariant the sparklines are drawn from.
+Both now go through one place that drifts the market, compounds the debt and
+records the day. The parity test that caught it asserts the invariant instead of
+the old magic number.
+
 ## The wire: they are coming, and you can see it
 
 Losing a third of your bags on day three was not a hard position. It was a coin
