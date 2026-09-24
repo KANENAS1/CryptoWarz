@@ -424,3 +424,131 @@ class TestGasIsOwedNotOptional(unittest.TestCase):
             game = self._gassed(2.0, seed=seed)
             game.resolve("paygas")
             self.assertGreaterEqual(game.player.cash, min(2.0, SUBWAY_FARE) - 1e-9)
+
+
+class TestPlayingBroke(unittest.TestCase):
+    """The one answer whose odds you set yourself, hours earlier.
+
+    Every other option is priced by the game. This one is priced by a decision
+    you already made - how much cash to walk around with - which is what turns
+    the new carry limit from a restriction into a strategy. Empty pockets make
+    it nearly certain; full ones make it a joke, because a man who is visibly
+    carrying is not going to be believed.
+    """
+
+    def test_the_odds_are_set_by_what_you_carry(self):
+        from cryptowarz.game import Game
+        odds = []
+        for share in (0.0, 0.25, 0.5, 0.75, 1.0):
+            game = Game(seed=11)
+            game.player.cash = game.player.cash_cap * share
+            E.open_standoff(game, "stickup")
+            odds.append(E.odds(game, "broke"))
+        self.assertEqual(odds, sorted(odds, reverse=True), "carrying more must never help")
+        self.assertGreater(odds[0], 0.8)
+        self.assertLess(odds[-1], 0.15)
+
+    def test_success_costs_exactly_what_is_in_your_pockets(self):
+        game = cornered(cash=300.0)
+        game.player.capacity = 1e9
+        game.player.holding("BTC").qty = 1.0
+        game.player.holding("BTC").cost = 40_000.0
+        # empty-ish pockets, so it lands
+        game.resolve("broke")
+        self.assertLessEqual(game.player.cash, 3.0, "they left cash behind")
+        self.assertEqual(game.player.holding("BTC").qty, 1.0, "the bag was for keeping")
+
+    def test_carrying_nothing_means_losing_nothing(self):
+        game = cornered(cash=0.0)
+        game.player.capacity = 1e9
+        game.player.holding("BTC").qty = 1.0
+        game.player.holding("BTC").cost = 40_000.0
+        said = " ".join(game.resolve("broke"))
+        self.assertEqual(game.player.holding("BTC").qty, 1.0)
+        self.assertIn("lint", said.lower())
+
+    def test_being_caught_lying_is_worse_than_paying(self):
+        """It has to be, or it would be free to try."""
+        losses = 0
+        for seed in range(40):
+            game = cornered(cash=0.0, seed=seed)
+            game.player.cash_cap = 1_000.0
+            game.player.cash = 950.0          # visibly loaded: it will not work
+            game.player.capacity = 1e9
+            game.player.holding("BTC").qty = 1.0
+            game.player.holding("BTC").cost = 40_000.0
+            game.resolve("broke")
+            if game.player.holding("BTC").qty < 1.0:
+                losses += 1
+        self.assertGreater(losses, 20, "lying while loaded was not punished")
+
+    def test_it_is_offered_by_the_people_and_not_by_the_badge(self):
+        for kind in ("stickup", "followed", "collector"):
+            game = cornered()
+            game.pending = None
+            E.open_standoff(game, kind)
+            self.assertIn("broke", [c["key"] for c in game.choices()], kind)
+        for kind in ("badge", "drain", "gas"):
+            game = cornered()
+            game.pending = None
+            E.open_standoff(game, kind)
+            self.assertNotIn("broke", [c["key"] for c in game.choices()], kind)
+
+
+class TestTheCard(unittest.TestCase):
+    """Fares bought before you need them.
+
+    The subway has always sold them, and the game had no answer to the one
+    situation everybody in this city has been in: money in the bank, nothing in
+    your pocket, standing the wrong side of a turnstile. They also make playing
+    broke practical, because the cheapest way to look poor is to be carrying
+    nothing and still have a way home.
+    """
+
+    def test_a_book_of_rides_beats_paying_singly(self):
+        from cryptowarz.game import OMNY_PRICE, OMNY_RIDES, SUBWAY_FARE
+        self.assertLess(OMNY_PRICE, OMNY_RIDES * SUBWAY_FARE,
+                        "buying ahead has to be worth something")
+
+    def test_the_turnstile_takes_a_ride_when_the_pocket_cannot(self):
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+        game = Game(seed=5)
+        game.player.cash = 20.0
+        game.buy_rides()
+        game.player.cash = 0.5
+        rides = game.player.rides
+        game.travel(next(s.name for s in STATIONS if s.name != game.station.name))
+        self.assertEqual(game.player.rides, rides - 1)
+        self.assertAlmostEqual(game.player.cash, 0.5, places=2, msg="it charged both")
+
+    def test_cash_is_spent_first_so_the_card_stays_insurance(self):
+        from cryptowarz.game import Game, SUBWAY_FARE
+        from cryptowarz.stations import STATIONS
+        game = Game(seed=5)
+        game.player.cash = 500.0
+        game.buy_rides()
+        rides = game.player.rides
+        cash = game.player.cash
+        game.travel(next(s.name for s in STATIONS if s.name != game.station.name))
+        self.assertEqual(game.player.rides, rides, "it burned a ride it did not need")
+        self.assertAlmostEqual(game.player.cash, cash - SUBWAY_FARE, places=2)
+
+    def test_a_card_means_you_are_not_stranded(self):
+        from cryptowarz.game import Game
+        game = Game(seed=5)
+        game.player.cash = 20.0
+        game.buy_rides()
+        game.player.cash = 0.0
+        game.player.wallet.clear()
+        self.assertFalse(game.stranded)
+        game.player.rides = 0
+        self.assertTrue(game.stranded)
+
+    def test_it_rides_the_save(self):
+        from cryptowarz.game import Game
+        from cryptowarz import save as S
+        game = Game(seed=5)
+        game.player.cash = 20.0
+        game.buy_rides()
+        self.assertEqual(S.from_dict(S.to_dict(game)).player.rides, 5)

@@ -839,6 +839,13 @@ function generate(st, rng, state, shockChance, luck) {
 const DAYS = 30, START_CASH = 2000, START_DEBT = 5500, START_CAPACITY = 25000;
 /* What your pockets hold, in CASH. The crypto wallet has no ceiling at all. */
 const START_CASH_CAP = 50000;
+/* Rides you can buy before you need them. The subway has always sold fares in
+   advance, and the game had no answer to the situation everybody in this city
+   has been in: money in the bank, nothing in your pocket, wrong side of a
+   turnstile. They pair with playing broke - the cheapest way to look poor is
+   to actually be carrying nothing. Five rides for the price of four and a
+   half, because buying ahead should be worth something. */
+const OMNY_RIDES = 5, OMNY_PRICE = 13.00;
 const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
 // reserving the fare exactly is not enough: rounding leaves $2.8999999999 and
 // a player who cannot afford the fare the reserve was protecting
@@ -931,7 +938,7 @@ function Game(seed, tier, perk, gear, difficulty) {
      starts at the $50,000 the design calls for. */
   this.startingCashCap = t.capacity * 2;
   this.player = { cash: START_CASH + hard.cash, debt: t.debt * hard.debtMult, vault: 0,
-                  cash_cap: this.startingCashCap, vpn: 0, wallet: {} };
+                  cash_cap: this.startingCashCap, vpn: 0, rides: 0, wallet: {} };
   if (this.perk === "seed_round") this.player.cash += 2000;
   if (this.perk === "cold_storage") this.player.cash_cap += 15000;
   this.stats = { stations: [this.station.name],
@@ -1036,6 +1043,7 @@ Game.prototype.luckBySymbol = function () { return luckBySymbol(this.gear, this.
 Object.defineProperty(Game.prototype, "stranded", {
   get() {
     if (this.finished || this.player.cash + 1e-9 >= this.fare) return false;
+    if ((this.player.rides | 0) > 0) return false;      // a fare already paid for
     if (Object.values(this.player.wallet).some(h => h.qty > 0)) return false;
     if (this.station.vault && this.player.vault > 0) return false;
     if (this.station.shark && this.borrowable() > 0) return false;
@@ -1339,6 +1347,15 @@ Game.prototype.buyCapacity = function () {
   this.player.cash -= price; this.player.cash_cap += 25000;
   return { text: `A better way to carry it. You can hold $${this.player.cash_cap.toLocaleString()} in cash now.`, good: true };
 };
+/* Put fares on the card before you need them. */
+Game.prototype.buyRides = function () {
+  this.notNow();
+  if (this.player.cash < OMNY_PRICE) throw new Error(`a book of ${OMNY_RIDES} rides is $${OMNY_PRICE.toFixed(2)}`);
+  this.player.cash -= OMNY_PRICE;
+  this.player.rides = (this.player.rides | 0) + OMNY_RIDES;
+  return { text: `${OMNY_RIDES} rides on the card for $${OMNY_PRICE.toFixed(2)}. You have `
+    + `${this.player.rides} now, and they do not care how broke you look.`, good: true };
+};
 Game.prototype.buyVpn = function () {
   this.notNow();
   if (!this.station.shop) throw new Error("nowhere to buy hardware here");
@@ -1353,8 +1370,13 @@ Game.prototype.travel = function (index) {
   const wasReady = this.diceReady;         // so the offer is announced once
   const target = STATIONS[index];
   if (target.name === this.station.name) throw new Error("you're already here");
-  if (this.player.cash + 1e-9 < this.fare) throw new Error(`you can't even make the $${this.fare.toFixed(2)} fare`);
-  this.player.cash -= this.fare;
+  let paidWithCard = false;
+  if (this.player.cash + 1e-9 < this.fare) {
+    if ((this.player.rides | 0) <= 0) throw new Error(`you can't even make the $${this.fare.toFixed(2)} fare`);
+    paidWithCard = true;
+  }
+  if (paidWithCard) this.player.rides -= 1;
+  else this.player.cash -= this.fare;
   this.station = target;
   if (!this.stats.stations.includes(target.name)) this.stats.stations.push(target.name);
   // how well they know your face here - see visitPressure
@@ -1436,6 +1458,10 @@ function bumpRep(g, d) { g.stats.rep = Math.max(-REP_MAX, Math.min(REP_MAX, repO
 
 /* A full wallet is a slow wallet - the sharpest idea in the encounter. */
 const MAX_LOAD_PENALTY = 0.28, RUN_BASE = 0.62, FIGHT_BASE = 0.34;
+/* Turning out your pockets, and how fast it stops working as you fill them.
+   The only answer whose odds you set yourself, hours earlier, by deciding what
+   to carry: empty pockets make it nearly certain, full ones make it a joke. */
+const BROKE_BASE = 0.88, BROKE_LOADED = 0.80;
 function loadPenalty(g) {
   /* Cash, not coins. It used to measure the crypto wallet, which never made
      much sense, and now measures the thing that is actually heavy. */
@@ -1445,6 +1471,11 @@ function loadPenalty(g) {
 function encounterOdds(g, choice) {
   const rep = repOf(g);
   let chance;
+  if (choice === "broke") {
+    const cap = Math.max(1, g.player.cash_cap);
+    const loaded = Math.min(1, g.player.cash / cap);
+    return Math.max(0.05, Math.min(0.95, BROKE_BASE - BROKE_LOADED * loaded));
+  }
   if (choice === "relay") {
     /* the same coin every gamble here is flipped on: luck tilts it, which is
        the one place nerve pays off outside a fight */
@@ -1466,21 +1497,21 @@ function encounterOdds(g, choice) {
 
 const KINDS = [
   { key: "stickup", title: "SOMEBODY BLOCKS THE STAIRS", severity: 1.0, armable: true,
-    options: ["run", "fight", "weapon", "pay"],
+    options: ["run", "fight", "weapon", "broke", "pay"],
     opening: [
       'A man steps out of the stairwell at {station} and does not move. "Phone. Wallet. Whatever\'s in the bag."',
       "Two of them, one either side of the turnstile at {station}. The one on the left is doing the talking and the one on the right is why.",
       "He has been on the platform at {station} since you got off, and now he is close enough that you can smell the cigarettes.",
     ] },
   { key: "followed", title: "YOU WERE FOLLOWED OFF THE TRAIN", severity: 0.85, armable: true,
-    options: ["run", "fight", "weapon", "pay"],
+    options: ["run", "fight", "weapon", "broke", "pay"],
     opening: [
       "Somebody got off at {station} when you did, and took the same stairs, and is now standing closer than anybody stands by accident.",
       "He rode three cars down and got off at {station} behind you. He is not looking at his phone. Nobody on this platform is not looking at their phone.",
       "The kid who was watching your screen on the ride gets off at {station} too, and he has friends.",
     ] },
   { key: "collector", title: "THE SHARK SENT SOMEBODY", severity: 1.0, armable: true,
-    options: ["pay", "run", "fight", "weapon"],
+    options: ["pay", "run", "fight", "weapon", "broke"],
     opening: [
       "The large man from the platform at {station} is not large by accident, and he knows your name, and he would like some of it back.",
       '"He says you\'ve been busy." The associate does not sit down. Nobody at {station} is looking at either of you, very deliberately.',
@@ -1565,6 +1596,10 @@ function encounterChoices(g) {
              note: "Bare hands. It is a coin flip and the coin is not yours." },
     pay: { key: "pay", label: "HAND IT OVER", odds: 1,
            note: `Give up ${n(payCost(g))} and walk away whole. Word gets around that you do.` },
+    broke: { key: "broke", label: "TURN OUT YOUR POCKETS", odds: encounterOdds(g, "broke"),
+             note: `Show them the ${n(g.player.cash)} you are carrying and nothing else. `
+                   + `They take it and go - if they buy it. The less you carry, the `
+                   + `better this works.` },
     comply: { key: "comply", label: "HANDS WHERE THEY CAN SEE THEM", odds: 1,
               note: "Let them take what they came for. Nothing else happens to you today." },
   };
@@ -1875,6 +1910,27 @@ function gasStandoff(g, choice, was) {
   return finish();
 }
 
+/* Convince them there is nothing worth taking. Success costs exactly what is
+   in your pockets, which is the point: the one answer whose odds you set
+   yourself by deciding how much cash to carry. Failure means they search you,
+   and a man who lied about being broke gets treated like one. */
+function playBroke(g, kind, out, finish) {
+  const carried = g.player.cash;
+  if (g.rng.random() < encounterOdds(g, "broke")) {
+    const taken = takeCash(g, carried);
+    out.push(taken <= 0.01
+      ? "You turn out your pockets. Lint, a transfer slip, and a look of genuine disgust "
+        + "from a man who has wasted his evening. He goes to find somebody worth robbing."
+      : `You turn out your pockets and let him take the ${money2(taken)} that is in them. `
+        + `He decides that is all there is, which is the idea.`);
+    return finish();
+  }
+  bumpRep(g, -1);
+  const [cash, bag] = rob(g, kind.severity * 1.25);
+  out.push(`He does not believe you, and he is right not to. They go through everything: ${lossLine(cash, bag)}`);
+  return finish();
+}
+
 function spoils(g) {
   const roll = g.rng.random();
   if (roll < 0.30) {
@@ -1902,6 +1958,7 @@ function resolveStandoff(g, choice) {
   const out = [];
   const finish = () => { out.forEach(m => g.say(m)); return out; };
   const was = wasPending;
+  if (choice === "broke") return playBroke(g, kind, out, finish);
   if (kind.key === "collector") return collectorStandoff(g, choice, w);
   if (kind.key === "badge") return badgeStandoff(g, choice);
   if (kind.key === "drain") return drainStandoff(g, choice, was);
@@ -2695,7 +2752,7 @@ function saveToDict(g) {
     finished: g.finished,
     station: g.station.name,
     player: { cash: g.player.cash, debt: g.player.debt, vault: g.player.vault,
-              cash_cap: g.player.cash_cap, vpn: g.player.vpn, wallet },
+              cash_cap: g.player.cash_cap, vpn: g.player.vpn, rides: g.player.rides | 0, wallet },
     levels: Object.assign({}, g.state.levels),
     /* the run each coin is on. Without it a reloaded game keeps the prices and
        forgets which way everything was going - a different market wearing the
@@ -2745,6 +2802,7 @@ function saveFromDict(data) {
      small ones. Standard pockets instead. */
   g.player = { cash: p.cash, debt: p.debt, vault: p.vault,
                cash_cap: (p.cash_cap === undefined ? START_CASH_CAP : p.cash_cap),
+               rides: p.rides | 0,
                vpn: p.vpn || 0, wallet: {} };
   for (const [sym, h] of Object.entries(p.wallet || {})) {
     if (COIN[sym]) g.player.wallet[sym] = { qty: h.qty, cost: h.cost };
@@ -2849,7 +2907,8 @@ if (false) {
                      difficultyOf, difficultyMult,
                      WEAPONS, WEAPON_BY_KEY, FOR_SALE, weaponOf, carryHeat,
                      REP_MAX, REP_ODDS, repOf, bumpRep, MAX_LOAD_PENALTY,
-                     RUN_BASE, FIGHT_BASE, loadPenalty, encounterOdds, KINDS,
+                     RUN_BASE, FIGHT_BASE, BROKE_BASE, BROKE_LOADED, OMNY_RIDES,
+                     OMNY_PRICE, loadPenalty, encounterOdds, KINDS,
                      KIND_BY_KEY, openStandoff, encounterChoices, resolveStandoff,
                      payCost, stickup, bestChoice, TAKE_CASH, lawyerCost, chargeGas,
                      collectorDemand, LAWYER_SHARE, LAWYER_MIN, LAWYER_SAVES,
@@ -2987,7 +3046,7 @@ function render(){
   $("capbar").style.width = Math.min(100, p.cash / p.cash_cap * 100) + "%";
   $("capbar").style.background = over > 0 ? "var(--red)" : "";
   $("capnum").textContent = `$${Math.round(p.cash).toLocaleString()} / $${Math.round(p.cash_cap).toLocaleString()}`
-    + (over > 0 ? " OVER" : "");
+    + (over > 0 ? " OVER" : "") + ((p.rides | 0) > 0 ? ` · ${p.rides} RIDES` : "");
 
   // render() used to rebuild this wholesale, which erased anything flash() had
   // put there a moment earlier - the reason messages seemed to disappear even
@@ -3074,6 +3133,11 @@ function render(){
         : `no raids for ${w.grace_left} more day${w.grace_left === 1 ? "" : "s"}`}</div></div>`;
 
   const st = g.station, svc = [];
+  // every station sells fares, and that is the point of them: insurance you
+  // buy before the day you cannot afford to move
+  if (p.cash >= OMNY_PRICE) {
+    svc.push(`<button data-act="omny">+${OMNY_RIDES} RIDES · ${fmtMoney(OMNY_PRICE)}</button>`);
+  }
   if (st.shark) {
     // offer what he will actually lend, and say so plainly when that is nothing
     const available = Math.min(2500, game.borrowable());
@@ -3477,6 +3541,7 @@ $("main").addEventListener("click", e => {
   if (a === "capacity") return act(() => game.buyCapacity());
   if (a === "vpn") return act(() => game.buyVpn());
   if (a === "carry") return act(() => game.buyWeapon(b.dataset.weapon));
+  if (a === "omny") return act(() => game.buyRides());
 });
 
 $("main").addEventListener("keydown", e => {

@@ -103,7 +103,7 @@ def to_dict(game) -> Dict[str, Any]:
             # and no longer exists; a save from before the change loads with
             # the standard pockets rather than its old crypto number, which
             # would be a punishingly small wallet.
-            "cash_cap": p.cash_cap, "vpn": p.vpn,
+            "cash_cap": p.cash_cap, "vpn": p.vpn, "rides": p.rides,
             "wallet": {sym: {"qty": h.qty, "cost": h.cost}
                        for sym, h in p.wallet.items() if h.qty > 0 or h.cost > 0},
         },
@@ -174,6 +174,7 @@ def from_dict(data: Dict[str, Any]):
     p.vault = float(saved["vault"])
     from .game import START_CASH_CAP
     p.cash_cap = float(saved.get("cash_cap", START_CASH_CAP))
+    p.rides = int(saved.get("rides", 0))
     p.vpn = int(saved.get("vpn", 0))
     p.wallet = {sym: Holding(qty=float(h["qty"]), cost=float(h["cost"]))
                 for sym, h in saved.get("wallet", {}).items()}

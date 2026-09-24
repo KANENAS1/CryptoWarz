@@ -371,6 +371,40 @@ const out = {
         return { raid_up: G.raidChance(armed) > G.raidChance(bare),
                  stickup_down: G.eventWeights(armed)[i] < G.eventWeights(bare)[i] };
       })(),
+      /* the answer you price yourself, and the fares you buy early */
+      broke: (() => {
+        const at2 = (share) => { const g = new G.Game(11);
+          g.player.cash = g.player.cash_cap * share;
+          G.openStandoff(g, "stickup"); return g; };
+        const offered = (kind) => { const g = new G.Game(11);
+          G.openStandoff(g, kind); return g.choices().some(c => c.key === "broke"); };
+        return {
+          base: G.BROKE_BASE, loaded: G.BROKE_LOADED,
+          curve: [0, 0.25, 0.5, 0.75, 1].map(x =>
+            Math.round(G.encounterOdds(at2(x), "broke") * 10000) / 10000),
+          offered_by_people: ["stickup", "followed", "collector"].every(offered),
+          not_by_the_badge: ["badge", "drain", "gas"].every(k => !offered(k)),
+        };
+      })(),
+      card: (() => {
+        const g = new G.Game(5); g.player.cash = 20; g.buyRides();
+        const rides = g.player.rides;
+        g.player.cash = 0.5;
+        const before = g.player.cash;
+        g.travel(G.STATIONS.findIndex(s2 => s2.name !== g.station.name));
+        const stranded = (() => { const x = new G.Game(5); x.player.cash = 20;
+          x.buyRides(); x.player.cash = 0; x.player.wallet = {};
+          const withCard = x.stranded; x.player.rides = 0;
+          return { with_card: withCard, without: x.stranded }; })();
+        return {
+          rides: G.OMNY_RIDES, price: G.OMNY_PRICE,
+          cheaper_than_singles: G.OMNY_PRICE < G.OMNY_RIDES * G.SUBWAY_FARE,
+          bought: rides, after_a_ride: g.player.rides,
+          cash_untouched: Math.abs(g.player.cash - before) < 0.01,
+          stranded: stranded,
+          survives_a_save: G.saveFromDict(G.saveToDict(g)).player.rides,
+        };
+      })(),
       /* the two encounters that replaced an event */
       collector: (() => {
         const make = () => { const g = new G.Game(13);

@@ -103,6 +103,8 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_capacity()]
     if cmd == "vpn":
         return [game.buy_vpn()]
+    if cmd in ("omny", "card", "rides", "metrocard"):
+        return [game.buy_rides()]
     if cmd in ("carry", "buyweapon", "arm"):
         from .encounter import FOR_SALE, WEAPON_BY_KEY
         if not args:

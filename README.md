@@ -228,6 +228,42 @@ nothing at all  You have nothing to pay it with and nothing worth moving.
 It can never take your last fare, and "$0.00" is gone — a test asserts that
 line can never come back.
 
+### The card, and pretending to be broke
+
+Two things that only make sense together, and together they are a whole way to
+play.
+
+**Fares on the card.** Every station sells **5 rides for $13.00** — cheaper than
+paying singly, because buying ahead should be worth something. Cash is always
+spent first, so the card stays *insurance*: it is there for the day the pockets
+are empty. A run with rides left is **never stranded**, which closes the one
+wall in this game a player could hit through no decision of their own: money in
+the bank, nothing in your pocket, wrong side of a turnstile.
+
+**Turning out your pockets.** A new answer when somebody stops you — and the
+only one in the game whose odds *you* set, hours earlier, by deciding what to
+carry:
+
+| Cash on you | It works |
+|---|---|
+| Nothing | **88%** |
+| Quarter full | 68% |
+| Half full | 48% |
+| Full pockets | **8%** |
+
+Succeed and they take **exactly what is in your pockets** and leave the bag —
+which is nothing at all if you were carrying nothing. Get caught lying while
+visibly loaded and they search you: worse than paying, as it has to be, or
+trying would be free.
+
+The people offer it; **the badge does not**. You do not plead poverty at a
+federal agent.
+
+**Put the two together and there is a real style here:** keep your cash in the
+vault, your fares on the card, and your coins uncapped — then when a man steps
+out of the stairwell you turn out two empty pockets and a transfer slip, and he
+goes to find somebody worth robbing.
+
 ### Everyone who comes for your money is answerable
 
 A stickup was the first one. The other two used to be weather — they happened,

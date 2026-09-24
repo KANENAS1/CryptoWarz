@@ -52,6 +52,19 @@ SUBWAY_FARE = 2.90       # it is still the best deal in the city
 #: game with a $25,000 wallet and removes the whole class of boundary failure.
 FARE_BUFFER = 0.01
 
+# ------------------------------------------------------------------ the card
+#: Rides you can buy before you need them, and what a book of them costs.
+#:
+#: The subway has always sold fares in advance, and the game had no answer to
+#: the one situation everybody in this city has been in: money in the bank,
+#: nothing in your pocket, standing the wrong side of a turnstile. Rides bought
+#: ahead are insurance against exactly that - and they pair with playing broke,
+#: because the cheapest way to look poor is to actually be carrying nothing.
+OMNY_RIDES = 5
+#: Five rides for the price of four and a half. Buying ahead should be worth
+#: something, or nobody would plan.
+OMNY_PRICE = 13.00
+
 # ------------------------------------------------------------------- the dice
 #: Somebody runs dice on the platform every few rides. There is no stake: the
 #: worst outcome is nothing, so this is a flourish rather than a decision, and
@@ -164,6 +177,9 @@ class Player:
     vault: float = 0.0
     #: the cash ceiling - what your pockets hold. Coins are not capped.
     cash_cap: float = START_CASH_CAP
+    #: fares already paid for. The turnstile takes these when your pockets
+    #: cannot, which is the whole point of buying them early.
+    rides: int = 0
     wallet: Dict[str, Holding] = field(default_factory=dict)
     vpn: int = 0          # each level cuts the odds of trouble
 
@@ -548,6 +564,8 @@ class Game:
         """
         if self.finished or self.player.cash + 1e-9 >= self.fare:
             return False
+        if self.player.rides > 0:
+            return False                       # a fare already paid for
         if any(h.qty > 0 for h in self.player.wallet.values()):
             return False                       # something to sell is a way out
         if self.station.has_vault and self.player.vault > 0:
@@ -808,6 +826,17 @@ class Game:
         return (f"A better way to carry it: ${price:,.2f}. "
                 f"You can hold ${self.player.cash_cap:,.0f} in cash now.")
 
+    def buy_rides(self) -> str:
+        """Put fares on the card before you need them."""
+        self._not_now()
+        if self.player.cash < OMNY_PRICE:
+            raise ValueError(f"a book of {OMNY_RIDES} rides is ${OMNY_PRICE:,.2f}")
+        self.player.cash -= OMNY_PRICE
+        self.player.rides += OMNY_RIDES
+        return (f"{OMNY_RIDES} rides on the card for ${OMNY_PRICE:,.2f}. "
+                f"You have {self.player.rides} now, and they do not care how "
+                f"broke you look.")
+
     def buy_vpn(self) -> str:
         self._not_now()
         if not self.station.has_upgrades:
@@ -832,10 +861,16 @@ class Game:
         target = station(name)
         if target.name == self.station.name:
             raise ValueError("you're already here")
+        paid_with_card = False
         if self.player.cash + 1e-9 < self.fare:
-            raise ValueError(f"you can't even make the ${self.fare:.2f} fare")
+            if self.player.rides <= 0:
+                raise ValueError(f"you can't even make the ${self.fare:.2f} fare")
+            paid_with_card = True
 
-        self.player.cash -= self.fare
+        if paid_with_card:
+            self.player.rides -= 1
+        else:
+            self.player.cash -= self.fare
         self.station = target
         self.stats["stations"].add(target.name)
         # how well they know your face here - see events.visit_pressure

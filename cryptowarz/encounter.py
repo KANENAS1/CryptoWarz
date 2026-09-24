@@ -149,11 +149,24 @@ def load_penalty(game) -> float:
 #: is priced like one: usually right, never certain, and worst when it matters.
 RUN_BASE = 0.62
 FIGHT_BASE = 0.34
+#: Turning out your pockets, and how fast it stops working as you fill them.
+#:
+#: The only answer in the game whose odds you set yourself, hours earlier, by
+#: deciding what to carry. Empty pockets make it nearly certain; full ones make
+#: it a joke, because a man who is visibly carrying is not going to be believed.
+#: It pairs with fares bought in advance: the cheapest way to look broke is to
+#: actually be broke, and a card in your pocket is how you still get home.
+BROKE_BASE = 0.88
+BROKE_LOADED = 0.80
 
 
 def odds(game, choice: str) -> float:
     """The real chance a choice comes off, 0.0 - 1.0. What the UI shows."""
     rep = rep_of(game)
+    if choice == "broke":
+        cap = max(1.0, game.player.cash_cap)
+        loaded = min(1.0, game.player.cash / cap)
+        return max(0.05, min(0.95, BROKE_BASE - BROKE_LOADED * loaded))
     if choice == "relay":
         # the same coin every gamble here is flipped on: luck tilts it, which
         # is the one place nerve pays off outside a fight
@@ -190,7 +203,7 @@ class Kind:
     #: worse teacher than a door that was never there.
     armable: bool
     #: which answers this one accepts, in the order they are shown
-    options: Tuple[str, ...] = ("run", "fight", "weapon", "pay")
+    options: Tuple[str, ...] = ("run", "fight", "weapon", "broke", "pay")
 
 
 KINDS: List[Kind] = [
@@ -221,7 +234,7 @@ KINDS.extend([
           "He is waiting at the bottom of the stairs at {station} with his hands "
           "where you can see them, which is somehow worse."),
          severity=1.0, armable=True,
-         options=("pay", "run", "fight", "weapon")),
+         options=("pay", "run", "fight", "weapon", "broke")),
     Kind("badge", "FEDERAL AGENTS AT THE TURNSTILE",
          ("Two of them at the {station} turnstile, and they were waiting for you "
           "rather than for a train.",
@@ -350,6 +363,11 @@ def choices(game) -> List[Dict[str, object]]:
         "pay": {"key": "pay", "label": "HAND IT OVER", "odds": 1.0,
                 "note": f"Give up {pay_cost(game):,.0f} and walk away whole. "
                         f"Word gets around that you do."},
+        "broke": {"key": "broke", "label": "TURN OUT YOUR POCKETS",
+                  "odds": odds(game, "broke"),
+                  "note": (f"Show them the ${game.player.cash:,.0f} you are carrying "
+                           f"and nothing else. They take it and go - if they buy it. "
+                           f"The less you carry, the better this works.")},
         "comply": {"key": "comply", "label": "HANDS WHERE THEY CAN SEE THEM",
                    "odds": 1.0,
                    "note": "Let them take what they came for. Nothing else happens "
@@ -477,6 +495,8 @@ def resolve(game, choice: str) -> List[str]:
     weapon = weapon_of(getattr(game, "weapon", None))
     out: List[str] = []
 
+    if choice == "broke":
+        return _play_broke(game, kind, out)
     if kind.key == "collector":
         return _collector(game, kind, choice, weapon)
     if kind.key == "badge":
@@ -823,6 +843,36 @@ def _gas(game, choice, was: dict) -> List[str]:
     out.append(f"The relay was somebody's honeypot. "
                f"{paid + ' in fees and ' if paid else ''}${lost:,.2f} of the bag "
                f"with it. The forum post is gone too.")
+    return _finish(game, out)
+
+
+def _play_broke(game, kind, out: List[str]) -> List[str]:
+    """Convince them there is nothing worth taking.
+
+    Success costs you exactly what is in your pockets, which is the point: this
+    is the one answer whose odds you set yourself, hours earlier, by deciding
+    how much cash to carry. Failure means they search you, and a man who lied
+    about being broke gets treated like one.
+    """
+    from .events import _confiscate, _take_cash
+
+    carried = game.player.cash
+    if game.rng.random() < odds(game, "broke"):
+        taken = _take_cash(game, carried)
+        if taken <= 0.01:
+            out.append("You turn out your pockets. Lint, a transfer slip, and a "
+                       "look of genuine disgust from a man who has wasted his "
+                       "evening. He goes to find somebody worth robbing.")
+        else:
+            out.append(f"You turn out your pockets and let him take the "
+                       f"${taken:,.2f} that is in them. He decides that is all "
+                       f"there is, which is the idea.")
+        return _finish(game, out)
+
+    bump_rep(game, -1)
+    cash, bag = _rob(game, kind.severity * 1.25)
+    out.append(f"He does not believe you, and he is right not to. They go "
+               f"through everything: {_loss_line(cash, bag)}")
     return _finish(game, out)
 
 

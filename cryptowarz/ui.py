@@ -202,6 +202,8 @@ def wallet_panel(game: Game) -> str:
         f"  {c('pocket', GREY)}   {bar} {money(p.cash)} / {money(cap)}",
         f"  {c('coins', GREY)}    {money(p.used_capacity)}{c(' at cost · no limit', GREY)}",
         f"  {c('vpn', GREY)}      level {p.vpn}",
+        f"  {c('card', GREY)}     {c(str(p.rides), YELL if p.rides else GREY)}"
+        f"{c(' rides left' if p.rides else ' rides - buy some before you need them', GREY)}",
     ]
     if over > 0:
         lines.insert(1, f"  {c('OVER', RED, True)}     "
@@ -513,6 +515,8 @@ HELP = f"""
 
   {c('TROUBLE', MAG, True)}
     run · fight · weapon · pay   {c('answer the man on the stairs', GREY)}
+    broke                        {c('turn out your pockets - works if they are empty', GREY)}
+    omny                         {c('five rides on the card, for when you are not', GREY)}
     carry [thing]                {c('what a shop keeps under the counter', GREY)}
 
   {c('MONEY', MAG, True)}

@@ -670,7 +670,7 @@ function render(){
   $("capbar").style.width = Math.min(100, p.cash / p.cash_cap * 100) + "%";
   $("capbar").style.background = over > 0 ? "var(--red)" : "";
   $("capnum").textContent = `$${Math.round(p.cash).toLocaleString()} / $${Math.round(p.cash_cap).toLocaleString()}`
-    + (over > 0 ? " OVER" : "");
+    + (over > 0 ? " OVER" : "") + ((p.rides | 0) > 0 ? ` · ${p.rides} RIDES` : "");
 
   // render() used to rebuild this wholesale, which erased anything flash() had
   // put there a moment earlier - the reason messages seemed to disappear even
@@ -757,6 +757,11 @@ function render(){
         : `no raids for ${w.grace_left} more day${w.grace_left === 1 ? "" : "s"}`}</div></div>`;
 
   const st = g.station, svc = [];
+  // every station sells fares, and that is the point of them: insurance you
+  // buy before the day you cannot afford to move
+  if (p.cash >= OMNY_PRICE) {
+    svc.push(`<button data-act="omny">+${OMNY_RIDES} RIDES · ${fmtMoney(OMNY_PRICE)}</button>`);
+  }
   if (st.shark) {
     // offer what he will actually lend, and say so plainly when that is nothing
     const available = Math.min(2500, game.borrowable());
@@ -1160,6 +1165,7 @@ $("main").addEventListener("click", e => {
   if (a === "capacity") return act(() => game.buyCapacity());
   if (a === "vpn") return act(() => game.buyVpn());
   if (a === "carry") return act(() => game.buyWeapon(b.dataset.weapon));
+  if (a === "omny") return act(() => game.buyRides());
 });
 
 $("main").addEventListener("keydown", e => {

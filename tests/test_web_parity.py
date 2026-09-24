@@ -766,8 +766,22 @@ class TestEncounterParity(unittest.TestCase):
         self.assertEqual(self.js["pay_is_certain"], 1)
 
     def test_both_ports_offer_the_same_options(self):
-        self.assertEqual(self.js["choices_bare"], ["run", "fight", "pay"])
-        self.assertEqual(self.js["choices_armed"], ["run", "fight", "weapon", "pay"])
+        """Built from the same state on both sides rather than typed from
+        memory - a hardcoded list is one more place to forget that an option
+        was added, and "broke" was exactly that."""
+        from cryptowarz import encounter as en
+        from cryptowarz.game import Game
+
+        def keys(weapon=None):
+            game = Game(seed=11)
+            game.player.cash = 8_000.0
+            game.weapon = weapon
+            en.open_standoff(game)
+            return [c["key"] for c in game.choices()]
+
+        self.assertEqual(self.js["choices_bare"], keys())
+        self.assertEqual(self.js["choices_armed"], keys("bat"))
+        self.assertIn("broke", self.js["choices_bare"])
 
     def test_a_weapon_cuts_both_ways_on_both_sides(self):
         self.assertTrue(self.js["carry_cuts_both_ways"]["raid_up"])
@@ -785,12 +799,56 @@ class TestEncounterParity(unittest.TestCase):
         en.open_standoff(game, kind)
         return game
 
+    def test_playing_broke_is_priced_the_same_on_both_sides(self):
+        """The odds are set by what the player chose to carry, so a port that
+        drifted here would be charging a different price for the same
+        decision."""
+        from cryptowarz import encounter as en
+        from cryptowarz.game import Game
+        js = self.js["broke"]
+        self.assertAlmostEqual(js["base"], en.BROKE_BASE)
+        self.assertAlmostEqual(js["loaded"], en.BROKE_LOADED)
+        curve = []
+        for share in (0, 0.25, 0.5, 0.75, 1):
+            game = Game(seed=11)
+            game.player.cash = game.player.cash_cap * share
+            en.open_standoff(game, "stickup")
+            curve.append(round(en.odds(game, "broke"), 4))
+        self.assertEqual(js["curve"], curve)
+        self.assertEqual(curve, sorted(curve, reverse=True))
+        self.assertTrue(js["offered_by_people"])
+        self.assertTrue(js["not_by_the_badge"],
+                        "you do not plead poverty at a federal agent")
+
+    def test_the_card_works_the_same_on_both_sides(self):
+        from cryptowarz.game import OMNY_PRICE, OMNY_RIDES, SUBWAY_FARE, Game
+        from cryptowarz.stations import STATIONS
+        js = self.js["card"]
+        self.assertEqual(js["rides"], OMNY_RIDES)
+        self.assertAlmostEqual(js["price"], OMNY_PRICE)
+        self.assertTrue(js["cheaper_than_singles"])
+        self.assertLess(OMNY_PRICE, OMNY_RIDES * SUBWAY_FARE)
+        self.assertEqual(js["bought"], OMNY_RIDES)
+        self.assertEqual(js["after_a_ride"], OMNY_RIDES - 1)
+        self.assertTrue(js["cash_untouched"], "it charged the pocket and the card")
+        self.assertTrue(js["stranded"]["with_card"] is False)
+        self.assertTrue(js["stranded"]["without"] is True)
+        self.assertEqual(js["survives_a_save"], OMNY_RIDES - 1)
+
+        game = Game(seed=5)
+        game.player.cash = 20.0
+        game.buy_rides()
+        game.player.cash = 0.5
+        game.travel(next(s.name for s in STATIONS if s.name != game.station.name))
+        self.assertEqual(game.player.rides, OMNY_RIDES - 1)
+
     def test_the_shark_s_man_costs_the_same_on_both_sides(self):
         """Paying him is the good end - it comes off the loan - so both ports
         have to agree on the demand and on what refusing adds."""
         from cryptowarz import encounter as en
         js = self.js["collector"]
-        self.assertEqual(js["options"], ["pay", "run", "fight", "weapon"][:len(js["options"])])
+        # the collector's built list, on the same state, on both sides
+        self.assertEqual(js["options"], [c["key"] for c in self._standoff("collector").choices()])
         self.assertEqual(js["demand"], round(en.collector_demand(self._standoff("collector"))))
         self.assertAlmostEqual(js["fee_ran"], en.SHARK_FEE_RAN)
         self.assertAlmostEqual(js["fee_fought"], en.SHARK_FEE_FOUGHT)
