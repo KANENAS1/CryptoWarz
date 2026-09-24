@@ -750,28 +750,79 @@ def _drain(game, choice, was: dict) -> List[str]:
     return _finish(game, out)
 
 
+def _charge_gas(game, owed: float) -> Tuple[float, float]:
+    """Take a fee from the cash, and the shortfall out of the bag.
+
+    Gas is not a gift being clipped - it is a toll you owe for moving your own
+    money, and a wallet with no cash in it does not get to move anything for
+    free. Before this, a player holding everything and carrying nothing paid
+    ZERO either way, which made the whole encounter free exactly when it should
+    have hurt, and made the relay strictly worse than paying: a risk taken for
+    a saving of nothing.
+
+    Returns (cash paid, value taken from the bag at cost).
+    """
+    from .events import _confiscate, _take_cash
+
+    cash = _take_cash(game, owed)
+    short = owed - cash
+    if short <= 0.01:
+        return cash, 0.0
+    # the network takes the rest in kind, proportionally across the wallet,
+    # the same way every other loss in this game is shared out
+    held = game.player.portfolio_value(game.market)
+    if held <= 0:
+        return cash, 0.0
+    fraction = min(0.9, short / held)
+    _confiscate(game, fraction)
+    # report what it was WORTH, not the cost basis removed - the fee is a
+    # market-price number and the sentence has to add up to it
+    return cash, fraction * held
+
+
+def _paid_line(cash: float, kind: float) -> str:
+    """What it cost, in a sentence that reads right in all four cases."""
+    if cash > 0 and kind > 0:
+        return f"${cash:,.2f} in cash, and ${kind:,.2f} out of the bag to cover the rest"
+    if kind > 0:
+        return f"${kind:,.2f} out of the bag, your pockets being empty"
+    if cash > 0:
+        return f"${cash:,.2f}"
+    return ""
+
+
 def _gas(game, choice, was: dict) -> List[str]:
     """Fees have gone vertical. Pay them, or go round."""
-    from .events import _confiscate, _take_cash
+    from .events import _confiscate
 
     out: List[str] = []
     fee = float(was.get("fee", 400.0))      # from the standoff, not from thin air
 
+    #: the one line that is true whether you paid in cash, in kind, or had
+    #: nothing at all to give
+    nothing = ("You have nothing to pay it with and nothing worth moving. "
+               "The network does not care either way.")
+
     if choice == "paygas":
-        paid = _take_cash(game, fee)
-        out.append(f"You pay it. ${paid:,.2f} to move your own money, and the "
-                   f"block still takes four minutes.")
+        cash, kind = _charge_gas(game, fee)
+        paid = _paid_line(cash, kind)
+        out.append(nothing if not paid else
+                   f"You pay it: {paid}. Moving your own money, and the block "
+                   f"still takes four minutes.")
         return _finish(game, out)
 
-    cheap = _take_cash(game, fee * RELAY_SHARE)
+    cash, kind = _charge_gas(game, fee * RELAY_SHARE)
+    paid = _paid_line(cash, kind)
     if game.rng.random() < odds(game, "relay"):
-        out.append(f"The relay works. ${cheap:,.2f} instead of ${fee:,.2f}, and "
-                   f"nobody asks where the transaction came from.")
+        out.append(nothing if not paid else
+                   f"The relay works: {paid}, against ${fee:,.2f} through the "
+                   f"front door. Nobody asks where it came from.")
         return _finish(game, out)
     fraction = game.rng.uniform(*RELAY_TAKES)
     lost = _confiscate(game, fraction)
-    out.append(f"The relay was somebody's honeypot. ${cheap:,.2f} in fees and "
-               f"${lost:,.2f} of the bag with it. The forum post is gone too.")
+    out.append(f"The relay was somebody's honeypot. "
+               f"{paid + ' in fees and ' if paid else ''}${lost:,.2f} of the bag "
+               f"with it. The forum post is gone too.")
     return _finish(game, out)
 
 

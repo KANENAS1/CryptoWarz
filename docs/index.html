@@ -1819,23 +1819,59 @@ function drainStandoff(g, choice, was) {
   return finish();
 }
 
+/* Take a fee from the cash, and the shortfall out of the bag.
+
+   Gas is not a gift being clipped - it is a toll you owe for moving your own
+   money, and a wallet with no cash in it does not get to move anything for
+   free. Before this, a player holding everything and carrying nothing paid
+   ZERO either way, which made the encounter free exactly when it should have
+   hurt, and made the relay strictly worse than paying: a risk taken to save
+   nothing. Returns [cash paid, value taken from the bag]. */
+function chargeGas(g, owed) {
+  const cash = takeCash(g, owed);
+  const short = owed - cash;
+  if (short <= 0.01) return [cash, 0];
+  const held = g.portfolioValue();
+  if (held <= 0) return [cash, 0];
+  const fraction = Math.min(0.9, short / held);
+  confiscate(g, fraction);
+  // report what it was WORTH, not the cost basis removed - the fee is a
+  // market-price number and the sentence has to add up to it
+  return [cash, fraction * held];
+}
+/* What it cost, in a sentence that reads right in all four cases. */
+function paidLine(cash, kind) {
+  if (cash > 0 && kind > 0) return `${money2(cash)} in cash, and ${money2(kind)} out of the bag to cover the rest`;
+  if (kind > 0) return `${money2(kind)} out of the bag, your pockets being empty`;
+  if (cash > 0) return money2(cash);
+  return "";
+}
+
 /* Fees have gone vertical. Pay them, or go round and risk it. */
 function gasStandoff(g, choice, was) {
   const out = [];
   const finish = () => { out.forEach(m => g.say(m)); return out; };
   const fee = was.fee || 400;
+  const nothing = "You have nothing to pay it with and nothing worth moving. "
+    + "The network does not care either way.";
+
   if (choice === "paygas") {
-    const paid = takeCash(g, fee);
-    out.push(`You pay it. ${money2(paid)} to move your own money, and the block still takes four minutes.`);
+    const [cash, kind] = chargeGas(g, fee);
+    const paid = paidLine(cash, kind);
+    out.push(!paid ? nothing
+      : `You pay it: ${paid}. Moving your own money, and the block still takes four minutes.`);
     return finish();
   }
-  const cheap = takeCash(g, fee * RELAY_SHARE);
+  const [cash, kind] = chargeGas(g, fee * RELAY_SHARE);
+  const paid = paidLine(cash, kind);
   if (g.rng.random() < encounterOdds(g, "relay")) {
-    out.push(`The relay works. ${money2(cheap)} instead of ${money2(fee)}, and nobody asks where the transaction came from.`);
+    out.push(!paid ? nothing
+      : `The relay works: ${paid}, against ${money2(fee)} through the front door. Nobody asks where it came from.`);
     return finish();
   }
   const lost = confiscate(g, g.rng.uniform(RELAY_TAKES[0], RELAY_TAKES[1]));
-  out.push(`The relay was somebody's honeypot. ${money2(cheap)} in fees and ${money2(lost)} of the bag with it. The forum post is gone too.`);
+  out.push(`The relay was somebody's honeypot. ${paid ? paid + " in fees and " : ""}`
+    + `${money2(lost)} of the bag with it. The forum post is gone too.`);
   return finish();
 }
 
@@ -2815,7 +2851,7 @@ if (false) {
                      REP_MAX, REP_ODDS, repOf, bumpRep, MAX_LOAD_PENALTY,
                      RUN_BASE, FIGHT_BASE, loadPenalty, encounterOdds, KINDS,
                      KIND_BY_KEY, openStandoff, encounterChoices, resolveStandoff,
-                     payCost, stickup, bestChoice, TAKE_CASH, lawyerCost,
+                     payCost, stickup, bestChoice, TAKE_CASH, lawyerCost, chargeGas,
                      collectorDemand, LAWYER_SHARE, LAWYER_MIN, LAWYER_SAVES,
                      DRAIN_REAL, DRAIN_PAYS, DRAIN_TAKES, CHECK_SHARE, CHECK_MIN,
                      RELAY_SHARE, RELAY_BASE, RELAY_TAKES, checkCost, gasFee, nerveOf,

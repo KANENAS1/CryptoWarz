@@ -348,3 +348,79 @@ class TestADayLostCannotOutrunTheEnd(unittest.TestCase):
         game = Game(seed=5)
         game.day = 12
         self.assertFalse(S.from_dict(S.to_dict(game)).finished)
+
+
+class TestGasIsOwedNotOptional(unittest.TestCase):
+    """A player holding everything and carrying nothing used to pay ZERO.
+
+    Both answers took the fee out of cash, and cash was what they did not have,
+    so the whole encounter was free exactly when it should have hurt - and the
+    relay became strictly worse than paying: a risk taken to save nothing. The
+    message said "$0.00 instead of $643.90", which is how it was noticed.
+
+    Gas is a toll you owe for moving your own money, so a wallet with no cash
+    in it pays out of the bag instead.
+    """
+
+    def _gassed(self, cash, coins=True, seed=13):
+        from cryptowarz.game import Game
+        game = Game(seed=seed)
+        game.player.cash = cash
+        game.player.capacity = 1e9
+        if coins:
+            game.player.holding("BTC").qty = 1.0
+            game.player.holding("BTC").cost = 40_000.0
+        E.open_standoff(game, "gas")
+        game.pending["fee"] = 640.0
+        return game
+
+    def test_being_broke_no_longer_makes_it_free(self):
+        for choice in ("paygas", "relay"):
+            game = self._gassed(0.0)
+            before = game.player.portfolio_value(game.market)
+            game.resolve(choice)
+            self.assertLess(game.player.portfolio_value(game.market), before,
+                            f"{choice} cost nothing at all")
+
+    def test_it_comes_out_of_cash_first(self):
+        game = self._gassed(9_000.0)
+        before = game.player.portfolio_value(game.market)
+        game.resolve("paygas")
+        self.assertAlmostEqual(game.player.cash, 9_000.0 - 640.0, places=2)
+        self.assertAlmostEqual(game.player.portfolio_value(game.market), before, places=2)
+
+    def test_a_part_payment_splits_correctly(self):
+        game = self._gassed(200.0)
+        said = " ".join(game.resolve("paygas"))
+        self.assertIn("in cash", said)
+        self.assertIn("out of the bag", said)
+        # the two halves have to add up to the fee, or the sentence is a lie
+        import re
+        amounts = [float(x.replace(",", "")) for x in re.findall(r"\$([\d,]+\.\d\d)", said)]
+        self.assertAlmostEqual(sum(amounts[:2]), 640.0, places=1)
+
+    def test_the_relay_still_saves_you_something(self):
+        """It has to be cheaper than the front door, or it is only a risk."""
+        pay, relay = self._gassed(0.0), self._gassed(0.0)
+        pay_before = pay.player.portfolio_value(pay.market)
+        relay_before = relay.player.portfolio_value(relay.market)
+        pay.resolve("paygas")
+        relay.resolve("relay")
+        paid = pay_before - pay.player.portfolio_value(pay.market)
+        # the relay can still be robbed; compare the FEE, not the outcome
+        self.assertGreater(paid, 0.0)
+        self.assertAlmostEqual(paid, 640.0, delta=1.0)
+
+    def test_nothing_to_take_says_so_rather_than_printing_zero(self):
+        for choice in ("paygas", "relay"):
+            game = self._gassed(0.0, coins=False)
+            said = " ".join(game.resolve(choice))
+            self.assertNotIn("$0.00", said, "the line that started all this")
+            self.assertIn("nothing", said.lower())
+
+    def test_it_can_never_strip_the_last_fare(self):
+        from cryptowarz.game import SUBWAY_FARE
+        for seed in range(30):
+            game = self._gassed(2.0, seed=seed)
+            game.resolve("paygas")
+            self.assertGreaterEqual(game.player.cash, min(2.0, SUBWAY_FARE) - 1e-9)

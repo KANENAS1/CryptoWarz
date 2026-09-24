@@ -471,6 +471,27 @@ const out = {
                    const before = x.player.cash; x.resolve("walk");
                    return x.player.cash === before; })() };
       })(),
+      gas_is_owed: (() => {
+        const gassed = (cash, coins) => {
+          const g = new G.Game(13); g.player.cash = cash; g.player.capacity = 1e9;
+          if (coins !== false) { const h = g.holding("BTC"); h.qty = 1; h.cost = 40000; }
+          G.openStandoff(g, "gas"); g.pending.fee = 640; return g;
+        };
+        const cost = (choice, cash, coins) => {
+          const g = gassed(cash, coins);
+          const before = g.portfolioValue();
+          const said = g.resolve(choice).join(" ");
+          return { took: Math.round((before - g.portfolioValue()) * 100) / 100,
+                   cash: Math.round(g.player.cash * 100) / 100, said: said };
+        };
+        return {
+          broke_pays_from_the_bag: cost("paygas", 0).took,
+          broke_relay_pays_too: cost("relay", 0).took > 0,
+          cash_first: cost("paygas", 9000).cash,
+          nothing_at_all: cost("paygas", 0, false).said,
+          no_zero_line: !/\$0\.00/.test(cost("relay", 0, false).said),
+        };
+      })(),
       gas: (() => {
         const make = () => { const g = new G.Game(4);
           g.player.cash = 9000; g.player.capacity = 1e9;

@@ -934,6 +934,44 @@ class TestEncounterParity(unittest.TestCase):
         self.assertEqual(js["after_check"]["cash"], round(game.player.cash))
         self.assertTrue(js["walk_costs_nothing"])
 
+    def test_gas_is_owed_on_both_sides(self):
+        """The hole: a player holding everything and carrying nothing paid zero
+        either way, so the encounter was free exactly when it should have hurt,
+        and the relay became a risk taken to save nothing. Both ports now take
+        the shortfall out of the bag, and neither prints "$0.00" at somebody
+        who has nothing."""
+        from cryptowarz.game import Game
+        js = self.js["gas_is_owed"]
+
+        def gassed(cash, coins=True):
+            game = Game(seed=13)
+            game.player.cash = cash
+            game.player.capacity = 1e9
+            if coins:
+                game.player.holding("BTC").qty = 1.0
+                game.player.holding("BTC").cost = 40_000.0
+            en.open_standoff(game, "gas")
+            game.pending["fee"] = 640.0
+            return game
+
+        from cryptowarz import encounter as en
+        broke = gassed(0.0)
+        before = broke.player.portfolio_value(broke.market)
+        broke.resolve("paygas")
+        took = round(before - broke.player.portfolio_value(broke.market), 2)
+        self.assertAlmostEqual(js["broke_pays_from_the_bag"], took, places=1)
+        self.assertGreater(took, 0.0)
+        self.assertTrue(js["broke_relay_pays_too"])
+
+        flush = gassed(9_000.0)
+        flush.resolve("paygas")
+        self.assertAlmostEqual(js["cash_first"], round(flush.player.cash, 2), places=1)
+
+        empty = gassed(0.0, coins=False)
+        said = " ".join(empty.resolve("paygas"))
+        self.assertEqual(js["nothing_at_all"], said)
+        self.assertTrue(js["no_zero_line"], "the port still prints $0.00")
+
     def test_the_gas_squeeze_matches(self):
         from cryptowarz import encounter as en
         js = self.js["gas"]

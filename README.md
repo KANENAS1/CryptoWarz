@@ -206,6 +206,28 @@ clearly negative the moment you are holding anything worth taking.
 | **PAY THE FEE** | $120–820. Annoying, certain, over with |
 | **USE A PRIVATE RELAY** | A tenth of that, and **72%** fine. The rest is somebody's honeypot |
 
+**Gas is owed, and it gets paid in kind.** This started as a cosmetic
+complaint — a real run showed `The relay works. $0.00 instead of $643.90` —
+and the wording turned out to be the smaller half. A player holding everything
+and carrying nothing paid **zero either way**, because both answers took the
+fee out of cash and cash was the thing they did not have. The encounter was
+free exactly when it should have hurt, and the relay was strictly worse than
+paying: a risk taken to save nothing.
+
+So the fee comes out of the cash first, and the shortfall out of the bag —
+which is how gas works when your wallet has no cash in it. It reads right in
+all four cases, and the numbers add up to the fee:
+
+```
+flush           You pay it: $640.00. Moving your own money…
+part-paid       You pay it: $197.10 in cash, and $442.90 out of the bag to cover the rest.
+broke, holding  You pay it: $640.00 out of the bag, your pockets being empty.
+nothing at all  You have nothing to pay it with and nothing worth moving.
+```
+
+It can never take your last fare, and "$0.00" is gone — a test asserts that
+line can never come back.
+
 ### Everyone who comes for your money is answerable
 
 A stickup was the first one. The other two used to be weather — they happened,
