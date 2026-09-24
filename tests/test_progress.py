@@ -56,14 +56,14 @@ class TestTiers(unittest.TestCase):
         self.assertEqual([t.level for t in P.TIERS], list(range(1, len(P.TIERS) + 1)))
         for a, b in zip(P.TIERS, P.TIERS[1:]):
             self.assertGreaterEqual(b.debt, a.debt, b.name)
-            self.assertLessEqual(b.capacity, a.capacity, b.name)
+            self.assertLessEqual(b.capacity, a.capacity, b.name)   # smaller pockets
             self.assertGreaterEqual(b.heat_mult, a.heat_mult, b.name)
 
     def test_a_tier_shapes_the_run(self):
         for tier in P.TIERS:
             g = Game(seed=1, tier=tier.level)
             self.assertAlmostEqual(g.player.debt, tier.debt, msg=tier.name)
-            self.assertAlmostEqual(g.player.capacity, tier.capacity, msg=tier.name)
+            self.assertAlmostEqual(g.player.cash_cap, tier.capacity * 2.0, msg=tier.name)
             self.assertEqual(g.days, tier.days, tier.name)
 
     def test_higher_tiers_really_are_harder(self):
@@ -89,8 +89,8 @@ class TestPerks(unittest.TestCase):
     def test_each_perk_changes_something(self):
         base = Game(seed=1)
         self.assertAlmostEqual(Game(seed=1, perk="seed_round").player.cash, base.player.cash + 2_000)
-        self.assertAlmostEqual(Game(seed=1, perk="cold_storage").player.capacity,
-                               base.player.capacity + 15_000)
+        self.assertAlmostEqual(Game(seed=1, perk="cold_storage").player.cash_cap,
+                               base.player.cash_cap + 15_000)
         self.assertEqual(Game(seed=1, perk="metrocard").fare, 0.0)
         self.assertLess(Game(seed=1, perk="fixer").shark_rate, base.shark_rate)
 

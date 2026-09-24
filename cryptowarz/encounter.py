@@ -133,10 +133,16 @@ MAX_LOAD_PENALTY = 0.28
 
 
 def load_penalty(game) -> float:
-    """How much what you are carrying slows you down, 0.0 - MAX_LOAD_PENALTY."""
-    capacity = max(1.0, game.player.capacity)
-    used = min(1.0, game.player.used_capacity / capacity)
-    return MAX_LOAD_PENALTY * used
+    """How much what you are carrying slows you down, 0.0 - MAX_LOAD_PENALTY.
+
+    Cash, not coins. It used to measure the crypto wallet, which never made
+    much sense - nobody is slowed down by a number in a cold wallet - and now
+    measures the thing that is actually heavy. Over-carrying is worse than
+    full: walking around with more than your pockets hold is exactly when
+    somebody takes it off you.
+    """
+    cap = max(1.0, game.player.cash_cap)
+    return MAX_LOAD_PENALTY * min(1.4, game.player.cash / cap)
 
 
 #: Base chances before anything is applied. Running is the default answer and
@@ -725,10 +731,6 @@ def _drain(game, choice, was: dict) -> List[str]:
         target = game.rng.choice([c for c in COINS if c.symbol != "USDC"])
         value = game.rng.uniform(*DRAIN_PAYS)
         price = game.market.price(target.symbol)
-        if game.player.free_capacity < value:
-            out.append(f"It was real, and your wallet is full. The {target.symbol} "
-                       f"expires unclaimed, which is its own kind of answer.")
-            return _finish(game, out)
         held = game.player.holding(target.symbol)
         held.qty += value / price
         held.cost += value

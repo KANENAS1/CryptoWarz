@@ -9,8 +9,17 @@ const { Game, STATIONS, COINS, bestChoice } = require("./game.js");
 const RUNS = Number(process.argv[2] || 200);
 const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
+/* Sell out - but only as much as the player can carry away. The crypto wallet
+   has no ceiling and cash does, so "sell everything" is no longer something
+   anybody can do in one go. A bot that kept asking for it would throw on every
+   attempt and quietly stop trading, and the table would be measuring a bot
+   that had given up rather than the game. */
 function liquidate(g) {
-  for (const [sym, h] of Object.entries(g.player.wallet)) if (h.qty > 0) g.sell(sym, h.qty);
+  for (const [sym, h] of Object.entries(g.player.wallet)) {
+    if (h.qty <= 0) continue;
+    const qty = Math.min(h.qty, g.maxSellable(sym));
+    if (qty > 0) g.sell(sym, qty);
+  }
 }
 function cheapest(g) {
   let best = null;
@@ -41,7 +50,7 @@ const STRATEGIES = [
     if (g.station.shark && g.player.debt > 0 && g.player.debt < g.player.cash * 0.55) {
       try { g.repay(g.player.debt); } catch (e) { /* not affordable */ }
     }
-    if (g.station.shop && g.player.debt === 0 && g.player.cash > 80000) {
+    if (g.station.shop && g.player.debt === 0 && g.player.cash > 40000) {
       try { g.buyCapacity(); } catch (e) { /* not affordable */ }
     }
     const s = cheapest(g);

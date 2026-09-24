@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 
 from cryptowarz.coins import COINS
-from cryptowarz.game import DAYS, START_CAPACITY, START_CASH, START_DEBT, SUBWAY_FARE
+from cryptowarz.game import DAYS, START_CASH_CAP, START_CASH, START_DEBT, SUBWAY_FARE
 from cryptowarz.market import station_markup
 from cryptowarz.stations import STATIONS
 
@@ -343,7 +343,7 @@ class TestDataParity(unittest.TestCase):
         self.assertAlmostEqual(c["SUBWAY_FARE"], SUBWAY_FARE)
         self.assertAlmostEqual(c["START_CASH"], START_CASH)
         self.assertAlmostEqual(c["START_DEBT"], START_DEBT)
-        self.assertAlmostEqual(c["START_CAPACITY"], START_CAPACITY)
+        self.assertAlmostEqual(c["START_CASH_CAP"], START_CASH_CAP)
 
     def test_every_coin_matches(self):
         self.assertEqual([c["symbol"] for c in self.js["coins"]], [c.symbol for c in COINS])
@@ -814,6 +814,65 @@ class TestEncounterParity(unittest.TestCase):
             game.resolve(choice)
             self.assertEqual(js[choice]["cash"], round(game.player.cash), choice)
             self.assertEqual(js[choice]["raids"], game.stats["raids"], choice)
+
+    def test_both_ports_invert_the_wallet_the_same_way(self):
+        """Coins have no ceiling; your pockets do. Every number that moved has
+        to move on both sides, or the phone and the terminal are two different
+        economies wearing the same name."""
+        from cryptowarz.game import START_CASH_CAP, Game
+        from cryptowarz.stations import STATIONS
+        js = self.js["wallet"]
+        self.assertEqual(js["start_cap"], START_CASH_CAP)
+
+        big = Game(seed=5)
+        big.player.cash = 10_000_000.0
+        big.buy("DOGE", 1_000_000)
+        big.buy("DOGE", 1_000_000)
+        # never compare a price-derived value across the two generators - one
+        # seed gives two different DOGE prices. Compare the property instead.
+        self.assertTrue(js["coins_are_uncapped"])
+        self.assertGreater(big.player.used_capacity, 500_000)
+
+        sell = Game(seed=5)
+        sell.player.cash = 0.0
+        sell.player.cash_cap = 50_000.0
+        price = sell.market.price("DOGE")
+        sell.player.holding("DOGE").qty = 400_000.0 / price
+        sell.player.holding("DOGE").cost = 400_000.0
+        with self.assertRaises(ValueError):
+            sell.sell("DOGE", sell.player.holding("DOGE").qty)
+        self.assertTrue(js["selling_is_capped"])
+        # what you can sell is exactly what you can carry, on both sides
+        self.assertEqual(js["sellable_is_the_carry_room"], 50_000)
+        self.assertAlmostEqual(sell.max_sellable("DOGE") * price, 50_000.0, places=2)
+
+        gift = Game(seed=5)
+        gift.player.holding("BTC").qty = 10.0
+        gift.player.holding("BTC").cost = 5_000_000.0
+        before = gift.player.used_capacity
+        gift.gift(5_000.0, "Here")
+        self.assertEqual(js["gift_always_lands"], round(gift.player.used_capacity - before))
+        self.assertEqual(js["gift_always_lands"], 5_000)
+
+        up = Game(seed=5)
+        up.station = next(s2 for s2 in STATIONS if s2.has_upgrades)
+        up.player.cash = 999_999.0
+        cost = up.upgrade_cost()
+        up.buy_capacity()
+        self.assertEqual(js["upgrade_cost"], round(cost))
+        self.assertEqual(js["cap_after_upgrade"], up.player.cash_cap)
+
+        over = Game(seed=5)
+        over.player.cash = 61_000.0
+        self.assertEqual(js["over_carrying"], round(over.player.over_carrying))
+
+        from cryptowarz import encounter as en
+        light, heavy = Game(seed=5), Game(seed=5)
+        light.player.cash = 0.0
+        heavy.player.cash = heavy.player.cash_cap
+        self.assertEqual(js["load_is_cash"],
+                         [round(en.load_penalty(light), 3), round(en.load_penalty(heavy), 3)])
+        self.assertEqual(js["old_save_gets_standard_pockets"], START_CASH_CAP)
 
     def test_neither_port_lets_a_run_outlive_its_last_day(self):
         """A standoff that costs a day used to walk the clock past the end
@@ -1356,8 +1415,20 @@ class TestBalanceParity(unittest.TestCase):
         self.assertGreater(r["best"], 100_000, "no upside worth chasing")
 
     def test_better_judgement_raises_the_ceiling(self):
-        self.assertGreater(self.js["+ clear the debt"]["best"],
-                           self.js["buy the cheapest"]["best"])
+        """The MEDIAN, not the best run or the p90.
+
+        With the crypto wallet uncapped the top of the distribution is a fat
+        tail that one lucky seed can win from either strategy - the naive bot's
+        best beat the careful one's here, and their p90s are within 1%. That is
+        the tail being about the market rather than about judgement, and
+        asserting on it would be measuring luck. What judgement actually moves
+        is the typical run, and it moves it a long way: from a five-figure loss
+        to a profit.
+        """
+        self.assertGreater(self.js["+ clear the debt"]["median"],
+                           self.js["buy the cheapest"]["median"])
+        self.assertGreater(self.js["+ clear the debt"]["solvent"],
+                           self.js["buy the cheapest"]["solvent"])
         self.assertGreater(self.js["+ clear the debt"]["p90"],
                            self.js["buy at random"]["p90"])
 

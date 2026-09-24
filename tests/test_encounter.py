@@ -22,15 +22,18 @@ from cryptowarz import save as S
 from cryptowarz.game import Game
 
 
-def cornered(cash=8_000.0, weapon=None, rep=0, load=0.0, seed=11):
+def cornered(cash=8_000.0, weapon=None, rep=0, load=None, seed=11):
+    """A run standing in front of somebody.
+
+    ``load`` is how full the POCKETS are, 0.0 to 1.0 - cash, not coins. That is
+    what slows you down now, and it is the reason a rich run cannot simply walk
+    away from trouble.
+    """
     game = Game(seed=seed)
-    game.player.cash = cash
-    game.player.capacity = 25_000.0
+    game.player.cash_cap = 25_000.0
+    game.player.cash = cash if load is None else game.player.cash_cap * load
     game.weapon = weapon
     game.stats["rep"] = rep
-    if load:
-        game.player.holding("DOGE").cost = game.player.capacity * load
-        game.player.holding("DOGE").qty = 1.0
     E.open_standoff(game)
     return game
 
@@ -103,7 +106,7 @@ class TestTheOddsAreTheRealOnes(unittest.TestCase):
     def test_a_full_wallet_is_a_slow_wallet(self):
         """The sharpest idea in the encounter: the run that most needs to walk
         away is the one least able to."""
-        light, heavy = cornered(load=0.0), cornered(load=1.0)
+        light, heavy = cornered(cash=0.0), cornered(load=1.0)
         self.assertGreater(E.odds(light, "run"), E.odds(heavy, "run"))
         self.assertAlmostEqual(E.odds(light, "run") - E.odds(heavy, "run"),
                                E.MAX_LOAD_PENALTY, places=6)

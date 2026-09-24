@@ -110,16 +110,25 @@ class TestTheGift(unittest.TestCase):
         self.assertAlmostEqual(game.player.cash, before_cash)
         self.assertAlmostEqual(game.player.used_capacity, before_used + 1_000.0, places=6)
 
-    def test_it_never_overflows_the_wallet(self):
+    def test_a_gift_always_lands_now(self):
+        """The rule this replaced: a prize used to be clipped to whatever room
+        was left in the crypto wallet, and a full wallet meant it went to
+        somebody else. Free money that evaporates because of a number is the
+        worst kind of loss - you did nothing wrong and there was nothing to
+        decide. Coins are not capped any more, so a gift is always a gift."""
         game = Game(seed=3)
-        game.player.capacity = 250.0
-        game.gift(5_000.0, "Here")
-        self.assertLessEqual(game.player.used_capacity, 250.0 + 1e-6)
+        game.player.cash = 0.0
+        said = game.gift(5_000.0, "Here")
+        self.assertNotIn("full", " ".join(said))
+        self.assertAlmostEqual(game.player.used_capacity, 5_000.0, places=6)
 
-    def test_a_full_wallet_is_told_plainly(self):
+    def test_a_gift_lands_even_on_top_of_a_huge_bag(self):
         game = Game(seed=3)
-        game.player.capacity = 0.0
-        self.assertIn("full", game.gift(5_000.0, "Here")[0])
+        game.player.holding("BTC").qty = 10.0
+        game.player.holding("BTC").cost = 5_000_000.0
+        before = game.player.used_capacity
+        game.gift(5_000.0, "Here")
+        self.assertAlmostEqual(game.player.used_capacity, before + 5_000.0, places=6)
 
     def paid_for_calling(self, call, rolled=None, gear=None):
         """What one rigged roll actually puts in the wallet."""
@@ -128,7 +137,7 @@ class TestTheGift(unittest.TestCase):
         while not game.dice_ready:
             ride(game)
         game.rng.randint = lambda a, b: rolled   # the dice are rigged, for once
-        game.player.capacity = 1e9               # so no payout is clipped
+        game.player.cash_cap = 1e9               # so nothing is clipped
         if gear:                                 # luck only counts while holding
             game.player.holding("DOGE").qty = 1_000.0
         before = game.player.used_capacity
@@ -223,19 +232,16 @@ class TestTheStreak(unittest.TestCase):
         midpoint = (HOT_HAND_MIN + HOT_HAND_MAX) / 2
         self.assertGreater(sum(a < midpoint for a in amounts) / len(amounts), 0.6)
 
-    def test_a_full_wallet_is_why_a_ride_can_pay_nothing(self):
-        """The other reason a ride comes up empty, and the one worth saying.
-
-        Free crypto still needs somewhere to go. A player on a streak who never
-        sells fills the wallet and then watches rides arrive with nothing on
-        them - that is the capacity rule doing its job, not a broken payout.
-        """
-        game = play(HOT_HAND)
-        game.player.capacity = game.player.used_capacity   # not a cent of room
+    def test_a_streak_gift_lands_whatever_you_are_holding(self):
+        """Same rule, same reason: nothing free is lost to a full wallet."""
+        game = Game(seed=3)
+        game.hot_hand = True
+        game.player.holding("BTC").qty = 10.0
+        game.player.holding("BTC").cost = 5_000_000.0
         before = game.player.used_capacity
-        for _ in range(20):
-            game._streak_gift()
-        self.assertAlmostEqual(game.player.used_capacity, before)
+        game._streak_gift()
+        self.assertGreaterEqual(game.player.used_capacity, before)
+
 
     def test_a_reload_cannot_shake_it_off(self):
         self.assertTrue(S.from_dict(S.to_dict(play(HOT_HAND))).hot_hand)

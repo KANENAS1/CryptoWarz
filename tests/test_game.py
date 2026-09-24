@@ -170,10 +170,34 @@ class TestTrading(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.game.buy("BTC", 10)
 
-    def test_cannot_exceed_wallet_capacity(self):
+    def test_the_crypto_wallet_has_no_ceiling(self):
+        """The inversion: coins are weightless, so buying is limited by money
+        and nothing else. A cold wallet that refuses to hold another coin is
+        not a thing that exists, and the old cap made free money disappear."""
         self.game.player.cash = 10_000_000.0
-        with self.assertRaises(ValueError):
-            self.game.buy("DOGE", 10_000_000)
+        self.game.buy("DOGE", 1_000_000)
+        self.assertGreater(self.game.player.used_capacity, 100_000.0)
+        self.game.buy("DOGE", 1_000_000)      # and again, with no complaint
+
+    def test_you_cannot_carry_away_more_cash_than_your_pockets_hold(self):
+        """The counterweight, and the reason the vault matters: getting OUT of
+        a big position takes trips."""
+        # a position worth far more than the pockets hold, which is exactly
+        # the situation an uncapped crypto wallet creates
+        self.game.player.cash = 0.0
+        self.game.player.cash_cap = 50_000.0
+        price = self.game.market.price("DOGE")
+        held = 400_000.0 / price
+        self.game.player.holding("DOGE").qty = held
+        self.game.player.holding("DOGE").cost = 400_000.0
+        with self.assertRaises(ValueError) as caught:
+            self.game.sell("DOGE", held)
+        self.assertIn("carry", str(caught.exception))
+        # and it tells you exactly how much you CAN sell
+        most = self.game.max_sellable("DOGE")
+        self.assertGreater(most, 0.0)
+        self.game.sell("DOGE", most)
+        self.assertLessEqual(self.game.player.cash, self.game.player.cash_cap + 1e-6)
 
     def test_max_buyable_leaves_the_fare(self):
         """Spending the last cent would strand you, which is a dead end."""

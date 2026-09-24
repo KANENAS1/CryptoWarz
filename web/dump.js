@@ -20,7 +20,7 @@ const out = {
     SUBWAY_FARE: G.SUBWAY_FARE,
     START_CASH: new G.Game(1).player.cash,
     START_DEBT: new G.Game(1).player.debt,
-    START_CAPACITY: new G.Game(1).player.capacity,
+    START_CASH_CAP: new G.Game(1).player.cash_cap,
   },
   coins: G.COINS.map(c => ({
     symbol: c.symbol, name: c.name, low: c.low, high: c.high, meme: c.meme,
@@ -186,7 +186,7 @@ const out = {
       payouts: (() => {
         const g = new G.Game(77);
         g.hotHand = true;
-        g.player.capacity = 1e9;               // so nothing is clipped
+        g.player.cash_cap = 1e9;               // nothing is clipped any more
         let paid = 0, skipped = 0, biggest = 0, smallest = Infinity;
         for (let i = 0; i < 4000; i++) {
           const before = g.usedCapacity();
@@ -397,6 +397,45 @@ const out = {
                  lawyer_cost: Math.round(G.lawyerCost(make())),
                  lawyer_saves: G.LAWYER_SAVES, caught: G.CAUGHT_MULTIPLIER,
                  comply: after("comply"), lawyer: after("lawyer") };
+      })(),
+      /* the inversion: coins uncapped, pockets capped */
+      wallet: (() => {
+        const g = new G.Game(5);
+        const start = g.player.cash_cap;
+        g.player.cash = 10000000;
+        g.buy("DOGE", 1000000); g.buy("DOGE", 1000000);
+        const uncapped = Math.round(g.usedCapacity());
+        const sell = new G.Game(5);
+        sell.player.cash = 0; sell.player.cash_cap = 50000;
+        const price = sell.market.prices.DOGE;
+        sell.holding("DOGE").qty = 400000 / price; sell.holding("DOGE").cost = 400000;
+        let refused = false;
+        try { sell.sell("DOGE", sell.holding("DOGE").qty); } catch (e) { refused = /carry/.test(e.message); }
+        const gift = new G.Game(5);
+        gift.holding("BTC").qty = 10; gift.holding("BTC").cost = 5000000;
+        const before = gift.usedCapacity(); gift.gift(5000, "Here");
+        const up = new G.Game(5); up.station = G.STATIONS.find(s2 => s2.shop);
+        up.player.cash = 999999; const cost = up.upgradeCost(); up.buyCapacity();
+        return {
+          start_cap: start,
+          /* the VALUE cannot be compared across ports - two generators give
+             two DOGE prices from one seed - so compare the property: far past
+             any ceiling the old rule would have imposed */
+          coins_are_uncapped: uncapped > 500000,
+          sellable_is_the_carry_room: Math.round(sell.maxSellable("DOGE") * price),
+          selling_is_capped: refused,
+          gift_always_lands: Math.round(gift.usedCapacity() - before),
+          upgrade_cost: Math.round(cost), cap_after_upgrade: up.player.cash_cap,
+          over_carrying: (() => { const o = new G.Game(5); o.player.cash = 61000;
+            return Math.round(o.overCarrying()); })(),
+          load_is_cash: (() => { const a = new G.Game(5), b = new G.Game(5);
+            a.player.cash = 0; b.player.cash = b.player.cash_cap;
+            return [Math.round(G.loadPenalty(a) * 1000) / 1000,
+                    Math.round(G.loadPenalty(b) * 1000) / 1000]; })(),
+          old_save_gets_standard_pockets: (() => {
+            const d = G.saveToDict(new G.Game(5)); delete d.player.cash_cap;
+            return G.saveFromDict(d).player.cash_cap; })(),
+        };
       })(),
       /* a day lost at the end must close the run, on both ports */
       last_day: (() => {

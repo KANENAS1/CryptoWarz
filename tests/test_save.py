@@ -57,7 +57,7 @@ class TestRoundTrip(SaveTestCase):
         self.assertAlmostEqual(r.player.cash, g.player.cash)
         self.assertAlmostEqual(r.player.debt, g.player.debt)
         self.assertAlmostEqual(r.player.vault, g.player.vault)
-        self.assertAlmostEqual(r.player.capacity, g.player.capacity)
+        self.assertAlmostEqual(r.player.cash_cap, g.player.cash_cap)
         self.assertEqual(r.player.vpn, g.player.vpn)
 
     def test_the_wallet_comes_back_exactly(self):

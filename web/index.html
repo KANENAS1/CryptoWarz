@@ -379,8 +379,8 @@ catch (e) { document.documentElement.dataset.framed = "1"; }
       <span class="pill tier" id="tierpill" hidden>OFF PEAK</span>
       <span class="pill luck" id="luckpill" hidden>+5% LUCK</span>
       <span class="pill carry" id="carrypill" hidden>PIPE</span>
-      <div class="cap" aria-label="wallet capacity used"><i id="capbar" style="width:0%"></i></div>
-      <span class="day num" id="capnum" style="color:var(--dim)">$0 / $25,000</span>
+      <div class="cap" aria-label="cash you are carrying"><i id="capbar" style="width:0%"></i></div>
+      <span class="day num" id="capnum" style="color:var(--dim)">$0 / $50,000</span>
     </div>
     <div class="stationline">
       <span class="station" id="station">14 St-Union Sq</span>
@@ -659,8 +659,12 @@ function render(){
   $("net").textContent = fmtMoney(net);
   $("net").className = "num " + (net >= 0 ? "up" : "down");
   const used = g.usedCapacity();
-  $("capbar").style.width = Math.min(100, used / p.capacity * 100) + "%";
-  $("capnum").textContent = `$${Math.round(used).toLocaleString()} / $${Math.round(p.capacity).toLocaleString()}`;
+  // the bar is your POCKETS now - cash. Coins have no ceiling.
+  const over = g.overCarrying();
+  $("capbar").style.width = Math.min(100, p.cash / p.cash_cap * 100) + "%";
+  $("capbar").style.background = over > 0 ? "var(--red)" : "";
+  $("capnum").textContent = `$${Math.round(p.cash).toLocaleString()} / $${Math.round(p.cash_cap).toLocaleString()}`
+    + (over > 0 ? " OVER" : "");
 
   // render() used to rebuild this wholesale, which erased anything flash() had
   // put there a moment earlier - the reason messages seemed to disappear even
@@ -688,9 +692,20 @@ function render(){
         <button class="buy" data-buy="${c.symbol}" data-frac="0.5">BUY 50%</button>
         <button class="buy" data-buy="${c.symbol}" data-frac="1">BUY MAX</button></div>`);
       else rows.push(`<div class="note">No room or no cash for ${c.symbol} right now.</div>`);
-      if (h.qty > 0) rows.push(`<div class="btns">
-        <button class="sell" data-sell="${c.symbol}" data-frac="0.5">SELL HALF</button>
-        <button class="sell" data-sell="${c.symbol}" data-frac="1">SELL ALL</button></div>`);
+      if (h.qty > 0) {
+        // With cash capped, a full pocket means you cannot take a profit at
+        // all until you bank some - which is the rule working, but it has to
+        // SAY so. A button that answers "sell how much?" is just broken.
+        const canSell = g.maxSellable(c.symbol);
+        rows.push(canSell <= 1e-9
+          ? `<div class="note">Your pockets are full — $${Math.round(p.cash).toLocaleString()} of
+               $${Math.round(p.cash_cap).toLocaleString()}. Vault some cash before you can sell.</div>`
+          : `<div class="btns">
+              <button class="sell" data-sell="${c.symbol}" data-frac="0.5">SELL HALF</button>
+              <button class="sell" data-sell="${c.symbol}" data-frac="1">${
+                canSell < h.qty - 1e-9 ? "SELL WHAT YOU CAN CARRY" : "SELL ALL"
+              }</button></div>`);
+      }
       rows.push(`<div class="note">${c.note}${h.qty > 0 ? ` · you paid ${fmtPrice(h.cost / h.qty)} avg` : ""}</div>`);
       trade = rows.join("");
     }
@@ -1124,7 +1139,11 @@ $("main").addEventListener("click", e => {
   }
   if (b.dataset.sell) {
     const sym = b.dataset.sell, frac = parseFloat(b.dataset.frac);
-    return act(() => game.sell(sym, (game.player.wallet[sym]?.qty || 0) * frac));
+    // never offer to sell more than the proceeds you could actually carry
+    return act(() => {
+      const held = (game.player.wallet[sym]?.qty || 0) * frac;
+      return game.sell(sym, Math.min(held, game.maxSellable(sym)));
+    });
   }
   if (b.dataset.act === "dealer") return showGoals();
   const a = b.dataset.act;

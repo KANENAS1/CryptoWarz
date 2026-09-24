@@ -273,6 +273,8 @@ function generate(st, rng, state, shockChance, luck) {
 
 /* ------------------------------ game.py ------------------------------- */
 const DAYS = 30, START_CASH = 2000, START_DEBT = 5500, START_CAPACITY = 25000;
+/* What your pockets hold, in CASH. The crypto wallet has no ceiling at all. */
+const START_CASH_CAP = 50000;
 const SHARK_RATE = 0.10, VAULT_RATE = 0.04, SUBWAY_FARE = 2.90;
 // reserving the fare exactly is not enough: rounding leaves $2.8999999999 and
 // a player who cannot afford the fare the reserve was protecting
@@ -359,10 +361,15 @@ function Game(seed, tier, perk, gear, difficulty) {
   this.day = 1;
   this.finished = false;
   this.station = STATIONS[9];              // 14 St-Union Sq
+  /* The tier's number is what your POCKETS hold, in cash. The crypto wallet
+     has no ceiling: coins are weightless, cash is not, and that is what the
+     vault has always been for. Doubled from the old crypto cap so tier 1
+     starts at the $50,000 the design calls for. */
+  this.startingCashCap = t.capacity * 2;
   this.player = { cash: START_CASH + hard.cash, debt: t.debt * hard.debtMult, vault: 0,
-                  capacity: t.capacity, vpn: 0, wallet: {} };
+                  cash_cap: this.startingCashCap, vpn: 0, wallet: {} };
   if (this.perk === "seed_round") this.player.cash += 2000;
-  if (this.perk === "cold_storage") this.player.capacity += 15000;
+  if (this.perk === "cold_storage") this.player.cash_cap += 15000;
   this.stats = { stations: [this.station.name], raids: 0, peak_worth: 0,
                  best_multiple: 0, worth_by_day: [],
                  dice_picks: [], dice_days: [], hot_hand: false };
@@ -571,9 +578,7 @@ Game.prototype.gift = function (value, why) {
   const target = this.rng.choice(COINS.filter(c => c.symbol !== "USDC"));
   const price = this.market.prices[target.symbol];
   if (price <= 0) return [];
-  const room = this.freeCapacity();
-  if (room < 1) return [`${why} - and your wallet is full. It goes to somebody else.`];
-  value = Math.min(value, room);
+
   const h = this.holding(target.symbol);
   h.qty += value / price;
   h.cost += value;
@@ -642,6 +647,25 @@ Game.prototype.dropEmpty = function () {
 Game.prototype.usedCapacity = function () {
   return Object.values(this.player.wallet).reduce((s, h) => s + h.cost, 0);
 };
+/* How much more cash you could pick up before your pockets are full. */
+Game.prototype.carryRoom = function () {
+  return Math.max(0, this.player.cash_cap - this.player.cash);
+};
+/* Cash beyond what the pockets hold. A windfall is never confiscated for
+   being inconvenient - it puts you over instead, which is a problem you can
+   see and solve at a vault, rather than money the game quietly ate. */
+Game.prototype.overCarrying = function () {
+  return Math.max(0, this.player.cash - this.player.cash_cap);
+};
+/* The most of a coin you can sell and still carry the proceeds - the
+   counterweight to an uncapped crypto wallet, and the reason the vault
+   matters: getting OUT of a big position takes trips. */
+Game.prototype.maxSellable = function (sym) {
+  const price = this.market.prices[sym];
+  const held = this.holding(sym).qty;
+  if (!(price > 0)) return held;
+  return Math.max(0, Math.min(held, this.carryRoom() / price));
+};
 Game.prototype.freeCapacity = function () {
   return Math.max(0, this.player.capacity - this.usedCapacity());
 };
@@ -657,7 +681,7 @@ Game.prototype.maxBuyable = function (sym) {
   const p = this.market.prices[sym];
   if (!(p > 0)) return 0;
   const spendable = Math.max(0, this.player.cash - this.fare - FARE_BUFFER);
-  return Math.max(0, Math.min(spendable / p, this.freeCapacity() / p));
+  return Math.max(0, spendable / p);        // coins are weightless
 };
 Game.prototype.buy = function (sym, qty) {
   this.notNow();
@@ -665,7 +689,6 @@ Game.prototype.buy = function (sym, qty) {
   if (!(qty > 0)) throw new Error("buy how much?");
   const price = this.market.prices[sym], cost = price * qty;
   if (cost > this.player.cash + 1e-9) throw new Error(`that costs $${cost.toFixed(2)} and you have $${this.player.cash.toFixed(2)}`);
-  if (cost > this.freeCapacity() + 1e-9) throw new Error(`your wallet only has $${this.freeCapacity().toFixed(2)} of room left`);
   const h = this.holding(sym);
   h.qty += qty; h.cost += cost; this.player.cash -= cost;
   return { text: `Bought ${fmtQty(qty)} ${sym} for $${cost.toFixed(2)}`, good: true };
@@ -676,6 +699,13 @@ Game.prototype.sell = function (sym, qty) {
   if (!(qty > 0)) throw new Error("sell how much?");
   if (qty > h.qty + 1e-12) throw new Error(`you only hold ${fmtQty(h.qty)} ${sym}`);
   const price = this.market.prices[sym], proceeds = price * qty;
+  /* you cannot carry away more than your pockets hold - the whole
+     counterweight to a bottomless crypto wallet */
+  if (proceeds > this.carryRoom() + 1e-9) {
+    throw new Error(`that comes to $${proceeds.toFixed(2)} and you can only carry another `
+      + `$${this.carryRoom().toFixed(2)}. Sell ${fmtQty(this.maxSellable(sym))} ${sym} `
+      + `or vault what you have`);
+  }
   const released = h.qty > 0 ? h.cost * (qty / h.qty) : 0;
   if (released > 0) this.stats.best_multiple = Math.max(this.stats.best_multiple, proceeds / released);
   const profit = proceeds - released;
@@ -731,7 +761,7 @@ Game.prototype.withdraw = function (amount) {
   return { text: `Withdrew $${amount.toFixed(2)}.`, good: true };
 };
 Game.prototype.upgradeCost = function () {
-  const steps = Math.round((this.player.capacity - START_CAPACITY) / 25000);
+  const steps = Math.max(0, Math.round((this.player.cash_cap - this.startingCashCap) / 25000));
   return 3500 * Math.pow(1.7, steps);
 };
 Game.prototype.vpnCost = function () { return 2200 * Math.pow(2, this.player.vpn); };
@@ -740,8 +770,8 @@ Game.prototype.buyCapacity = function () {
   if (!this.station.shop) throw new Error("nowhere to buy hardware here");
   const price = this.upgradeCost();
   if (this.player.cash < price) throw new Error(`a bigger cold wallet costs $${price.toFixed(2)}`);
-  this.player.cash -= price; this.player.capacity += 25000;
-  return { text: `New cold wallet. Capacity now $${this.player.capacity.toLocaleString()}.`, good: true };
+  this.player.cash -= price; this.player.cash_cap += 25000;
+  return { text: `A better way to carry it. You can hold $${this.player.cash_cap.toLocaleString()} in cash now.`, good: true };
 };
 Game.prototype.buyVpn = function () {
   this.notNow();
@@ -838,8 +868,10 @@ function bumpRep(g, d) { g.stats.rep = Math.max(-REP_MAX, Math.min(REP_MAX, repO
 /* A full wallet is a slow wallet - the sharpest idea in the encounter. */
 const MAX_LOAD_PENALTY = 0.28, RUN_BASE = 0.62, FIGHT_BASE = 0.34;
 function loadPenalty(g) {
-  const cap = Math.max(1, g.player.capacity);
-  return MAX_LOAD_PENALTY * Math.min(1, g.usedCapacity() / cap);
+  /* Cash, not coins. It used to measure the crypto wallet, which never made
+     much sense, and now measures the thing that is actually heavy. */
+  const cap = Math.max(1, g.player.cash_cap);
+  return MAX_LOAD_PENALTY * Math.min(1.4, g.player.cash / cap);
 }
 function encounterOdds(g, choice) {
   const rep = repOf(g);
@@ -1203,10 +1235,6 @@ function drainStandoff(g, choice, was) {
     const target = g.rng.choice(pool);
     const value = g.rng.uniform(DRAIN_PAYS[0], DRAIN_PAYS[1]);
     const price = g.market.prices[target.symbol];
-    if (g.freeCapacity() < value) {
-      out.push(`It was real, and your wallet is full. The ${target.symbol} expires unclaimed, which is its own kind of answer.`);
-      return finish();
-    }
     const h = g.holding(target.symbol);
     h.qty += value / price; h.cost += value;
     out.push(`It was the real one. ${fmtQty(value / price)} ${target.symbol} (~${money2(value)}) lands while you are still reading the tweet.`);
@@ -1392,7 +1420,7 @@ function gasSpikeOld(g) {
 function airdrop(g) {
   const target = g.rng.choice(COINS.filter(c => c.symbol !== "USDC"));
   const value = 300 + g.rng.random() * 2600;
-  if (g.freeCapacity() < value)
+  if (false)
     return [`An ${target.symbol} airdrop lands, but your wallet is full. It expires unclaimed.`];
   const qty = value / g.market.prices[target.symbol];
   const h = g.holding(target.symbol);
@@ -2038,7 +2066,7 @@ function saveToDict(g) {
     finished: g.finished,
     station: g.station.name,
     player: { cash: g.player.cash, debt: g.player.debt, vault: g.player.vault,
-              capacity: g.player.capacity, vpn: g.player.vpn, wallet },
+              cash_cap: g.player.cash_cap, vpn: g.player.vpn, wallet },
     levels: Object.assign({}, g.state.levels),
     /* the run each coin is on. Without it a reloaded game keeps the prices and
        forgets which way everything was going - a different market wearing the
@@ -2083,7 +2111,11 @@ function saveFromDict(data) {
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
   g.log = (data.log || []).slice();
   const p = data.player;
-  g.player = { cash: p.cash, debt: p.debt, vault: p.vault, capacity: p.capacity,
+  /* a save from before the inversion carries no cash_cap; its old "capacity"
+     was a crypto ceiling, so loading it as pockets would mean punishingly
+     small ones. Standard pockets instead. */
+  g.player = { cash: p.cash, debt: p.debt, vault: p.vault,
+               cash_cap: (p.cash_cap === undefined ? START_CASH_CAP : p.cash_cap),
                vpn: p.vpn || 0, wallet: {} };
   for (const [sym, h] of Object.entries(p.wallet || {})) {
     if (COIN[sym]) g.player.wallet[sym] = { qty: h.qty, cost: h.cost };
@@ -2180,7 +2212,7 @@ function fmtMoney(v) {
 if (typeof module !== "undefined") {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
                      fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
-                     savedAt, BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
+                     START_CASH_CAP, savedAt, BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
                      makeBackup, readBackup, writeScores, storageWorks,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
                      unlockedPerks, maxTier, RUNS_PER_DAY, GRADES, tierMult,

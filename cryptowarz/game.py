@@ -29,6 +29,18 @@ from .stations import STATIONS, Station, station
 DAYS = 30            # tier 1; a tier can shorten the run
 START_CASH = 2_000.0
 START_DEBT = 5_500.0
+#: What your pockets hold, in CASH. The crypto wallet has no ceiling at all.
+#:
+#: This is the inversion the game was missing. A cold wallet that refuses to
+#: hold another coin is not a thing that exists, and the old cap did something
+#: worse than being unrealistic: it made free money disappear. An airdrop
+#: landed on a full wallet and expired. A prize was clipped. You watched a coin
+#: run and could not buy it because a number said your wallet was full.
+#:
+#: Now the only limit is what a person can physically walk around with. Coins
+#: are weightless, cash is not - which is what the vault has always been for.
+START_CASH_CAP = 50_000.0
+#: Kept as the old name for one release so an existing save still reads.
 START_CAPACITY = 25_000.0
 SHARK_RATE = 0.10        # per day, compounding, no mercy
 VAULT_RATE = 0.04        # per day, if you can bear to leave it behind
@@ -150,7 +162,8 @@ class Player:
     cash: float = START_CASH
     debt: float = START_DEBT
     vault: float = 0.0
-    capacity: float = START_CAPACITY
+    #: the cash ceiling - what your pockets hold. Coins are not capped.
+    cash_cap: float = START_CASH_CAP
     wallet: Dict[str, Holding] = field(default_factory=dict)
     vpn: int = 0          # each level cuts the odds of trouble
 
@@ -171,11 +184,24 @@ class Player:
 
     @property
     def used_capacity(self) -> float:
+        """What the wallet is carrying at cost. Reported, never enforced."""
         return math.fsum(h.cost for h in self.wallet.values())
 
     @property
-    def free_capacity(self) -> float:
-        return max(0.0, self.capacity - self.used_capacity)
+    def carry_room(self) -> float:
+        """How much more cash you could pick up before your pockets are full."""
+        return max(0.0, self.cash_cap - self.cash)
+
+    @property
+    def over_carrying(self) -> float:
+        """Cash you are carrying beyond what the pockets are meant to hold.
+
+        A windfall you did not ask for - a wallet on the floor, a whale paying
+        over the odds - is never confiscated for being inconvenient. It puts
+        you over instead, which is a problem you can see and solve by finding a
+        vault, rather than money the game quietly ate.
+        """
+        return max(0.0, self.cash - self.cash_cap)
 
     def portfolio_value(self, market: Market) -> float:
         return math.fsum(h.qty * market.price(sym) for sym, h in self.wallet.items() if h.qty > 0)
@@ -217,7 +243,11 @@ class Game:
         self.difficulty = hardness.key          # normalise an unknown key
         self.player.debt = tier.debt * hardness.debt_mult
         self.player.cash += hardness.cash
-        self.player.capacity = tier.capacity
+        #: the tier's number is what your POCKETS hold now; the crypto wallet
+        #: has no ceiling. Doubled from the old crypto cap so tier 1 starts at
+        #: the $50,000 the design calls for.
+        self.starting_cash_cap = tier.capacity * 2.0
+        self.player.cash_cap = self.starting_cash_cap
         self.days = tier.days
         # the two axes multiply: a hard run of a hot tier really is both
         self.heat_mult = tier.heat_mult * hardness.heat_mult
@@ -226,7 +256,7 @@ class Game:
             if self.perk == "seed_round":
                 self.player.cash += 2_000.0
             elif self.perk == "cold_storage":
-                self.player.capacity += 15_000.0
+                self.player.cash_cap += 15_000.0
 
         self.stats = {"stations": {self.station.name}, "raids": 0, "peak_worth": 0.0,
                       "best_multiple": 0.0, "worth_by_day": [],
@@ -392,7 +422,7 @@ class Game:
         if price <= 0:
             return 0.0
         spendable = max(0.0, self.player.cash - self.fare - FARE_BUFFER)
-        return max(0.0, min(spendable / price, self.player.free_capacity / price))
+        return max(0.0, spendable / price)      # coins are weightless
 
     def buy(self, symbol: str, qty: float) -> str:
         self._not_now()
@@ -405,13 +435,24 @@ class Game:
         cost = price * qty
         if cost > self.player.cash + 1e-9:
             raise ValueError(f"that costs ${cost:,.2f} and you have ${self.player.cash:,.2f}")
-        if cost > self.player.free_capacity + 1e-9:
-            raise ValueError(f"your wallet only has ${self.player.free_capacity:,.2f} of room left")
         h = self.player.holding(symbol)
         h.qty += qty
         h.cost += cost
         self.player.cash -= cost
         return f"Bought {qty:,.6f} {symbol} at ${price:,.6f} for ${cost:,.2f}"
+
+    def max_sellable(self, symbol: str) -> float:
+        """The most of a coin you can sell and still carry the proceeds.
+
+        The counterweight to an uncapped crypto wallet, and the reason the
+        vault matters: coins are weightless, cash is not, so turning a big
+        position back into money is a logistical problem rather than a button.
+        """
+        price = self.market.price(symbol)
+        held = self.player.holding(symbol).qty
+        if price <= 0:
+            return held
+        return max(0.0, min(held, self.player.carry_room / price))
 
     def sell(self, symbol: str, qty: float) -> str:
         self._not_now()
@@ -423,6 +464,15 @@ class Game:
             raise ValueError(f"you only hold {h.qty:,.6f} {symbol}")
         price = self.market.price(symbol)
         proceeds = price * qty
+        # you cannot carry away more than your pockets hold. This is the whole
+        # counterweight to a bottomless crypto wallet: getting OUT of a big
+        # position takes trips, and a vault.
+        if proceeds > self.player.carry_room + 1e-9:
+            room = self.player.carry_room
+            most = self.max_sellable(symbol)
+            raise ValueError(
+                f"that comes to ${proceeds:,.2f} and you can only carry another "
+                f"${room:,.2f}. Sell {most:,.6f} {symbol} or vault what you have")
         # release capacity proportionally, so partial sells behave sanely
         released = h.cost * (qty / h.qty) if h.qty > 0 else 0.0
         profit = proceeds - released
@@ -598,10 +648,6 @@ class Game:
         price = self.market.price(target.symbol)
         if price <= 0:
             return []
-        room = self.player.free_capacity
-        if room < 1.0:
-            return [f"{why} - and your wallet is full. It goes to somebody else."]
-        value = min(value, room)
         h = self.player.holding(target.symbol)
         h.qty += value / price
         h.cost += value
@@ -739,22 +785,26 @@ class Game:
 
     # --------------------------------------------------------------- upgrades
 
+    #: What one upgrade adds to what you can carry.
+    CARRY_STEP = 25_000.0
+
     def upgrade_cost(self) -> float:
-        """Each wallet upgrade costs more than the last."""
-        steps = round((self.player.capacity - START_CAPACITY) / 25_000.0)
-        return 3_500.0 * (1.7 ** steps)
+        """Each upgrade costs more than the last."""
+        steps = round((self.player.cash_cap - self.starting_cash_cap) / self.CARRY_STEP)
+        return 3_500.0 * (1.7 ** max(0, steps))
 
     def buy_capacity(self) -> str:
+        """Buy more room in your pockets - the only thing that is capped."""
         self._not_now()
         if not self.station.has_upgrades:
             raise ValueError("nowhere to buy hardware here")
         price = self.upgrade_cost()
         if self.player.cash < price:
-            raise ValueError(f"a bigger cold wallet costs ${price:,.2f}")
+            raise ValueError(f"carrying more costs ${price:,.2f}")
         self.player.cash -= price
-        self.player.capacity += 25_000.0
-        return (f"New cold wallet: ${price:,.2f}. "
-                f"Capacity now ${self.player.capacity:,.0f}.")
+        self.player.cash_cap += self.CARRY_STEP
+        return (f"A better way to carry it: ${price:,.2f}. "
+                f"You can hold ${self.player.cash_cap:,.0f} in cash now.")
 
     def buy_vpn(self) -> str:
         self._not_now()

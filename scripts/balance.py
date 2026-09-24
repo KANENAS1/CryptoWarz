@@ -24,9 +24,19 @@ RUNS = 200
 
 
 def _liquidate(game: Game) -> None:
+    """Sell out - but only as much as the player can carry away.
+
+    The crypto wallet has no ceiling and cash does, so "sell everything" is no
+    longer a thing anybody can do in one go. A bot that kept asking for it
+    would throw on every attempt and quietly stop trading, and the table would
+    be measuring a bot that had given up rather than the game.
+    """
     for symbol, holding in list(game.player.wallet.items()):
-        if holding.qty > 0:
-            game.sell(symbol, holding.qty)
+        if holding.qty <= 0:
+            continue
+        qty = min(holding.qty, game.max_sellable(symbol))
+        if qty > 0:
+            game.sell(symbol, qty)
 
 
 def _cheapest(game: Game) -> str:
@@ -61,7 +71,8 @@ def dip_and_clear_debt(game: Game) -> None:
             game.repay(game.player.debt)
         except ValueError:
             pass
-    if game.station.has_upgrades and game.player.debt == 0 and game.player.cash > 80_000:
+    # bigger pockets are how a large run gets its money out at all now
+    if game.station.has_upgrades and game.player.debt == 0 and game.player.cash > 40_000:
         try:
             game.buy_capacity()
         except ValueError:
@@ -72,11 +83,27 @@ def dip_and_clear_debt(game: Game) -> None:
         game.buy(symbol, qty * 0.95)
 
 
+def dip_clear_and_vault(game: Game) -> None:
+    """The same, plus using a vault when the pockets are overflowing.
+
+    With cash capped, a player who never banks anything cannot take a profit
+    larger than their pockets. This is the strategy the new rule is supposed to
+    reward, so it belongs in the table.
+    """
+    if game.station.has_vault and game.player.cash > game.player.cash_cap * 0.6:
+        try:
+            game.deposit(game.player.cash * 0.7)
+        except ValueError:
+            pass
+    dip_and_clear_debt(game)
+
+
 STRATEGIES = [
     ("do nothing", do_nothing),
     ("buy at random", at_random),
     ("buy the cheapest", buy_the_dip),
     ("+ clear the debt", dip_and_clear_debt),
+    ("+ use the vault", dip_clear_and_vault),
 ]
 
 

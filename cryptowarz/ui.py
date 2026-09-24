@@ -193,13 +193,19 @@ def market_table(game: Game) -> str:
 
 def wallet_panel(game: Game) -> str:
     p = game.player
-    used, cap = p.used_capacity, p.capacity
-    filled = int(round(used / cap * 28)) if cap else 0
-    bar = c("█" * filled, CYAN) + c("░" * (28 - filled), GREY)
+    # the bar is CASH now: the crypto wallet has no ceiling, your pockets do
+    cap = p.cash_cap
+    filled = int(round(min(1.0, p.cash / cap) * 28)) if cap else 0
+    over = p.over_carrying
+    bar = c("█" * filled, RED if over > 0 else CYAN) + c("░" * (28 - filled), GREY)
     lines = [
-        f"  {c('wallet', GREY)}   {bar} {money(used)} / {money(cap)}",
+        f"  {c('pocket', GREY)}   {bar} {money(p.cash)} / {money(cap)}",
+        f"  {c('coins', GREY)}    {money(p.used_capacity)}{c(' at cost · no limit', GREY)}",
         f"  {c('vpn', GREY)}      level {p.vpn}",
     ]
+    if over > 0:
+        lines.insert(1, f"  {c('OVER', RED, True)}     "
+                        f"{c(money(over) + ' more than you can carry - find a vault', RED)}")
     if game.luck > 0:
         lines.append(f"  {c('luck', GREY)}     {c(f'+{game.luck:.0%}', GREEN)}"
                      f"{c(' on what you are holding', GREY)}")

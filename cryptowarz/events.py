@@ -113,13 +113,10 @@ def airdrop(game: "Game") -> List[str]:
     target = game.rng.choice([c for c in COINS if c.symbol != "USDC"])
     price = game.market.price(target.symbol)
     value = 300.0 + game.rng.random() * 2_600.0
-    if game.player.free_capacity < value:
-        return [f"An {target.symbol} airdrop lands, but your wallet is full. "
-                f"It expires unclaimed. That one will sting."]
     qty = value / price
     h = game.player.holding(target.symbol)
     h.qty += qty
-    h.cost += value          # counts against capacity at fair value
+    h.cost += value          # recorded at fair value, so P/L stays honest
     return [f"Airdrop: {qty:,.6f} {target.symbol} (~${value:,.2f}) for a wallet you "
             f"forgot you'd connected."]
 

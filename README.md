@@ -79,6 +79,62 @@ Stations marked `$` have The Shark, `V` a vault, `S` a hardware shop.
 **`heat`** drives how often the SEC finds you — and it is highest exactly where
 the money is easiest.
 
+## Coins are weightless. Cash is not.
+
+The crypto wallet has **no ceiling**. None. Buy as much of anything as your
+money allows, hold it as long as you like.
+
+What is capped is **what you can physically carry**: $50,000 in cash to start,
+and the shop sells you more room, $25,000 at a time. That is the only limit in
+the game now, and it is the reason the vault exists — you bank cash because
+cash is the heavy thing.
+
+**Why the old rule had to go.** A cold wallet that refuses to hold another coin
+is not a thing that exists, and the cap did something worse than being
+unrealistic: *it made free money disappear.* An airdrop landed on a full wallet
+and expired unclaimed. A dice prize was clipped to whatever room was left. You
+watched a coin run and could not buy it because a number said you were full.
+Losing money you never had a chance to decide about is the worst kind of loss.
+**Nothing is clipped any more** — every gift, prize and airdrop lands in full,
+whatever you are holding.
+
+**The counterweight.** With coins uncapped, the interesting problem moves to the
+exit: **you cannot carry away more cash than your pockets hold.** A position
+worth $400,000 does not become money in one tap — you sell what you can carry,
+bank it, and come back. The button says so (*SELL WHAT YOU CAN CARRY*), and when
+your pockets are full it tells you to find a vault rather than failing silently.
+
+**A windfall can still push you over.** A wallet on the floor, a whale paying
+over the odds — those are never confiscated for being inconvenient. You go
+*over-carrying* instead: the bar turns red, and **a fat wallet is literally a
+slow wallet**, because the run-away odds in a standoff are measured on the cash
+in your pocket. It is a problem you can see and solve, not money the game ate.
+
+### What it did to the game, measured
+
+400 runs per strategy, bots taught the new rule (a bot that kept trying to sell
+everything would throw on every attempt and quietly stop trading — that mistake
+cost me one bad measurement before I caught it):
+
+| Strategy | Median | p90 | Best | Solvent |
+|---|---|---|---|---|
+| Do nothing | −17,106 | −5,861 | 3,149 | **0%** |
+| Buy at random | −85,736 | −54,467 | 121,184 | **5%** |
+| Buy the cheapest | −8,365 | 366,163 | 14,996,822 | **49%** |
+| + clear the debt | 17,091 | 439,492 | 1,150,819 | **56%** |
+| + use the vault | 16,702 | 339,028 | 1,042,873 | **57%** |
+
+**Solvency barely moved** — 49% and 56%, against 48% and 56% under the old cap.
+What changed is the *shape*: p90 roughly tripled and the ceiling went from
+about $240,000 to the millions. The game is no harder to survive and far more
+rewarding to play well.
+
+One honest consequence: the top of the distribution is now a fat tail that a
+lucky seed can win from a naive strategy too — the two bots' p90s are within 1%
+of each other. Judgement shows up in the **median**, which it moves from a
+five-figure loss to a profit. It also means the S+ grade at $750,000 is reachable
+far more often than it was; the grade ladder may want rescaling.
+
 ## Three things that will kill you
 
 **The Shark.** $5,500 at 10% a day is $87,000 by day 30. Borrowing early is
