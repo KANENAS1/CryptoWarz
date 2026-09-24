@@ -290,3 +290,58 @@ class TestNerve(unittest.TestCase):
     def test_better_weapons_carry_more_of_it(self):
         by_edge = sorted(E.WEAPONS, key=lambda w: w.edge)
         self.assertEqual([w.nerve for w in by_edge], sorted(w.nerve for w in by_edge))
+
+
+class TestADayLostCannotOutrunTheEnd(unittest.TestCase):
+    """A run walked past day thirty and kept going.
+
+    The end-of-run check lived only in `travel`, which was true while riding
+    somewhere was the only way to spend a day. A stopped train and a beating
+    also take one, and a beating arrives inside a standoff, whose resolution
+    had no check at all. So the clock passed the last day, the header clamped
+    the display to it - a game that reads as frozen - the end screen never
+    came, and a finished run was never scored. It happened to a real run worth
+    $736,175, which is a bad way to find out.
+    """
+
+    def test_losing_a_day_on_the_last_day_ends_the_run(self):
+        from cryptowarz.game import Game
+        game = Game(seed=5)
+        game.day = game.days
+        game.lose_a_day()
+        self.assertGreater(game.day, game.days)
+        self.assertTrue(game.finished, "the clock passed the end and nothing noticed")
+
+    def test_a_beating_at_the_end_ends_the_run(self):
+        """The path it actually happened on: a standoff, not a train."""
+        from cryptowarz.game import Game
+        for seed in range(40):
+            game = Game(seed=seed)
+            game.day = game.days
+            game.player.cash = 4_000.0
+            game.player.capacity = 1e9
+            game.player.holding("BTC").qty = 1.0
+            game.player.holding("BTC").cost = 1_000.0
+            E.open_standoff(game, "stickup")
+            game.resolve("fight")
+            if game.day > game.days:
+                self.assertTrue(game.finished, f"seed {seed} ran past the end")
+                return
+        self.skipTest("no beating landed in forty seeds")
+
+    def test_a_run_already_past_the_end_loads_finished(self):
+        """The runs the bug already produced still have to close and score."""
+        from cryptowarz.game import Game
+        from cryptowarz import save as S
+        data = S.to_dict(Game(seed=5))
+        data["day"] = data["day"] + 40
+        data["finished"] = False
+        back = S.from_dict(data)
+        self.assertTrue(back.finished)
+
+    def test_an_ordinary_run_is_untouched(self):
+        from cryptowarz.game import Game
+        from cryptowarz import save as S
+        game = Game(seed=5)
+        game.day = 12
+        self.assertFalse(S.from_dict(S.to_dict(game)).finished)

@@ -270,8 +270,22 @@ class Game:
         self.market = generate(self.station, self.rng, self.state,
                                luck=self._luck_by_symbol())
         self._mark_stats()
+        self._end_if_over()
 
-    # -------------------------------------------------------------- standoff
+    def _end_if_over(self) -> None:
+        """Close the run the moment the clock passes the last day.
+
+        The check used to live only in ``travel``, which was true while the
+        only way to spend a day was to ride somewhere. A stopped train and a
+        beating also take one - and a beating arrives inside a standoff, whose
+        resolution had no check at all. So a run could walk past day thirty and
+        simply keep going: the header clamps the day to the last one, so it
+        reads as a game that has stopped moving, the end screen never comes,
+        and the score is never banked. Every day that passes now goes through
+        one place that asks whether the run is over.
+        """
+        if not self.finished and self.day > self.days:
+            self.finished = True
 
     def _not_now(self) -> None:
         """Refuse anything that is not an answer while somebody is waiting.

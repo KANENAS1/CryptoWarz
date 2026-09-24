@@ -418,6 +418,18 @@ Game.prototype.loseADay = function () {
   this.state.drift(this.rng);
   this.market = generate(this.station, this.rng, this.state, undefined, this.luckBySymbol());
   this.markStats();
+  this.endIfOver();
+};
+/* Close the run the moment the clock passes the last day.
+
+   This check used to live only in travel(), which was true while the only way
+   to spend a day was to ride somewhere. A stopped train and a beating also
+   take one - and a beating arrives inside a standoff, whose resolution had no
+   check at all. So a run could walk past day thirty and keep going: the header
+   clamps the day to the last one, so it reads as a game that has stopped
+   moving, the end screen never comes, and the score is never banked. */
+Game.prototype.endIfOver = function () {
+  if (!this.finished && this.day > this.days) this.finished = true;
 };
 Game.prototype.markStats = function () {
   const worth = this.netWorth();
@@ -2064,6 +2076,10 @@ function saveFromDict(data) {
   g.pending = (data.pending && typeof data.pending === "object") ? Object.assign({}, data.pending) : null;
   g.day = data.day;
   g.finished = !!data.finished;
+  /* a save written past the last day is a finished run whatever it says: the
+     bug that produced one is fixed, and the runs it already produced must
+     still be able to close and be scored rather than load into limbo */
+  if (g.day > g.days) g.finished = true;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
   g.log = (data.log || []).slice();
   const p = data.player;

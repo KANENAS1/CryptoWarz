@@ -1416,6 +1416,11 @@ async function cloudRestore(mineAtBoot){
       game = saveFromDict(body.run);
       writeSave(game);
       openCoin = null;
+      if (game.finished) {          // a run that ran past its last day
+        render();
+        showFinal();
+        return;
+      }
       took.push(`day ${game.day}`);
     } catch (e) { /* a run this build cannot read is not worth breaking over */ }
   }
@@ -1973,6 +1978,17 @@ function boot(){
   warnIfNothingIsBeingSaved();
   const mineAtBoot = savedAt();      // before anything below writes
   const resumed = readSave();
+  if (resumed && resumed.finished) {
+    // A run that ended without being scored - the day walked past the last one
+    // inside a standoff, before that was fixed. Close it out properly rather
+    // than starting a fresh game on top of it: the score, the gear and the
+    // ranked slot are all still owed to whoever played it.
+    game = resumed;
+    openCoin = null;
+    render();
+    showFinal();
+    return;
+  }
   if (resumed && !resumed.finished) {
     game = resumed;
     openCoin = null;

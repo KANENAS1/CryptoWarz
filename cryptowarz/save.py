@@ -155,6 +155,11 @@ def from_dict(data: Dict[str, Any]):
     game.rng = _decode_rng(data["rng"])
     game.day = int(data["day"])
     game.finished = bool(data.get("finished", False))
+    # a save written past the last day is a finished run whatever it says: the
+    # bug that produced one is fixed, and the runs it already produced must
+    # still be able to close and be scored rather than load into limbo
+    if game.day > game.days:
+        game.finished = True
     game.station = station(data["station"])
     game.log = list(data.get("log", []))
 

@@ -815,6 +815,22 @@ class TestEncounterParity(unittest.TestCase):
             self.assertEqual(js[choice]["cash"], round(game.player.cash), choice)
             self.assertEqual(js[choice]["raids"], game.stats["raids"], choice)
 
+    def test_neither_port_lets_a_run_outlive_its_last_day(self):
+        """A standoff that costs a day used to walk the clock past the end
+        with nothing checking - a run that reads as frozen and is never
+        scored. Both ports close it, and both rescue the saves the bug already
+        wrote."""
+        from cryptowarz.game import Game
+        js = self.js["last_day"]
+        game = Game(seed=5)
+        game.day = game.days
+        game.lose_a_day()
+        self.assertEqual(js["day_after"], game.day)
+        self.assertTrue(js["finished"])
+        self.assertTrue(game.finished)
+        self.assertTrue(js["limbo_loads_finished"])
+        self.assertFalse(js["ordinary_untouched"], "an ordinary run must not end early")
+
     def test_a_weapon_is_worth_luck_on_both_sides(self):
         """Nerve: carrying something changes how you move, and the game already
         has a number for that. Junior to gear, and never added to it."""

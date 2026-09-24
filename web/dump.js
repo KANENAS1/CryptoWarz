@@ -398,6 +398,16 @@ const out = {
                  lawyer_saves: G.LAWYER_SAVES, caught: G.CAUGHT_MULTIPLIER,
                  comply: after("comply"), lawyer: after("lawyer") };
       })(),
+      /* a day lost at the end must close the run, on both ports */
+      last_day: (() => {
+        const g = new G.Game(5); g.day = g.days; g.loseADay();
+        const limbo = G.saveToDict(new G.Game(5));
+        limbo.day = limbo.day + 40; limbo.finished = false;
+        return { day_after: g.day, finished: g.finished,
+                 limbo_loads_finished: G.saveFromDict(limbo).finished,
+                 ordinary_untouched: (() => { const o = new G.Game(5); o.day = 12;
+                   return G.saveFromDict(G.saveToDict(o)).finished; })() };
+      })(),
       /* a weapon is worth luck, and luck is still never a sum */
       nerve: G.WEAPONS.map(w => w.nerve),
       nerve_is_luck: (() => { const g = new G.Game(3); g.weapon = "taser"; return g.luck; })(),
