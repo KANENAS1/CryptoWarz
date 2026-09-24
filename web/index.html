@@ -216,6 +216,12 @@
   .bk .ok{color:#34d07a;font-size:12px;margin-top:8px;min-height:16px}
   .bk .bad{color:var(--red)}
   .stop .threat{font-size:9px;letter-spacing:.1em;font-family:var(--mono)}
+  /* how well they know your face - kept visible even when a VPN has pulled
+     the live threat back down */
+  .stop .seen{font-size:9px;letter-spacing:.1em;font-weight:700;margin-left:6px}
+  .stop .seen.v0{color:var(--faint)} .stop .seen.v1{color:#34d07a}
+  .stop .seen.v2{color:var(--yellow)} .stop .seen.v3{color:var(--orange)}
+  .stop .seen.v4{color:var(--red)}
   .stop .threat.t0{color:var(--faint)} .stop .threat.t1{color:#34d07a}
   .stop .threat.t2,.stop .threat.t3{color:var(--yellow)}
   .stop .threat.t4{color:var(--red)}
@@ -1178,9 +1184,14 @@ $("ride").addEventListener("click", () => {
     const bars = t.bars || standingHeat(s);
     const threat = `<span class="threat t${t.bars}">${"▮".repeat(bars)}${
       "▯".repeat(t.of - bars)} ${t.bars ? t.label : "HEAT"}</span>`;
+    // how well they know your face here - a different question from how
+    // dangerous the stop is, which is why a VPN moves one and not the other
+    const seen = visitsTo(game, s), lvl = visitLevel(game, s);
+    const known = `<span class="seen v${lvl}">${visitLabel(game, s)}${
+      seen > 1 ? " ×" + seen : ""}</span>`;
     return `<div class="stop" data-go="${i}" role="button" tabindex="0">
       <div><div class="nm">${s.name}</div><div class="meta">${chips}</div>
-        <div class="meta">${threat}</div></div>
+        <div class="meta">${threat} ${known}</div></div>
       <div class="bullets">${s.lines.map(bullet).join("")}</div></div>`;
   }).join("");
   openSheet("travel");

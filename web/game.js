@@ -370,7 +370,9 @@ function Game(seed, tier, perk, gear, difficulty) {
                   cash_cap: this.startingCashCap, vpn: 0, wallet: {} };
   if (this.perk === "seed_round") this.player.cash += 2000;
   if (this.perk === "cold_storage") this.player.cash_cap += 15000;
-  this.stats = { stations: [this.station.name], raids: 0, peak_worth: 0,
+  this.stats = { stations: [this.station.name],
+                 visits: { [this.station.name]: 1 },
+                 raids: 0, peak_worth: 0,
                  best_multiple: 0, worth_by_day: [],
                  dice_picks: [], dice_days: [], hot_hand: false };
   this.hotHand = false;
@@ -791,6 +793,9 @@ Game.prototype.travel = function (index) {
   this.player.cash -= this.fare;
   this.station = target;
   if (!this.stats.stations.includes(target.name)) this.stats.stations.push(target.name);
+  // how well they know your face here - see visitPressure
+  this.stats.visits = this.stats.visits || {};
+  this.stats.visits[target.name] = (this.stats.visits[target.name] | 0) + 1;
   this.day += 1;
   this.player.debt *= (1 + this.sharkRate);
   this.player.vault *= (1 + VAULT_RATE);
@@ -1488,6 +1493,28 @@ const EVENTS = [
    run before you have made a decision worth judging. The pressure is not
    removed, it is moved: RAID_RAMP_TO puts it in the back half, where you
    actually have something worth taking. */
+/* How much hotter a stop gets each time you come back to it. Working one
+   lucrative station over and over used to cost nothing; the fourth time you
+   get off at the same platform with a bag, somebody has noticed. */
+const VISIT_STEP = 0.14, VISIT_MAX = 0.70;
+/* What the map calls each level. Shown even when a VPN has cooled the real
+   odds back down: the threat bar answers "how dangerous is this stop right
+   now", this answers "how well do they know me here". */
+const VISIT_LEVELS = [[0, "NEW"], [1, "SEEN"], [3, "KNOWN"], [5, "WATCHED"], [8, "BURNED"]];
+function visitsTo(g, station) {
+  return ((g.stats.visits || {})[(station || g.station).name]) | 0;
+}
+function visitLevel(g, station) {
+  const been = visitsTo(g, station);
+  let level = 0;
+  VISIT_LEVELS.forEach(([needed], i) => { if (been >= needed) level = i; });
+  return level;
+}
+function visitLabel(g, station) { return VISIT_LEVELS[visitLevel(g, station)][1]; }
+function visitPressure(g, station) {
+  return 1 + Math.min(VISIT_MAX, VISIT_STEP * Math.max(0, visitsTo(g, station) - 1));
+}
+
 const RAID_GRACE = 15;
 const RAID_RAMP_TO = 1.8;
 
@@ -1510,8 +1537,10 @@ function eventWeights(game, station, day) {
   const pressure = raidPressure(game, day);
   // what makes a mugger reconsider is exactly what makes an agent look twice
   const armed = 1 + carryHeat(game);
+  // and a face they have seen before is its own kind of heat
+  const known = visitPressure(game, stop);
   return EVENTS.map(([fn, w, scales]) => {
-    let out = scales ? w * (0.35 + 1.4 * heat) * shelter : w;
+    let out = scales ? w * (0.35 + 1.4 * heat) * shelter * known : w;
     if (fn === secRaid) out *= pressure * armed;
     // the grace period is the SEC's alone; the city never signed it
     if (fn === stickup) out *= Math.max(0.35, 1 - carryHeat(game) * 2);
@@ -2229,6 +2258,8 @@ if (typeof module !== "undefined") {
                      SHARK_FEE_RAN, SHARK_FEE_FOUGHT, CAUGHT_MULTIPLIER, TAKE_BAG, HOSPITAL_CHANCE,
                      RAID_GRACE, RAID_RAMP_TO, raidPressure, eventWeights, raidChance,
                      THREAT, THREAT_BARS, WIRE_LINES, threatLevel, standingHeat, wire, EVENTS,
+                     VISIT_STEP, VISIT_MAX, VISIT_LEVELS, visitsTo, visitLevel,
+                     visitLabel, visitPressure,
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
                      PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,

@@ -1100,6 +1100,36 @@ class TestEnforcementParity(unittest.TestCase):
         self.assertAlmostEqual(self.js["wire_late"]["two_stops"],
                                round(py_late["two_stops"], 4))
 
+    def test_a_stop_remembers_your_face_on_both_sides(self):
+        """The separation is the point: a VPN answers how dangerous a stop is
+        right now, the visit level answers how well they know you there. A port
+        that let a VPN wipe the memory would be a different game."""
+        from cryptowarz import events as ev
+        from cryptowarz.game import Game
+        js = self.js["visits"]
+        self.assertAlmostEqual(js["step"], ev.VISIT_STEP)
+        self.assertAlmostEqual(js["max"], ev.VISIT_MAX)
+        self.assertEqual([tuple(l) for l in js["levels"]],
+                         [tuple(l) for l in ev.VISIT_LEVELS])
+
+        game = Game(seed=3)
+        game.day = 22
+        self.assertAlmostEqual(js["first_visit_is_free"], 1.0)
+        climb, labels = [], []
+        for been in range(1, 9):
+            game.stats["visits"][game.station.name] = been
+            climb.append(round(ev.raid_chance(game, game.station), 4))
+            labels.append(ev.visit_label(game, game.station))
+        self.assertEqual(js["climb"], climb)
+        self.assertEqual(js["labels"], labels)
+        self.assertEqual(climb, sorted(climb), "returning must never be safer")
+
+        game.stats["visits"][game.station.name] = 500
+        self.assertAlmostEqual(js["capped"], round(ev.visit_pressure(game, game.station), 3))
+        self.assertTrue(js["vpn_cools_the_threat"])
+        self.assertEqual(js["vpn_keeps_the_memory"], "BURNED")
+        self.assertEqual(js["start_counts_as_visited"], 1)
+
     def test_the_grace_period_map_matches(self):
         """What the stops are LIKE, shown while the live reading is all zeros."""
         from cryptowarz import events as ev

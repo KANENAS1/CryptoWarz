@@ -358,7 +358,8 @@ def station_menu(game: Optional[Game] = None) -> str:
                                        ("S", s.has_upgrades), ("W", s.has_wheel)) if f)
         risk = ""
         if game is not None:
-            from .events import raid_chance, standing_heat, threat_level
+            from .events import (raid_chance, standing_heat, threat_level,
+                                 visit_label, visit_level, visits)
             # the day you would actually arrive, not the day you are leaving
             chance = raid_chance(game, s, game.day + 1)
             label, bars = threat_level(chance)
@@ -368,6 +369,13 @@ def station_menu(game: Optional[Game] = None) -> str:
                 risk = f"  {threat_bar(standing_heat(s))} {c('heat', GREY)}"
             else:
                 risk = f"  {threat_bar(bars)} {c(label.lower(), GREY)}"
+            # how well they know your face here, which is a different question
+            # from how dangerous the stop is right now - a VPN answers the
+            # second one and never the first
+            seen = visits(game, s)
+            tone = (GREY, GREEN, YELL, YELL, RED)[visit_level(game, s)]
+            risk += (f"  {c(visit_label(game, s).lower().ljust(8), tone)}"
+                     f"{c(f'x{seen}' if seen else '  ', GREY)}")
         rows.append(f"  {c(f'{i:>2}', YELL)} {s.name:<28}{c(s.lines[:16], GREY):<16} "
                     f"{c(marks, CYAN):<6}{risk}")
     return "\n".join(rows)

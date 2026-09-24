@@ -195,3 +195,87 @@ class TestTheNewsPost(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAStopRemembersYourFace(unittest.TestCase):
+    """Working one lucrative station over and over used to cost nothing.
+
+    It should: the fourth time you get off at the same platform carrying a bag,
+    somebody has noticed. This is the counterweight to a map you were otherwise
+    free to farm, and it partners the wheel's one-spin-per-stop rule - both pay
+    you for going somewhere new.
+
+    The part that matters most is the SEPARATION. A VPN answers "how dangerous
+    is this stop right now"; the visit level answers "how well do they know me
+    here". They are different questions, a VPN moves the first and never the
+    second, and the map shows both.
+    """
+
+    def test_the_first_visit_costs_nothing(self):
+        game = at(22)
+        self.assertAlmostEqual(E.visit_pressure(game, game.station), 1.0)
+
+    def test_coming_back_makes_a_stop_hotter(self):
+        game = at(22)
+        chances = []
+        for been in range(1, 9):
+            game.stats["visits"][game.station.name] = been
+            chances.append(E.raid_chance(game, game.station))
+        self.assertEqual(chances, sorted(chances), "returning must never be safer")
+        self.assertGreater(chances[-1], chances[0] * 1.3)
+
+    def test_it_is_capped_so_a_stop_never_becomes_certain_death(self):
+        game = at(22)
+        game.stats["visits"][game.station.name] = 500
+        self.assertAlmostEqual(E.visit_pressure(game, game.station), 1.0 + E.VISIT_MAX)
+
+    def test_a_vpn_cools_the_threat_and_not_the_memory(self):
+        bare, safe = at(22), at(22, vpn=3)
+        for game in (bare, safe):
+            game.stats["visits"][game.station.name] = 8
+        self.assertLess(E.raid_chance(safe, safe.station), E.raid_chance(bare, bare.station))
+        self.assertEqual(E.visit_label(safe), E.visit_label(bare), "a VPN erased the memory")
+        self.assertEqual(E.visit_label(safe), "BURNED")
+
+    def test_the_levels_climb_with_the_visits(self):
+        game = at(22)
+        seen = []
+        for been in range(0, 10):
+            game.stats["visits"][game.station.name] = been
+            seen.append(E.visit_label(game))
+        self.assertEqual(seen[0], "NEW")
+        self.assertEqual(seen[-1], "BURNED")
+        levels = [E.visit_level(game) for been in range(0, 10)
+                  if not game.stats["visits"].__setitem__(game.station.name, been)]
+        self.assertEqual(levels, sorted(levels), "a level must never go backwards")
+
+    def test_travelling_records_the_visit(self):
+        from cryptowarz.stations import STATIONS
+        game = at(5)
+        here = game.station.name
+        target = next(s for s in STATIONS if s.name != here)
+        from cryptowarz.encounter import best_choice
+
+        def ride(to):
+            game.player.cash = 500.0
+            game.travel(to)
+            if game.pending:                 # a standoff blocks everything
+                game.resolve(best_choice(game))
+
+        ride(target.name)
+        self.assertEqual(E.visits(game, target), 1)
+        ride(here)
+        ride(target.name)
+        self.assertEqual(E.visits(game, target), 2)
+
+    def test_the_stop_you_start_at_counts_as_visited(self):
+        game = at(1)
+        self.assertEqual(E.visits(game, game.station), 1)
+
+    def test_it_rides_the_save(self):
+        from cryptowarz import save as S
+        from cryptowarz.game import Game
+        game = Game(seed=5)
+        game.stats["visits"][game.station.name] = 6
+        back = S.from_dict(S.to_dict(game))
+        self.assertEqual(E.visits(back, back.station), 6)

@@ -364,6 +364,41 @@ VPN levels pull that same map back to LOW and WATCH. Gear you're holding for
 moves it too — measured, a raid at a hot stop on day 22 goes from **14.7% to
 13.0%** with the right piece at full level.
 
+### A stop remembers your face
+
+Working one lucrative station over and over used to cost nothing. It does now:
+each time you get off at the same platform, that stop gets **14% hotter**,
+capped at **+70%**. The fourth time you arrive somewhere with a bag, somebody
+has noticed.
+
+| Visits | Reads | Trouble at that stop |
+|---|---|---|
+| 0 | NEW | — |
+| 1 | SEEN | ×1.00 |
+| 2–3 | KNOWN | ×1.14 – ×1.28 |
+| 4–7 | WATCHED | ×1.42 – ×1.70 |
+| 8+ | BURNED | ×1.70 (capped) |
+
+Measured at one hot stop on day 22: a raid goes from **13.9% to 19.8%** as the
+place learns who you are. The cap exists because a stop that becomes certain
+death stops being a decision.
+
+**A VPN cools the threat. It does not erase the memory.** Those are two
+different questions and the map answers both — the bars say *how dangerous is
+this stop right now*, the word beside them says *how well do they know me
+here*:
+
+| | Threat bars | Still reads |
+|---|---|---|
+| No VPN | ▮▮▮▮ SEVERE (19.8%) | BURNED |
+| VPN 1 | ▮▮▮▯ HIGH (16.9%) | BURNED |
+| VPN 2 | ▮▮▮▯ HIGH (13.4%) | BURNED |
+| VPN 3 | ▮▮▯▯ WATCH (9.1%) | BURNED |
+
+The colour runs grey → green → yellow → orange → red as a stop learns you, on
+the phone map and in the terminal, and it never goes backwards. It partners the
+wheel's one-spin-per-stop rule: both of them pay you for going somewhere new.
+
 ## Pick how hard the city plays
 
 The tiers are *progression* — you unlock one by beating the one below.

@@ -566,6 +566,32 @@ const out = {
         return { label: w.label, bars: w.bars, two_stops: Math.round(w.two_stops * 10000) / 10000,
                  text: w.text }; })(),
       lines: G.WIRE_LINES,
+      /* a stop remembers your face, and a VPN does not erase that */
+      visits: (() => {
+        const at2 = (vpn) => { const g = new G.Game(3); g.day = 22; g.player.vpn = vpn || 0;
+                               return g; };
+        const g = at2();
+        const climb = [], labels = [];
+        for (let n = 1; n <= 8; n++) {
+          g.stats.visits[g.station.name] = n;
+          climb.push(Math.round(G.raidChance(g, g.station) * 10000) / 10000);
+          labels.push(G.visitLabel(g, g.station));
+        }
+        const bare = at2(0), safe = at2(3);
+        bare.stats.visits[bare.station.name] = 8;
+        safe.stats.visits[safe.station.name] = 8;
+        return {
+          step: G.VISIT_STEP, max: G.VISIT_MAX,
+          levels: G.VISIT_LEVELS.map(l => [l[0], l[1]]),
+          first_visit_is_free: G.visitPressure(at2(), at2().station),
+          climb: climb, labels: labels,
+          capped: (() => { const c = at2(); c.stats.visits[c.station.name] = 500;
+                           return Math.round(G.visitPressure(c, c.station) * 1000) / 1000; })(),
+          vpn_cools_the_threat: G.raidChance(safe, safe.station) < G.raidChance(bare, bare.station),
+          vpn_keeps_the_memory: G.visitLabel(safe, safe.station),
+          start_counts_as_visited: G.visitsTo(new G.Game(3), new G.Game(3).station),
+        };
+      })(),
       standing_heat: G.STATIONS.map(s => G.standingHeat(s)),
     };
   })(),

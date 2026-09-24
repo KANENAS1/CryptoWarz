@@ -193,6 +193,56 @@ RAID_GRACE = 15
 RAID_RAMP_TO = 1.8
 
 
+#: How much hotter a stop gets each time you come back to it.
+#:
+#: Working one lucrative station over and over used to cost nothing. It should:
+#: the fourth time you get off at the same platform with a bag, somebody has
+#: noticed. This is the counterweight to a map you are otherwise free to farm,
+#: and it is the reason the wheel's one-spin-per-stop rule has a partner now -
+#: both of them pay you for going somewhere new.
+VISIT_STEP = 0.14
+#: Capped, because a stop that becomes certain death stops being a decision.
+VISIT_MAX = 0.70
+
+#: What the map calls each level, and how it is coloured. Shown even when a VPN
+#: has cooled the real odds back down - the threat bar answers "how dangerous
+#: is this stop right now", and this answers "how well do they know me here",
+#: which are different questions with different answers.
+VISIT_LEVELS: Tuple[Tuple[int, str], ...] = (
+    (0, "NEW"),
+    (1, "SEEN"),
+    (3, "KNOWN"),
+    (5, "WATCHED"),
+    (8, "BURNED"),
+)
+
+
+def visits(game, station=None) -> int:
+    """How many times this run has got off at that platform."""
+    station = station or game.station
+    return int((game.stats.get("visits") or {}).get(station.name, 0))
+
+
+def visit_level(game, station=None) -> int:
+    """0-4: how well they know your face at that stop."""
+    been = visits(game, station)
+    level = 0
+    for index, (needed, _name) in enumerate(VISIT_LEVELS):
+        if been >= needed:
+            level = index
+    return level
+
+
+def visit_label(game, station=None) -> str:
+    return VISIT_LEVELS[visit_level(game, station)][1]
+
+
+def visit_pressure(game, station=None) -> float:
+    """What repeat visits multiply the trouble at a stop by, 1.0 - 1.7."""
+    been = visits(game, station)
+    return 1.0 + min(VISIT_MAX, VISIT_STEP * max(0, been - 1))
+
+
 def raid_pressure(game, day: Optional[int] = None) -> float:
     """What the SEC's weight is multiplied by on a given day. Zero = grace."""
     day = game.day if day is None else day
@@ -244,11 +294,13 @@ def event_weights(game: "Game", station=None, day: Optional[int] = None) -> List
     # what makes a mugger reconsider is exactly what makes an agent look twice
     from .encounter import carry_heat
     armed = 1.0 + carry_heat(game)
+    # and a face they have seen before is its own kind of heat
+    known = visit_pressure(game, station)
     weights = []
     for fn, weight, scales in EVENTS:
         w = weight
         if scales:
-            w *= (0.35 + 1.4 * heat) * shelter
+            w *= (0.35 + 1.4 * heat) * shelter * known
         if fn is sec_raid:
             w *= pressure * armed
         if fn is stickup:

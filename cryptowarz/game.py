@@ -258,7 +258,9 @@ class Game:
             elif self.perk == "cold_storage":
                 self.player.cash_cap += 15_000.0
 
-        self.stats = {"stations": {self.station.name}, "raids": 0, "peak_worth": 0.0,
+        self.stats = {"stations": {self.station.name},
+                      "visits": {self.station.name: 1},
+                      "raids": 0, "peak_worth": 0.0,
                       "best_multiple": 0.0, "worth_by_day": [],
                       "dice_picks": [], "dice_days": [], "hot_hand": False}
         self.hot_hand = False
@@ -836,6 +838,9 @@ class Game:
         self.player.cash -= self.fare
         self.station = target
         self.stats["stations"].add(target.name)
+        # how well they know your face here - see events.visit_pressure
+        seen = self.stats.setdefault("visits", {})
+        seen[target.name] = int(seen.get(target.name, 0)) + 1
         self.day += 1
         self.player.debt *= (1.0 + self.shark_rate)
         self.player.vault *= (1.0 + VAULT_RATE)
