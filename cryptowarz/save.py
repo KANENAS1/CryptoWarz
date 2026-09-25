@@ -36,6 +36,12 @@ from .stations import station
 
 #: Bump when the shape changes in a way older saves cannot satisfy.
 SAVE_VERSION = 1
+#: A stamp for the BUILD, which the save version cannot tell you: the format
+#: has not changed in a while, but the rules behind it have. On the web that
+#: matters - a browser serving a cached copy of the page plays by the old rules
+#: and the save it writes carries an older stamp than the build reading it.
+#: Bump it whenever the rules move, and keep it identical to web/game.js.
+BUILD = "2026-09-25"
 MAX_SCORES = 25
 
 
@@ -72,6 +78,7 @@ def to_dict(game) -> Dict[str, Any]:
     p = game.player
     return {
         "save_version": SAVE_VERSION,
+        "build": BUILD,                    # which rules wrote this
         "saved_at": time.time(),
         "seed": game.seed,
         "tier": game.tier,

@@ -96,6 +96,9 @@
   .alert{background:var(--yellow);color:#000;font-weight:700;font-size:13px;
          padding:9px 12px;border-radius:3px;margin:10px 0}
   .alert.bad{background:var(--red);color:#fff}
+  /* why a ride was refused, in the sheet, where it cannot fade away */
+  .stopwhy{margin-top:8px;padding:9px 10px;border:1px solid var(--red);
+    border-radius:7px;color:var(--red);font-size:12px;line-height:1.35}
   h2{font-size:10px;letter-spacing:.2em;color:var(--dim);font-weight:700;
      margin:16px 0 7px;text-transform:uppercase}
 
@@ -460,6 +463,7 @@ catch (e) { document.documentElement.dataset.framed = "1"; }
 <div class="sheet" id="travel">
   <h3>WHERE TO? — ONE DAY EACH WAY</h3>
   <div class="sheetscroll" id="stops"></div>
+  <div class="stopwhy" id="stopwhy" hidden></div>
   <div style="padding-top:10px"><button id="cancel">CANCEL</button></div>
 </div>
 
@@ -525,6 +529,18 @@ catch (e) { document.documentElement.dataset.framed = "1"; }
         <input type="file" id="bkpick" accept=".txt,.json,text/plain" hidden>
       </div>
       <div class="ok" id="bkinmsg"></div>
+    </div>
+    <div class="bk">
+      <h4>THIS BUILD</h4>
+      <div class="d">A phone can keep serving an older copy of this page from
+        its cache, and an older copy plays by older rules — which looks like the
+        game misbehaving rather than the browser being behind. If something is
+        not working the way it reads here, pull a fresh copy. Your progress is
+        saved first and comes straight back.</div>
+      <div class="d" id="bkbuild"></div>
+      <div class="btns">
+        <button id="bkfresh">PULL A FRESH COPY</button>
+      </div>
     </div>
   </div>
   <div style="padding-top:10px"><button id="bkclose">BACK</button></div>
@@ -947,6 +963,7 @@ function Game(seed, tier, perk, gear, difficulty) {
                  best_multiple: 0, worth_by_day: [],
                  dice_picks: [], dice_days: [], hot_hand: false };
   this.hotHand = false;
+  this.fromBuild = BUILD;                  // a new run is written by this build
   this.wheelAward = null;                  // a gear class for the caller to bank
   this.gearAward = null;                   // the same, bought from a dealer
   /* somebody standing in front of you, waiting for an answer. While this is
@@ -1239,9 +1256,6 @@ Game.prototype.maxSellable = function (sym) {
   const held = this.holding(sym).qty;
   if (!(price > 0)) return held;
   return Math.max(0, Math.min(held, this.carryRoom() / price));
-};
-Game.prototype.freeCapacity = function () {
-  return Math.max(0, this.player.capacity - this.usedCapacity());
 };
 Game.prototype.portfolioValue = function () {
   let v = 0;
@@ -2621,6 +2635,12 @@ function award(profile, g) {
    localStorage is per-browser and can throw (private mode, blocked site data),
    so every read and write is guarded and the game plays fine without it. */
 const SAVE_VERSION = 1;
+/* A stamp for the BUILD, which the save version cannot tell you: the format has
+   not changed in a while, but the rules behind it have, and a browser serving a
+   cached copy of this page plays by the old ones. A save carrying a stamp older
+   than this build is a save written by a page that is still in somebody's
+   cache. Bump it whenever the rules move. */
+const BUILD = "2026-09-25";
 /* -------------------------- taking it with you -----------------------
    The save and the profile live in whatever browser you happened to play in.
    That is fine until a new phone, a cleared cache or a page saved to disk -
@@ -2729,6 +2749,7 @@ function saveToDict(g) {
   }
   return {
     save_version: SAVE_VERSION,
+    build: BUILD,                            // which rules wrote this
     saved_at: Date.now() / 1000,
     seed: g.seed,
     tier: g.tier,
@@ -2781,6 +2802,10 @@ function saveFromDict(data) {
                      data.perk || null, data.gear || {},
                      data.difficulty || DEFAULT_DIFFICULTY);
   g.rng.setState(data.rng);
+  /* which build's rules wrote this, so a page can tell the player it is newer
+     than the run in front of it - the one symptom of a cached copy that is
+     visible from inside the game */
+  g.fromBuild = data.build || "(before builds were stamped)";
   g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
   g.isDaily = g.dailySlot !== null;
   if (data.stats) g.stats = data.stats;
@@ -2898,7 +2923,7 @@ function fmtMoney(v) {
 
 if (false) {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
-                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
+                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION, BUILD,
                      START_CASH_CAP, savedAt, BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
                      makeBackup, readBackup, writeScores, storageWorks,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,
@@ -3116,7 +3141,17 @@ function render(){
 
   // Somebody is waiting. This is checked on every render, so it survives a
   // reload and cannot be dismissed by closing the sheet.
-  if (g.pending) renderStandoff();
+  //
+  // And it is wrapped, because this one call is the only place in render()
+  // where an exception can strand a run for good: a pending standoff refuses
+  // every other action, so if the sheet that answers it fails to draw there is
+  // no way forward and no way back - the day simply stops moving. The fallback
+  // is deliberately dumb: the kind, and a button per option, built from the
+  // game state alone. Ugly beats unplayable.
+  if (g.pending) {
+    try { renderStandoff(); }
+    catch (err) { renderStandoffPlainly(err); }
+  }
 
   // The wire: the real odds of a raid at this stop, on this day, as news.
   // Drawn from the same weight table the roll uses, so it cannot disagree.
@@ -3152,7 +3187,7 @@ function render(){
     if (p.vault > 0) svc.push(`<button data-act="withdraw">TAKE ALL OUT</button>`);
   }
   if (st.shop) {
-    svc.push(`<button data-act="capacity">+$25K WALLET · ${fmtMoney(g.upgradeCost())}</button>`);
+    svc.push(`<button data-act="capacity">+$25K POCKETS · ${fmtMoney(g.upgradeCost())}</button>`);
     if (p.vpn < 3) svc.push(`<button data-act="vpn">VPN LV${p.vpn + 1} · ${fmtMoney(g.vpnCost())}</button>`);
     // the rarest thing in the game should not sit two taps deep on the one run
     // in a hundred where a player can actually afford it
@@ -3576,25 +3611,39 @@ $("ride").addEventListener("click", () => {
         <div class="meta">${threat} ${known}</div></div>
       <div class="bullets">${s.lines.map(bullet).join("")}</div></div>`;
   }).join("");
+  $("stopwhy").hidden = true; $("stopwhy").textContent = "";
   openSheet("travel");
 });
 $("cancel").addEventListener("click", closeSheets);
 $("stops").addEventListener("click", e => {
   const s = e.target.closest("[data-go]");
   if (!s) return;
+  /* Ride FIRST, close after. This used to close the sheet and then attempt the
+     ride, so a ride that could not happen looked identical to one that did:
+     the sheet vanished, the day stayed put, and the only explanation was a
+     flash that had already faded. "The days are not moving" is what that looks
+     like from the platform. Now a refused ride keeps the sheet open and says
+     why, in the sheet, until you pick again. */
+  let msgs;
+  try {
+    msgs = game.travel(parseInt(s.dataset.go, 10));
+  } catch (err) {
+    $("stopwhy").textContent = err && err.message ? err.message : String(err);
+    $("stopwhy").hidden = false;
+    flash(err.message, false);
+    persist();
+    return;
+  }
   closeSheets();
   openCoin = null;
   $("alerts").innerHTML = "";          // a new station is a new situation
   wheelResult = null;
-  try {
-    const msgs = game.travel(parseInt(s.dataset.go, 10));
-    render();
-    // every consequence of the ride, not just the first one - they stay now, so
-    // there is no reason to pick one and throw the rest away
-    for (const line of msgs.slice(2).filter(Boolean).slice(0, 3).reverse()) {
-      flash(line, !/SEC|drainer|Gas|Signal|Shark's|gone|full/.test(line));
-    }
-  } catch (err) { flash(err.message, false); }
+  render();
+  // every consequence of the ride, not just the first one - they stay now, so
+  // there is no reason to pick one and throw the rest away
+  for (const line of msgs.slice(2).filter(Boolean).slice(0, 3).reverse()) {
+    flash(line, !/SEC|drainer|Gas|Signal|Shark's|gone|full/.test(line));
+  }
   persist();
   if (game.finished) showFinal();
 });
@@ -3770,6 +3819,23 @@ function cloudDoc(c, name){ return c.db.doc("data/users/" + c.uid + "/" + name);
 /* One write at a time per document, and only after a real change: a burst of
    taps coalesces into one write when the player pauses. */
 let cloudTimer = null, cloudInFlight = false, cloudDirty = false;
+/* Boot's own save must not reach the server before the restore has had its say.
+   A browser with storage blocked - Safari, in a frame, which is the whole
+   reason this copy exists - finds nothing locally, starts a FRESH day-one run
+   and saves it. That save was racing the restore down the same wire, and when
+   it won it wrote day one over a real run. Reload, restore reads back the day
+   one it just wrote, and the run is pinned to day one for good: every action
+   still works, the wallet still fills, and the DAY NEVER MOVES.
+   So the first write waits for the read. The timeout is the safety net: a
+   restore that never answers must not mean a run that never saves. */
+let cloudSettled = null;
+function cloudWaitForRestore(){
+  if (!cloudSettled) return Promise.resolve();
+  return Promise.race([
+    cloudSettled.catch(() => {}),
+    new Promise(done => setTimeout(done, 8000)),
+  ]);
+}
 function cloudPush(){
   cloudDirty = true;
   if (cloudTimer) return;
@@ -3778,6 +3844,7 @@ function cloudPush(){
     if (cloudInFlight) { cloudPush(); return; }
     const c = await cloud();
     if (!c) return;
+    await cloudWaitForRestore();
     cloudInFlight = true;
     cloudDirty = false;
     try {
@@ -3951,7 +4018,7 @@ function renderSetup(){
     return `<div class="pick${t.level === pickedTier ? " on" : ""}${locked ? " locked" : ""}"
                  data-tier="${locked ? "" : t.level}">
       <div><div class="t">${t.name}</div><div class="d">${t.blurb}</div>
-      <div class="d">$${t.debt.toLocaleString()} debt · $${t.capacity.toLocaleString()} wallet
+      <div class="d">$${t.debt.toLocaleString()} debt · $${(t.capacity * 2).toLocaleString()} pockets
         · ${t.days} days · ×${t.mult.toFixed(2)} score</div></div>
       <div class="k">${locked ? "CLEAR TIER " + (t.level - 1) : "TIER " + t.level}</div></div>`;
   }).join("");
@@ -3997,6 +4064,25 @@ $("startrun").addEventListener("click", () => {
    The one screen with no way out but an answer. Opened by render() whenever a
    standoff is pending, which means it also comes straight back after a reload
    - the pending state rides the save, so closing the tab is not a way out. */
+/* The last resort, when renderStandoff() cannot draw the real thing. It asks
+   the game for the choices and nothing else, so anything cosmetic that broke
+   upstairs - a renamed field, a missing element - cannot keep the player from
+   answering and getting their day back. */
+function renderStandoffPlainly(err){
+  const p = game && game.pending;
+  if (!p) return;
+  try {
+    $("sotitle").textContent = "SOMEBODY IS IN FRONT OF YOU";
+    $("sowho").innerHTML = `<b>DAY ${p.day}</b>${esc(String(p.line || ""))}`;
+    $("socarry").textContent = "ANSWER TO CARRY ON";
+    $("sochoices").innerHTML = game.choices().map(c =>
+      `<button class="sochoice" data-answer="${esc(c.key)}">
+        <div class="top"><span class="lab">${esc(c.label)}</span></div>
+        <div class="nt">${esc(c.note)}</div></button>`).join("");
+    openSheet("standoff");
+  } catch (e) { /* nothing left to try */ }
+  if (err) flash("Drew that the plain way: " + err.message, false);
+}
 function renderStandoff(){
   const p = game && game.pending;
   if (!p) return;
@@ -4007,7 +4093,11 @@ function renderStandoff(){
   const rep = repOf(game);
   const bits = [];
   if (w) bits.push(`carrying the ${w.name}`);
-  bits.push(`${Math.round(game.usedCapacity() / Math.max(1, game.player.capacity) * 100)}% loaded`);
+  /* What slows you down is CASH, not coins - encounter.loadPenalty measures
+     the pockets, so this line has to measure the same thing. Over 100% is
+     not a rendering error, it is the warning: you are over-carrying. */
+  const load = Math.round(game.player.cash / Math.max(1, game.player.cash_cap) * 100);
+  bits.push(load > 100 ? `pockets ${load}% - over` : `pockets ${load}% full`);
   if (rep) bits.push(rep > 0 ? `you have a name (+${rep})` : `they think you are soft (${rep})`);
   $("socarry").textContent = bits.join(" · ").toUpperCase();
   $("sochoices").innerHTML = game.choices().map(c => {
@@ -4059,7 +4149,24 @@ $("openbackup").addEventListener("click", () => {
   $("bkin").value = "";
   bkSay("bkinmsg", "");
   renderBackup();
+  /* The stamp of the rules THIS page is running, and the stamp of the rules
+     that wrote the save sitting in front of it. When they differ, the page is
+     the newer of the two and the run was started on a cached copy - which is
+     worth saying out loud, because every symptom of it reads as a game bug. */
+  const wrote = game && game.fromBuild;
+  $("bkbuild").textContent = "Running build " + BUILD
+    + (wrote && wrote !== BUILD
+       ? ` — but the run you are in was written by ${wrote}, so this page is the newer of the two.`
+       : " — and the run you are in was written by it.");
   openSheet("backup");
+});
+/* A reload that cannot be answered from the cache: same page, new query, so
+   the browser has to go and ask. The save is written first, because a fresh
+   document is a fresh boot and an unsaved turn would be a turn thrown away. */
+$("bkfresh").addEventListener("click", () => {
+  try { persist(); } catch (e) {}
+  const base = location.href.split("#")[0].split("?")[0];
+  location.replace(base + "?fresh=" + Date.now() + location.hash);
 });
 $("bkclose").addEventListener("click", () => openSheet("goals"));
 $("bkrun").addEventListener("change", renderBackup);
@@ -4425,7 +4532,7 @@ function boot(){
   // flag that tells a late restore to stand down - so the restore always found
   // the page "touched" and did nothing. The flag starts counting from here.
   touchedThisLoad = false;
-  cloudRestore(mineAtBoot);
+  cloudSettled = cloudRestore(mineAtBoot);
 }
 
 $("newgame").addEventListener("click", () => {

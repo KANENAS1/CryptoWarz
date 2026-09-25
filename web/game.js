@@ -383,6 +383,7 @@ function Game(seed, tier, perk, gear, difficulty) {
                  best_multiple: 0, worth_by_day: [],
                  dice_picks: [], dice_days: [], hot_hand: false };
   this.hotHand = false;
+  this.fromBuild = BUILD;                  // a new run is written by this build
   this.wheelAward = null;                  // a gear class for the caller to bank
   this.gearAward = null;                   // the same, bought from a dealer
   /* somebody standing in front of you, waiting for an answer. While this is
@@ -675,9 +676,6 @@ Game.prototype.maxSellable = function (sym) {
   const held = this.holding(sym).qty;
   if (!(price > 0)) return held;
   return Math.max(0, Math.min(held, this.carryRoom() / price));
-};
-Game.prototype.freeCapacity = function () {
-  return Math.max(0, this.player.capacity - this.usedCapacity());
 };
 Game.prototype.portfolioValue = function () {
   let v = 0;
@@ -2057,6 +2055,12 @@ function award(profile, g) {
    localStorage is per-browser and can throw (private mode, blocked site data),
    so every read and write is guarded and the game plays fine without it. */
 const SAVE_VERSION = 1;
+/* A stamp for the BUILD, which the save version cannot tell you: the format has
+   not changed in a while, but the rules behind it have, and a browser serving a
+   cached copy of this page plays by the old ones. A save carrying a stamp older
+   than this build is a save written by a page that is still in somebody's
+   cache. Bump it whenever the rules move. */
+const BUILD = "2026-09-25";
 /* -------------------------- taking it with you -----------------------
    The save and the profile live in whatever browser you happened to play in.
    That is fine until a new phone, a cleared cache or a page saved to disk -
@@ -2165,6 +2169,7 @@ function saveToDict(g) {
   }
   return {
     save_version: SAVE_VERSION,
+    build: BUILD,                            // which rules wrote this
     saved_at: Date.now() / 1000,
     seed: g.seed,
     tier: g.tier,
@@ -2217,6 +2222,10 @@ function saveFromDict(data) {
                      data.perk || null, data.gear || {},
                      data.difficulty || DEFAULT_DIFFICULTY);
   g.rng.setState(data.rng);
+  /* which build's rules wrote this, so a page can tell the player it is newer
+     than the run in front of it - the one symptom of a cached copy that is
+     visible from inside the game */
+  g.fromBuild = data.build || "(before builds were stamped)";
   g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
   g.isDaily = g.dailySlot !== null;
   if (data.stats) g.stats = data.stats;
@@ -2334,7 +2343,7 @@ function fmtMoney(v) {
 
 if (typeof module !== "undefined") {
   module.exports = { Game, STATIONS, COINS, COIN, RNG, MarketState, generate, DAYS, SUBWAY_FARE,
-                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION,
+                     fmtQty, fmtPrice, fmtMoney, saveToDict, saveFromDict, SAVE_VERSION, BUILD,
                      START_CASH_CAP, savedAt, BACKUP_VERSION, BACKUP_PREFIX, fnv1a, backupEncode, backupDecode,
                      makeBackup, readBackup, writeScores, storageWorks,
                      ACHIEVEMENTS, PERKS, TIERS, award, blankProfile, dailySeed,

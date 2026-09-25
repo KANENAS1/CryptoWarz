@@ -122,6 +122,73 @@ class TestWebSourcesExist(unittest.TestCase):
                 self.assertIn(name, declared | page_own,
                               f"the page calls {name}() and nothing declares it")
 
+    def test_nothing_reads_a_player_field_the_port_does_not_define(self):
+        """A renamed field renders NaN on whatever screen reads it, silently.
+
+        `player.capacity` became `player.cash_cap` when coins stopped being
+        heavy. The standoff sheet kept dividing by the old name and printed
+        `NAN% LOADED` - on the one screen no browser test opens, because
+        opening it needs a standoff. JavaScript does not raise for a missing
+        property; it quietly yields undefined and the arithmetic goes to NaN.
+        So the field names are checked here instead, against the literal the
+        port constructs the player from.
+        """
+        js = (WEB / "game.js").read_text()
+        literal = js[js.index("this.player = {"):]
+        literal = literal[:literal.index("};") + 1]
+        defined = set(re.findall(r"(\w+):", literal))
+        self.assertIn("cash_cap", defined, "the player literal moved; fix this test")
+        for path in ("game.js", "index.html"):
+            text = (WEB / path).read_text()
+            # a plain string literal ("cryptowarz.player.v1") is a key, not a
+            # read. Template literals stay: the NaN this guards lived inside
+            # one, in a ${...} hole, which is code like any other.
+            code = re.sub(r"\'[^\'\\n]*\'|\"[^\"\\n]*\"", "''", text)
+            for field in set(re.findall(r"player\.([a-zA-Z_]\w*)", code)):
+                if field in defined:
+                    continue
+                self.fail(f"{path} reads player.{field}, which the port never "
+                          f"defines - it will render undefined or NaN")
+
+    def test_the_player_fields_match_the_terminal(self):
+        """Same names on both sides, or a save written by one breaks the other."""
+        from dataclasses import fields
+        from cryptowarz.game import Player
+
+        js = (WEB / "game.js").read_text()
+        literal = js[js.index("this.player = {"):]
+        literal = literal[:literal.index("};") + 1]
+        self.assertEqual(set(re.findall(r"(\w+):", literal)),
+                         {f.name for f in fields(Player)},
+                         "the two ports disagree about what a player is made of")
+
+    def test_boot_cannot_save_over_the_run_waiting_on_the_server(self):
+        """The bug behind "the days are not moving, I'm stuck on day one".
+
+        A browser with storage blocked - Safari, in a frame, which is the whole
+        reason the server copy exists - finds nothing locally, starts a fresh
+        day-one run and saves it. That save used to race the restore down the
+        same wire, and when it won it landed on top of the real run. Reload,
+        and the restore reads back the day one it just wrote. Every action
+        still works, the wallet still fills, and the day never moves.
+
+        `make browser` reproduces it end to end against a real browser and a
+        deliberately slow cloud; this holds the shape of the fix in place for
+        the run of the suite, which has no browser.
+        """
+        html = (WEB / "index.html").read_text()
+        self.assertIn("cloudWaitForRestore", html,
+                      "the first cloud write must wait for the restore")
+        push = html[html.index("function cloudPush()"):]
+        push = push[:push.index("function cloudRestore")]
+        self.assertLess(push.index("await cloudWaitForRestore()"),
+                        push.index(".set("),
+                        "the push must wait BEFORE it writes, not after")
+        self.assertIn("cloudSettled = cloudRestore(", html,
+                      "boot must hand the push something to wait on")
+        self.assertTrue((WEB / "browsercheck.js").exists(),
+                        "the browser check is the only thing that proves this")
+
     def test_the_page_is_sized_for_a_phone_browser_with_toolbars(self):
         """iOS Safari sizes 100% and 100vh against the viewport you get with
         the toolbars HIDDEN, so a page exactly one screen tall puts its last
@@ -408,6 +475,25 @@ class TestSaveFormatParity(unittest.TestCase):
     def test_the_save_version_matches(self):
         from cryptowarz.save import SAVE_VERSION
         self.assertEqual(self.js["save_version"], SAVE_VERSION)
+
+    def test_both_ports_stamp_the_same_build(self):
+        """A stamp only identifies a build if both ports agree what it is.
+
+        It exists because a phone can serve a cached copy of the page: the save
+        then carries the stamp of the rules that wrote it, not of the build
+        reading it, which is the difference between "the game is broken" and
+        "your browser is a week behind".
+        """
+        import re as _re
+        from cryptowarz.save import BUILD
+
+        js = (WEB / "game.js").read_text()
+        found = _re.search(r'const BUILD = "([^"]+)"', js)
+        self.assertIsNotNone(found, "the port carries no build stamp")
+        self.assertEqual(found.group(1), BUILD,
+                         "the two ports stamp different builds")
+        self.assertEqual(self.js["save"]["build"], BUILD,
+                         "the port does not write its stamp into the save")
 
     def test_the_top_level_shape_matches(self):
         py = self.python_save()

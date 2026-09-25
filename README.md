@@ -1147,6 +1147,33 @@ $1,985, Grand Central, 12 runs and the gear all came back. With no runtime at
 all the page behaves exactly as before, and a run in progress survived a server
 answer that arrived 1.5 seconds late.
 
+### "The days are not moving. I'm stuck on day one."
+
+A fourth detail, and the one that actually bit somebody. All three above are
+about the *read* standing down politely. Nothing was guarding the **write**.
+
+Boot's own save is not a player action, but it goes down the same wire. With
+storage blocked — Safari, in a frame, the case this whole feature exists for —
+the page finds nothing locally, starts a fresh day-one run and saves it. That
+save left on a 1.2-second timer. The restore left immediately, but it has to
+resolve two capabilities and make a round trip first. When the restore lost that
+race, **day one landed on top of a real run**. Reload, and the restore faithfully
+reads back the day one it just wrote.
+
+What that looks like from the platform is the cruel part: nothing errors.
+Every button works. You can trade, spin, sell, and watch the wallet fill. The
+day simply never moves, and there is nothing on screen to explain why.
+
+The fix is one line of ordering — the first write waits for the read, with an
+eight-second cap so a server that never answers cannot mean a run that never
+saves. `make browser` reproduces it end to end against a real browser and a
+deliberately slow cloud: the build before the fix ends on **day 1** having
+written day 1 over a day-9 run; the build after ends on day 9 and writes day 9.
+
+That check exists because this class of bug is invisible to the suite. Three of
+the last four shipped bugs were, which is why there is now a browser check with
+a non-zero exit code rather than a habit of opening one.
+
 ## Nothing here is trapped in one browser
 
 The save and the profile live in whatever browser or home directory you played
@@ -1244,7 +1271,8 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 278 tests, no install needed
+python3 -m unittest discover -s tests     # 464 tests, no install needed
+make browser                              # what a suite cannot see (needs Playwright)
 ```
 
 They cover the arithmetic a player would try to exploit — partial sells
