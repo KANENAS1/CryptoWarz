@@ -1379,6 +1379,17 @@ Game.prototype.buyVpn = function () {
   this.player.cash -= price; this.player.vpn += 1;
   return { text: `VPN level ${this.player.vpn}. You draw less attention now.`, good: true };
 };
+/* Where you have been and how often, kept where the save can carry it. It is
+   deliberately unable to throw: nothing in here is worth losing a day over. */
+Game.prototype.noteVisit = function (target) {
+  try {
+    if (!Array.isArray(this.stats.stations)) this.stats.stations = [];
+    if (!this.stats.stations.includes(target.name)) this.stats.stations.push(target.name);
+    // how well they know your face here - see visitPressure
+    if (!this.stats.visits || typeof this.stats.visits !== "object") this.stats.visits = {};
+    this.stats.visits[target.name] = (this.stats.visits[target.name] | 0) + 1;
+  } catch (e) { /* a stop you cannot write down is still a stop you made */ }
+};
 Game.prototype.travel = function (index) {
   this.notNow();
   const wasReady = this.diceReady;         // so the offer is announced once
@@ -1391,12 +1402,15 @@ Game.prototype.travel = function (index) {
   }
   if (paidWithCard) this.player.rides -= 1;
   else this.player.cash -= this.fare;
+  /* The station and the day move together, and the bookkeeping comes after.
+     They used to be separated by two lines of stats work, and when that work
+     threw - which it did, for weeks, on every run restored from the server -
+     the ride half happened: the station changed, the day did not, and the
+     market never regenerated because that is downstream of the day. From the
+     platform: new stop, same prices, same day, forever. */
   this.station = target;
-  if (!this.stats.stations.includes(target.name)) this.stats.stations.push(target.name);
-  // how well they know your face here - see visitPressure
-  this.stats.visits = this.stats.visits || {};
-  this.stats.visits[target.name] = (this.stats.visits[target.name] | 0) + 1;
   this.day += 1;
+  this.noteVisit(target);
   this.player.debt *= (1 + this.sharkRate);
   this.player.vault *= (1 + VAULT_RATE);
   this.state.drift(this.rng);
@@ -2640,7 +2654,7 @@ const SAVE_VERSION = 1;
    cached copy of this page plays by the old ones. A save carrying a stamp older
    than this build is a save written by a page that is still in somebody's
    cache. Bump it whenever the rules move. */
-const BUILD = "2026-09-25";
+const BUILD = "2026-09-25b";
 /* -------------------------- taking it with you -----------------------
    The save and the profile live in whatever browser you happened to play in.
    That is fine until a new phone, a cleared cache or a page saved to disk -
@@ -2794,6 +2808,15 @@ function saveToDict(g) {
   };
 }
 
+/* A private, mutable copy. The restore used to adopt the caller's objects by
+   reference, which was invisible for as long as every save came out of
+   JSON.parse - and then the server copy arrived, handed over FROZEN by the
+   database, and a whole run became unable to record anything it did. A save
+   loader owns its data; it does not borrow somebody else's. */
+function thaw(value) {
+  if (value === null || value === undefined) return value;
+  try { return JSON.parse(JSON.stringify(value)); } catch (e) { return value; }
+}
 function saveFromDict(data) {
   if (!data || data.save_version !== SAVE_VERSION) {
     throw new Error("that save is from a different version of the game");
@@ -2808,11 +2831,11 @@ function saveFromDict(data) {
   g.fromBuild = data.build || "(before builds were stamped)";
   g.dailySlot = (data.daily_slot === undefined || data.daily_slot === null) ? null : data.daily_slot;
   g.isDaily = g.dailySlot !== null;
-  if (data.stats) g.stats = data.stats;
+  if (data.stats) g.stats = thaw(data.stats);
   // carried in stats, so it reloads with the run and a reload cannot shake it
   g.hotHand = !!(g.stats && g.stats.hot_hand);
   g.weapon = data.weapon || null;
-  g.pending = (data.pending && typeof data.pending === "object") ? Object.assign({}, data.pending) : null;
+  g.pending = (data.pending && typeof data.pending === "object") ? thaw(data.pending) : null;
   g.day = data.day;
   g.finished = !!data.finished;
   /* a save written past the last day is a finished run whatever it says: the
@@ -2820,6 +2843,16 @@ function saveFromDict(data) {
      still be able to close and be scored rather than load into limbo */
   if (g.day > g.days) g.finished = true;
   g.station = STATIONS.find(s => s.name === data.station) || STATIONS[9];
+  /* and put right what the half-made ride left behind: a run stranded by it is
+     sitting at a station its own stats have never heard of. Idempotent - it
+     records that you are HERE, it does not count another visit, or every
+     reload would make the stop look hotter than you made it. */
+  try {
+    if (!Array.isArray(g.stats.stations)) g.stats.stations = [];
+    if (!g.stats.stations.includes(g.station.name)) g.stats.stations.push(g.station.name);
+    if (!g.stats.visits || typeof g.stats.visits !== "object") g.stats.visits = {};
+    if (!g.stats.visits[g.station.name]) g.stats.visits[g.station.name] = 1;
+  } catch (e) { /* nothing here is worth failing a load over */ }
   g.log = (data.log || []).slice();
   const p = data.player;
   /* a save from before the inversion carries no cash_cap; its old "capacity"

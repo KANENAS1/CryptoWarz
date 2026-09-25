@@ -202,3 +202,109 @@ class TestEventsCannotStrandYou(SaveTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestARideIsAllOrNothing(unittest.TestCase):
+    """The bug behind "the days aren't changing, the prices aren't changing".
+
+    ``travel`` used to set the station, then do two lines of stats bookkeeping,
+    then increment the day. On the web port that bookkeeping could throw - the
+    restore adopted the database's document by reference and the database hands
+    documents back frozen, so ``stations.push`` raised "object is not
+    extensible". The ride half happened: the station changed, the day did not,
+    and the market never regenerated, because that is downstream of the day.
+
+    New stop, same prices, same day, forever - and nothing in the save that
+    looked wrong, because "station A, day 1" is a shape a save can express.
+    """
+
+    def test_a_ride_that_cannot_be_written_down_still_happens(self):
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+
+        game = Game(seed=5)
+        target = next(s for s in STATIONS if s.name != game.station.name)
+
+        class Sealed(set):
+            """A container that refuses to grow, the way a frozen array does.
+
+            This is exactly the shape of the real failure: ``Array.prototype.push``
+            on a frozen array raises, and the ride was standing on that line.
+            """
+
+            def add(self, value):
+                raise TypeError("object is not extensible")
+
+        game.stats["stations"] = Sealed(game.stats["stations"])
+        day = game.day
+        prices = dict(game.market.prices)
+        game.travel(target.name)
+
+        self.assertEqual(game.station.name, target.name, "the ride happened")
+        self.assertEqual(game.day, day + 1, "and so did the day")
+        self.assertNotEqual(dict(game.market.prices), prices,
+                            "and the market moved with it")
+
+    def test_the_station_and_the_day_can_never_disagree(self):
+        """Whatever goes wrong, you are never at a stop you did not spend a day
+        reaching, and the stop you are at is one your own stats have heard of.
+        That pair is what the whole run is counted in."""
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+
+        game = Game(seed=9)
+        for i in range(12):
+            target = STATIONS[(i * 3 + 1) % len(STATIONS)]
+            if target.name == game.station.name:
+                continue
+            game.pending = None      # answered; the standoff is not what this measures
+            before = game.day
+            game.travel(target.name)
+            # a day at least - an event may cost another one on top
+            self.assertGreater(game.day, before)
+            self.assertEqual(game.station.name, target.name)
+            self.assertIn(target.name, game.stats["stations"],
+                          "arrived somewhere the run has no record of")
+            self.assertGreaterEqual(game.stats["visits"].get(target.name, 0), 1)
+            if game.finished:
+                break
+
+    def test_a_loader_owns_its_stats_rather_than_borrowing_them(self):
+        """The restore must not keep a live reference into the caller's data.
+
+        Invisible for as long as every save came out of ``json.load``. Then the
+        server copy arrived, frozen, and the run could not record a thing.
+        """
+        import json
+
+        from cryptowarz import save as S
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+
+        game = Game(seed=3)
+        game.travel(next(s.name for s in STATIONS if s.name != game.station.name))
+        blob = json.loads(json.dumps(S.to_dict(game)))
+        restored = S.from_dict(blob)
+        restored.stats["visits"]["somewhere new"] = 99
+        self.assertNotIn("somewhere new", blob["stats"].get("visits", {}),
+                         "the loader is still writing through to the caller's document")
+
+    def test_a_run_stranded_by_the_old_bug_loads_repaired(self):
+        """A save from the broken build sits at a station its stats never saw."""
+        import json
+
+        from cryptowarz import save as S
+        from cryptowarz.game import Game
+        from cryptowarz.stations import STATIONS
+
+        game = Game(seed=11)
+        elsewhere = next(s for s in STATIONS if s.name != game.station.name)
+        blob = json.loads(json.dumps(S.to_dict(game)))
+        blob["station"] = elsewhere.name            # what the half-ride left
+        restored = S.from_dict(blob)
+        self.assertIn(elsewhere.name, restored.stats["stations"])
+        self.assertEqual(restored.stats["visits"][elsewhere.name], 1)
+        # and loading it twice must not make the stop look hotter than it is
+        again = S.from_dict(json.loads(json.dumps(S.to_dict(restored))))
+        self.assertEqual(again.stats["visits"][elsewhere.name], 1,
+                         "a reload counted itself as another visit")

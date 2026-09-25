@@ -66,6 +66,31 @@ const BROWSER = process.env.CHROMIUM || '/opt/pw-browsers/chromium';
   await page.goto(PAGE);
   await page.waitForTimeout(6000);
   const out = await page.evaluate(() => ({ day: game.day, writes: window.__writes }));
+  /* CHECK 2: the database hands documents back FROZEN. The restore used to
+     adopt one by reference, so `stats.stations.push` raised inside travel,
+     between the line that moves the station and the line that moves the day.
+     New stop, same day, same prices - and the wheel spinnable forever, because
+     the run could not record that it had been spun. */
+  const page2 = await browser.newPage({ viewport: { width: 390, height: 664 } });
+  const errs2 = []; page2.on('pageerror', e => errs2.push(String(e).split('\n')[0]));
+  await page2.goto(PAGE);
+  await page2.waitForTimeout(600);
+  const frozen = await page2.evaluate(run => {
+    const deepFreeze = o => { if (o && typeof o === 'object') { Object.values(o).forEach(deepFreeze); Object.freeze(o); } return o; };
+    game = saveFromDict(deepFreeze(JSON.parse(JSON.stringify(run))));
+    const day = game.day, prices = Object.assign({}, game.market.prices);
+    let threw = null, to = null;
+    for (let i = 0; i < STATIONS.length; i++) {
+      if (STATIONS[i].name === game.station.name) continue;
+      to = STATIONS[i].name;
+      try { game.travel(i); } catch (e) { threw = e.message; }
+      break;
+    }
+    return { threw, arrived: game.station.name === to, dayMoved: game.day > day,
+             pricesMoved: JSON.stringify(game.market.prices) !== JSON.stringify(prices),
+             recorded: (game.stats.stations || []).includes(to) };
+  }, seed);
+  await page2.close();
   await browser.close();
   /* The bug this pins: with storage blocked the page starts a fresh day-one
      run, saves it, and that save used to beat the restore down the wire and
@@ -74,5 +99,9 @@ const BROWSER = process.env.CHROMIUM || '/opt/pw-browsers/chromium';
   const ok = out.day === 9 && out.writes.every(d => d === 9) && errs.length === 0;
   console.log(JSON.stringify({ check: "boot never overwrites a newer cloud run",
                                ok, day: out.day, writes: out.writes, errors: errs.slice(0, 3) }));
-  process.exit(ok ? 0 : 1);
+  const ok2 = !frozen.threw && frozen.arrived && frozen.dayMoved
+              && frozen.pricesMoved && frozen.recorded && errs2.length === 0;
+  console.log(JSON.stringify({ check: "a run restored from a frozen document can still ride",
+                               ok: ok2, ...frozen, errors: errs2.slice(0, 3) }));
+  process.exit(ok && ok2 ? 0 : 1);
 })();

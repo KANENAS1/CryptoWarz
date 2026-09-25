@@ -22,6 +22,7 @@ in ways that look like bugs.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import random
@@ -41,7 +42,7 @@ SAVE_VERSION = 1
 #: matters - a browser serving a cached copy of the page plays by the old rules
 #: and the save it writes carries an older stamp than the build reading it.
 #: Bump it whenever the rules move, and keep it identical to web/game.js.
-BUILD = "2026-09-25"
+BUILD = "2026-09-25b"
 MAX_SCORES = 25
 
 
@@ -157,6 +158,11 @@ def from_dict(data: Dict[str, Any]):
     game.is_daily = game.daily_slot is not None
     stats = data.get("stats")
     if stats:
+        # a deep copy, because a loader owns its data rather than borrowing the
+        # caller's. On the web port, where the same loader is handed a document
+        # straight out of the database, the borrowed one arrived FROZEN and a
+        # whole run became unable to record anything it did.
+        stats = copy.deepcopy(stats)
         game.stats = {**stats, "stations": set(stats.get("stations", []))}
     # carried in stats, so it reloads with the run and a reload cannot shake it
     game.hot_hand = bool(game.stats.get("hot_hand", False))
@@ -172,6 +178,12 @@ def from_dict(data: Dict[str, Any]):
     if game.day > game.days:
         game.finished = True
     game.station = station(data["station"])
+    # and put right what a half-made ride left behind: a run stranded by it is
+    # sitting at a station its own stats have never heard of. Idempotent - it
+    # records that you are HERE, it does not count another visit, or every
+    # reload would make the stop look hotter than you made it.
+    game.stats.setdefault("stations", set()).add(game.station.name)
+    game.stats.setdefault("visits", {}).setdefault(game.station.name, 1)
     game.log = list(data.get("log", []))
 
     p = game.player

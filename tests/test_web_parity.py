@@ -189,6 +189,41 @@ class TestWebSourcesExist(unittest.TestCase):
         self.assertTrue((WEB / "browsercheck.js").exists(),
                         "the browser check is the only thing that proves this")
 
+    def test_the_restore_owns_its_data_rather_than_borrowing_it(self):
+        """The bug behind "the days aren't changing, the prices aren't changing".
+
+        The restore adopted the caller's objects by reference. Invisible while
+        every save came out of JSON.parse - and then the server copy arrived,
+        handed over FROZEN by the database. `stats.stations.push` raised
+        "object is not extensible", and it raised INSIDE travel, between the
+        line that moves the station and the line that moves the day. So the
+        ride half happened: new stop, same day, and the market never
+        regenerated because that is downstream of the day.
+
+        It also meant the run could never record a wheel spin, so the wheel
+        could be spun at one stop forever.
+        """
+        js = (WEB / "game.js").read_text()
+        restore = js[js.index("function saveFromDict"):]
+        restore = restore[:restore.index("function writeSave")]
+        self.assertNotRegex(restore, r"g\.stats = data\.stats\b",
+                            "the restore is borrowing the caller's stats again")
+        self.assertIn("thaw(data.stats)", restore,
+                      "stats must be copied out of the caller's document")
+
+    def test_the_ride_moves_the_station_and_the_day_together(self):
+        """Nothing fallible may sit between them. A run whose station has moved
+        and whose day has not is a run the save format can express and the game
+        cannot get out of."""
+        js = (WEB / "game.js").read_text()
+        body = js[js.index("Game.prototype.travel = function"):]
+        body = body[:body.index("Game.prototype.finalScore")]
+        moved = body.index("this.station = target;")
+        day = body.index("this.day += 1;")
+        between = body[moved + len("this.station = target;"):day].strip()
+        self.assertEqual(between, "",
+                         f"something sits between the station and the day: {between!r}")
+
     def test_the_page_is_sized_for_a_phone_browser_with_toolbars(self):
         """iOS Safari sizes 100% and 100vh against the viewport you get with
         the toolbars HIDDEN, so a page exactly one screen tall puts its last

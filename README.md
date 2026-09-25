@@ -1174,6 +1174,46 @@ That check exists because this class of bug is invisible to the suite. Three of
 the last four shipped bugs were, which is why there is now a browser check with
 a non-zero exit code rather than a habit of opening one.
 
+### The ride that only half happened
+
+The same report came back: *the days aren't changing, the prices aren't
+changing when I go to a new stop, and I keep getting these failed things.*
+
+The save said `station: Jefferson St`, `day: 1`, `stations: ["14 St-Union Sq"]`.
+That is a shape no completed ride can produce — you cannot be at a stop your own
+run has never heard of. Something was setting the station and then failing
+before it set the day.
+
+The database hands documents back **frozen**. The restore was adopting one by
+reference — `g.stats = data.stats` — which was harmless for as long as every
+save came out of `JSON.parse`, and fatal the moment the server copy arrived.
+`stats.stations.push` raised *"Cannot add property 1, object is not
+extensible"*, and it raised inside `travel`, on the line immediately after the
+station moved and immediately before the day did:
+
+```js
+this.station = target;
+if (!this.stats.stations.includes(target.name)) this.stats.stations.push(…);  // ← here
+this.day += 1;
+```
+
+The market is regenerated downstream of the day, so it never regenerated
+either. New stop, same prices, same day, forever. And because `stats.wheels`
+could never be written, the prize wheel could be spun at one stop **without
+limit** — which is exactly what the stranded run's log was full of.
+
+Two fixes, and both were needed. *A loader owns its data*: the restore deep-copies
+anything it adopts on both ports, so a frozen document cannot reach the run.
+*A ride is all or nothing*: the station and the day now move on adjacent lines
+with nothing fallible between them, and the bookkeeping that follows is
+explicitly unable to throw — a stop you cannot write down is still a stop you
+made. Loading a stranded save repairs it on the way in, idempotently, so a
+reload does not count itself as another visit.
+
+`make browser` covers the frozen case end to end. On the build before the fix
+it reports `"Cannot add property 10, object is not extensible"`; after, the run
+rides, the day moves and the prices move with it.
+
 ## Nothing here is trapped in one browser
 
 The save and the profile live in whatever browser or home directory you played
@@ -1271,7 +1311,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 464 tests, no install needed
+python3 -m unittest discover -s tests     # 470 tests, no install needed
 make browser                              # what a suite cannot see (needs Playwright)
 ```
 

@@ -852,6 +852,21 @@ class Game:
 
     # ---------------------------------------------------------------- travel
 
+    def _note_visit(self, target) -> None:
+        """Where you have been and how often, kept where the save can carry it.
+
+        Deliberately unable to raise: nothing in here is worth losing a day
+        over, and on the web port this bookkeeping once took a ride down with
+        it halfway through.
+        """
+        try:
+            self.stats["stations"].add(target.name)
+            # how well they know your face here - see events.visit_pressure
+            seen = self.stats.setdefault("visits", {})
+            seen[target.name] = int(seen.get(target.name, 0)) + 1
+        except Exception:      # a stop you cannot write down is still a stop
+            pass
+
     def travel(self, name: str) -> List[str]:
         """Ride to another station. Costs a day - the only thing you can't buy."""
         self._not_now()
@@ -871,12 +886,14 @@ class Game:
             self.player.rides -= 1
         else:
             self.player.cash -= self.fare
+        # The station and the day move together, and the bookkeeping comes
+        # after. They used to be separated by two lines of stats work, and on
+        # the web port that work could throw - leaving the ride half made: the
+        # station changed, the day did not, and the market never regenerated,
+        # because that is downstream of the day.
         self.station = target
-        self.stats["stations"].add(target.name)
-        # how well they know your face here - see events.visit_pressure
-        seen = self.stats.setdefault("visits", {})
-        seen[target.name] = int(seen.get(target.name, 0)) + 1
         self.day += 1
+        self._note_visit(target)
         self.player.debt *= (1.0 + self.shark_rate)
         self.player.vault *= (1.0 + VAULT_RATE)
         self.state.drift(self.rng)          # the market moves whether you do or not
