@@ -2074,7 +2074,7 @@ const SAVE_VERSION = 1;
    cached copy of this page plays by the old ones. A save carrying a stamp older
    than this build is a save written by a page that is still in somebody's
    cache. Bump it whenever the rules move. */
-const BUILD = "2026-09-25b";
+const BUILD = "2026-09-26";
 /* -------------------------- taking it with you -----------------------
    The save and the profile live in whatever browser you happened to play in.
    That is fine until a new phone, a cleared cache or a page saved to disk -
@@ -2357,6 +2357,189 @@ function recordScore(g) {
   return kept;
 }
 
+/* ------------------------------- lift.py ------------------------------
+   Other players are on the platform too, and they are carrying.
+
+   Four rules hold this up, and each one is a way this kind of feature
+   normally ruins a game. Only the POCKETS are liftable - not the vault, not
+   one coin of the wallet. Nobody loses money without ANSWERING for it: a lift
+   waits the way a standoff waits. The thief can only lose what they PUT UP,
+   because a settlement written by the mark and read by the thief can only
+   collect a loss already taken. And the ROLL belongs to the mark, so neither
+   side can reload into a better result.
+
+   The full reasoning, including the measured numbers that forced the stake to
+   be sized by the cut, is in cryptowarz/lift.py. */
+
+const LIFT_BASE = 0.46;
+const STAKE_OF_CUT = 0.85;       // put up 85c for every dollar you could take
+const MAX_STAKE_SHARE = 0.5;     // never more than half of what you are carrying
+const STAKE_MIN = 250, STAKE_MAX = 25000;
+const CUT_SHARE = 0.35, CUT_MAX = 40000;
+const GUARD_PER_LUCK = 1.4;
+const GUARD_FROM_WEAPON = 0.5;   // a bat takes better than it keeps
+const COUNTER_PENALTY = 0.14;
+const COUNTER_LOSS = 1.3, COUNTER_LOSS_CAP = 0.45;
+const BUYOFF_SHARE = 0.5;
+const LIFT_FLOOR = 0.05, LIFT_CEIL = 0.95;
+const MARK_STALE_SECONDS = 72 * 3600;
+const LIFT_GRACE_DAYS = 5;       // the same grace the SEC gives you
+const LIFTS_PER_DAY = 1;
+const LIFT_ANSWERS = ["brace", "counter", "buyoff"];
+
+/* What another player looks like from across the platform: what you could tell
+   by looking, and nothing that would let a client rebuild somebody's run. */
+function markFrom(game, uid, name, at) {
+  return { uid: String(uid), name: String(name || "Straphanger"),
+           station: game.station.name, day: game.day | 0,
+           pockets: game.player.cash, luck: game.luck,
+           weapon: game.weapon || null, rep: repOf(game), at: at };
+}
+function markIsStale(mark, now) { return (now - mark.at) > MARK_STALE_SECONDS; }
+/* A run is not on the platform in its first few days, and not once it is over.
+   Taking somebody's bank on day one sucks; a finished run is a score, not a
+   person standing somewhere. */
+function leavesAMark(game) {
+  return !game.finished && (game.day | 0) > LIFT_GRACE_DAYS;
+}
+
+function cutCeiling(mark) {
+  return Math.min(CUT_MAX, Math.max(0, mark.pockets) * CUT_SHARE);
+}
+/* Two ceilings, and the lower one wins: what the coat is worth going for, and
+   half of what the thief is carrying. */
+function stakeFor(pockets, mark) {
+  return Math.min(Math.max(0, pockets) * MAX_STAKE_SHARE,
+                  cutCeiling(mark) * STAKE_OF_CUT, STAKE_MAX);
+}
+function cutFor(mark, stake) {
+  const ceiling = cutCeiling(mark);
+  if (stake === undefined || stake === null) return ceiling;
+  return Math.min(ceiling, Math.max(0, stake) / STAKE_OF_CUT);
+}
+function buyoffFor(mark, stake) { return cutFor(mark, stake) * BUYOFF_SHARE; }
+function botchedLoss(lift) {
+  const cut = +lift.cut || 0;
+  return Math.min(cut * COUNTER_LOSS, cut / CUT_SHARE * COUNTER_LOSS_CAP);
+}
+function worthLifting(mark, pockets) {
+  return stakeFor(pockets === undefined ? Infinity : pockets, mark) >= STAKE_MIN;
+}
+function canAffordLift(pockets, mark) {
+  const stake = stakeFor(pockets, mark);
+  return stake >= STAKE_MIN && pockets + 1e-9 >= stake;
+}
+
+/* The same three things that decide every other encounter here: what you have
+   learnt to hold, what is in your coat, and whether people have heard of you. */
+function guardOf(luck, weaponKey, rep) {
+  const w = weaponOf(weaponKey);
+  return luck * GUARD_PER_LUCK + (w ? w.edge * GUARD_FROM_WEAPON : 0)
+         + Math.max(-REP_MAX, Math.min(REP_MAX, rep)) * REP_ODDS;
+}
+function liftOdds(thiefLuck, thiefWeapon, thiefRep, mark) {
+  const w = weaponOf(thiefWeapon);
+  let chance = LIFT_BASE + (w ? w.edge : 0) + thiefLuck * 0.5
+             + Math.max(-REP_MAX, Math.min(REP_MAX, thiefRep)) * REP_ODDS;
+  chance -= guardOf(mark.luck, mark.weapon, mark.rep);
+  return Math.max(LIFT_FLOOR, Math.min(LIFT_CEIL, chance));
+}
+/* The thief's chance against the mark as they are NOW, not as they advertised:
+   gear bought between the attempt and the answer counts. */
+function thiefChance(lift, luck, weaponKey, rep) {
+  const chance = (+lift.base || LIFT_BASE) - guardOf(luck, weaponKey, rep);
+  return Math.max(LIFT_FLOOR, Math.min(LIFT_CEIL, chance));
+}
+function liftAnswerOdds(choice, lift, luck, weaponKey, rep) {
+  if (choice === "buyoff") return 1;
+  let odds = 1 - thiefChance(lift, luck, weaponKey, rep);
+  if (choice === "counter") {
+    const w = weaponOf(weaponKey);
+    odds += (w ? w.edge : 0) + luck * 0.5 - COUNTER_PENALTY;
+  }
+  return Math.max(LIFT_FLOOR, Math.min(LIFT_CEIL, odds));
+}
+
+/* The attempt, as it is left for the mark to find. `base` carries the thief's
+   side already worked out, so the mark finishes the sum against their own
+   numbers without ever being handed the thief's run. */
+function openLift(thiefUid, thiefName, mark, thiefLuck, thiefWeapon, thiefRep,
+                  stake, day, at) {
+  const w = weaponOf(thiefWeapon);
+  const base = LIFT_BASE + (w ? w.edge : 0) + thiefLuck * 0.5
+             + Math.max(-REP_MAX, Math.min(REP_MAX, thiefRep)) * REP_ODDS;
+  return { thief: String(thiefUid), thief_name: String(thiefName || "Straphanger"),
+           mark: mark.uid, station: mark.station,
+           base: +base.toFixed(6), stake: +stake.toFixed(2),
+           cut: +cutFor(mark, stake).toFixed(2),
+           buyoff: +buyoffFor(mark, stake).toFixed(2),
+           thief_day: day | 0, at: at, state: "open" };
+}
+
+function liftSettlement(o) {
+  return { state: "settled", outcome: o.outcome,
+           mark_delta: +(o.markDelta + (o.toMark || 0)).toFixed(2),
+           /* never negative: a thief's only enforceable loss is the stake
+              already taken off them */
+           thief_delta: +Math.max(0, o.thiefDelta).toFixed(2),
+           mark_rep: o.markRep | 0, thief_rep: o.thiefRep | 0,
+           mark_line: o.markLine, thief_line: o.thiefLine };
+}
+/* What happened, decided by the mark's own roll. */
+function settleLift(lift, choice, roll, luck, weaponKey, rep) {
+  if (LIFT_ANSWERS.indexOf(choice) < 0) throw new Error(`nobody answers a mugging with ${choice}`);
+  const stake = +lift.stake || 0, cut = +lift.cut || 0;
+  const who = lift.thief_name || "somebody";
+  const money = v => "$" + Math.round(v).toLocaleString();
+
+  if (choice === "buyoff") {
+    const paid = lift.buyoff === undefined ? cut * BUYOFF_SHARE : +lift.buyoff;
+    return liftSettlement({ markDelta: -paid, thiefDelta: stake + paid,
+      markRep: -1, thiefRep: 0, outcome: "paid",
+      markLine: `You hand ${who} something to make it stop. It stops.`,
+      thiefLine: `They paid rather than find out. ${money(paid)}, and no trouble.` });
+  }
+  const won = roll < liftAnswerOdds(choice, lift, luck, weaponKey, rep);
+  if (choice === "brace") {
+    if (won) return liftSettlement({ markDelta: 0, thiefDelta: 0, markRep: 1,
+      thiefRep: -1, outcome: "held", toMark: stake,
+      markLine: `${who} went through your coat and found it shut. You keep everything, and their stake with it.`,
+      thiefLine: "They were wearing more than you thought. You are out the stake." });
+    return liftSettlement({ markDelta: -cut, thiefDelta: stake + cut, markRep: 0,
+      thiefRep: 1, outcome: "taken",
+      markLine: `${who} was quicker. ${money(cut)} gone before you turned round.`,
+      thiefLine: `Clean. ${money(cut)} out of their coat.` });
+  }
+  if (won) return liftSettlement({ markDelta: 0, thiefDelta: 0, markRep: 2,
+    thiefRep: -2, outcome: "countered", toMark: stake,
+    markLine: `You went after ${who} and got there first. Everything you had, and everything they put up.`,
+    thiefLine: "They came back at you. You lost the stake and some standing with it." });
+  const worse = botchedLoss(lift);
+  return liftSettlement({ markDelta: -worse, thiefDelta: stake + worse, markRep: -1,
+    thiefRep: 2, outcome: "botched",
+    markLine: `You went after ${who} and caught a door. ${money(worse)} gone, and people saw.`,
+    thiefLine: `They tried to chase it. ${money(worse)}, and now they know better.` });
+}
+
+/* The record that outlives any one run. Turning somebody away is worth more
+   than taking from somebody who was not there: being hard to rob should be a
+   way to play this, not a way to lose slowly. */
+function streetRecord(profile) {
+  const s = (profile && profile.street) || {};
+  return { took: s.took | 0, held: s.held | 0, lost: s.lost | 0, countered: s.countered | 0 };
+}
+function streetPoints(r) {
+  return r.took * 2 + r.held * 3 + r.countered * 5 - r.lost;
+}
+function creditStreet(profile, outcome, asThief) {
+  const street = streetRecord(profile);
+  if (asThief) street[(outcome === "taken" || outcome === "botched" || outcome === "paid") ? "took" : "lost"] += 1;
+  else if (outcome === "held") street.held += 1;
+  else if (outcome === "countered") street.countered += 1;
+  else street.lost += 1;
+  profile.street = street;
+}
+
 /* ------------------------------ helpers ------------------------------- */
 function fmtQty(q) {
   if (q >= 1000) return q.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -2397,6 +2580,14 @@ if (typeof module !== "undefined") {
                      THREAT, THREAT_BARS, WIRE_LINES, threatLevel, standingHeat, wire, EVENTS,
                      VISIT_STEP, VISIT_MAX, VISIT_LEVELS, visitsTo, visitLevel,
                      visitLabel, visitPressure,
+                     LIFT_BASE, STAKE_OF_CUT, MAX_STAKE_SHARE, STAKE_MIN, STAKE_MAX,
+                     CUT_SHARE, CUT_MAX, GUARD_PER_LUCK, GUARD_FROM_WEAPON,
+                     COUNTER_PENALTY, COUNTER_LOSS, COUNTER_LOSS_CAP, BUYOFF_SHARE,
+                     MARK_STALE_SECONDS, LIFT_GRACE_DAYS, LIFTS_PER_DAY, LIFT_ANSWERS,
+                     markFrom, markIsStale, leavesAMark, cutCeiling, stakeFor, cutFor,
+                     buyoffFor, botchedLoss, worthLifting, canAffordLift, guardOf,
+                     liftOdds, liftAnswerOdds, openLift, settleLift,
+                     streetRecord, streetPoints, creditStreet,
                      runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
                      PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,

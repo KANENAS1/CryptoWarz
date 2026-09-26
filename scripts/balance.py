@@ -10,6 +10,7 @@ raise both the median and the ceiling.
 
 from __future__ import annotations
 
+import random
 import statistics
 import sys
 from pathlib import Path
@@ -158,12 +159,81 @@ def main() -> int:
     if solvent < 0.15:
         problems.append(f"a sensible strategy only survives {solvent:.0%} of runs - it is punishing, not hard")
 
+    problems += lift_table()
+
     for problem in problems:
         print(f"  BALANCE: {problem}")
     if not problems:
         print("  BALANCE: healthy - nothing wins for free, nothing is hopeless.")
     print()
     return 1 if problems else 0
+
+
+#: Four ways a player can turn up to a robbery, from nothing to everything.
+KITS = (("bare", 0.00, None, 0), ("nervy", 0.03, "pipe", 0),
+        ("geared", 0.10, "cutter", 1), ("full kit", 0.15, "taser", 3))
+LIFTS = 3000
+
+
+def _best_answer(lift, luck, weapon, rep):
+    """What a mark who can read the odds would say."""
+    from cryptowarz import lift as L
+
+    def value(choice):
+        odds = L.answer_odds(choice, lift, luck, weapon, rep)
+        if choice == "buyoff":
+            return -lift["buyoff"]
+        loss = lift["cut"] if choice == "brace" else L.botched_loss(lift)
+        return odds * lift["stake"] - (1 - odds) * loss
+
+    return max(L.ANSWERS, key=value)
+
+
+def lift_table():
+    """Is robbing another player worth it? It must not be, at parity.
+
+    The first version of this feature paid a bare thief $7,495 for a coin flip
+    against a bare mark, which would have meant nobody ever played the actual
+    game again. The numbers below are the reason the stake is sized by the cut
+    rather than by the thief's pockets.
+    """
+    from cryptowarz import lift as L
+
+    print("  ROBBING OTHER PLAYERS")
+    print(f"  {LIFTS:,} lifts per matchup, against a mark who answers sensibly.")
+    print("  Thief carrying $30,000, mark carrying $60,000. Thief's average take:")
+    print()
+    print("  " + " " * 10 + "".join(f"{m[0]:>12}" for m in KITS) + "   (the mark)")
+    grid = {}
+    for tname, tluck, tweapon, trep in KITS:
+        row = []
+        for mname, mluck, mweapon, mrep in KITS:
+            mark = L.Mark(uid="m", name="M", station="X", day=9, pockets=60_000.0,
+                          luck=mluck, weapon=mweapon, rep=mrep, at=0.0)
+            stake = L.stake_for(30_000.0, mark)
+            lift = L.open_lift("t", "T", mark, tluck, tweapon, trep, stake, 9, 0.0)
+            rng = random.Random(11)
+            total = 0.0
+            for _ in range(LIFTS):
+                choice = _best_answer(lift, mluck, mweapon, mrep)
+                done = L.settle(lift, choice, rng.random(), mluck, mweapon, mrep)
+                total += done["thief_delta"] - stake
+            grid[(tname, mname)] = total / LIFTS
+            row.append(total / LIFTS)
+        print(f"  {tname:<10}" + "".join(f"{v:>12,.0f}" for v in row))
+    print()
+
+    trouble = []
+    level = [grid[(k[0], k[0])] for k in KITS]
+    if max(level) > 4_000:
+        trouble.append(f"robbing an equal is worth {max(level):,.0f} - everyone would "
+                       f"rob and nobody would trade")
+    if grid[("bare", "full kit")] > 0:
+        trouble.append("robbing somebody better equipped than you still pays")
+    if grid[("full kit", "bare")] > 12_000:
+        trouble.append(f"a maxed player takes {grid[('full kit', 'bare')]:,.0f} off a "
+                       f"bare one - new players are food")
+    return trouble
 
 
 if __name__ == "__main__":

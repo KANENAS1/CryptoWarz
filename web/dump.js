@@ -771,6 +771,60 @@ const out = {
     markup: Object.fromEntries(G.COINS.map(c => [c.symbol, G.stationMarkup(s, c.symbol)])),
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop, wheel: !!s.wheel,
   })),
+  /* Robbing other players. The RNG streams differ between the ports, so what
+     is compared is the arithmetic and the shape: the same constants, the same
+     stake off the same coat, and the same settlement from the same roll. */
+  lift: (() => {
+    const mark = { uid: "m", name: "M", station: "Wall Street", day: 9,
+                   pockets: 60000, luck: 0, weapon: null, rep: 0, at: 0 };
+    const geared = Object.assign({}, mark, { luck: 0.1, weapon: "cutter", rep: 1 });
+    const stake = G.stakeFor(30000, mark);
+    const lift = G.openLift("t", "T", mark, 0, null, 0, stake, 9, 0);
+    const settle = {};
+    for (const choice of G.LIFT_ANSWERS) {
+      for (const roll of [0, 0.5, 0.999]) {
+        settle[choice + "@" + roll] = G.settleLift(lift, choice, roll, 0.05, "pipe", 1);
+      }
+    }
+    return {
+      constants: {
+        LIFT_BASE: G.LIFT_BASE, STAKE_OF_CUT: G.STAKE_OF_CUT,
+        MAX_STAKE_SHARE: G.MAX_STAKE_SHARE, STAKE_MIN: G.STAKE_MIN,
+        STAKE_MAX: G.STAKE_MAX, CUT_SHARE: G.CUT_SHARE, CUT_MAX: G.CUT_MAX,
+        GUARD_PER_LUCK: G.GUARD_PER_LUCK, GUARD_FROM_WEAPON: G.GUARD_FROM_WEAPON,
+        COUNTER_PENALTY: G.COUNTER_PENALTY, COUNTER_LOSS: G.COUNTER_LOSS,
+        COUNTER_LOSS_CAP: G.COUNTER_LOSS_CAP, BUYOFF_SHARE: G.BUYOFF_SHARE,
+        MARK_STALE_SECONDS: G.MARK_STALE_SECONDS,
+        LIFT_GRACE_DAYS: G.LIFT_GRACE_DAYS, LIFTS_PER_DAY: G.LIFTS_PER_DAY,
+      },
+      answers: G.LIFT_ANSWERS,
+      stake: stake,
+      small_stake: G.stakeFor(2000, mark),
+      cut: G.cutFor(mark, stake),
+      buyoff: G.buyoffFor(mark, stake),
+      botched: G.botchedLoss(lift),
+      open: lift,
+      odds: {
+        bare_on_bare: G.liftOdds(0, null, 0, mark),
+        armed_on_bare: G.liftOdds(0, "bat", 0, mark),
+        bare_on_geared: G.liftOdds(0, null, 0, geared),
+        guard_bare: G.guardOf(0, null, 0),
+        guard_geared: G.guardOf(0.1, "cutter", 1),
+        brace_bare: G.liftAnswerOdds("brace", lift, 0, null, 0),
+        brace_geared: G.liftAnswerOdds("brace", lift, 0.1, "cutter", 1),
+        counter_bare: G.liftAnswerOdds("counter", lift, 0, null, 0),
+        counter_armed: G.liftAnswerOdds("counter", lift, 0.05, "bat", 0),
+        buyoff: G.liftAnswerOdds("buyoff", lift, 0, null, 0),
+      },
+      settle: settle,
+      street: {
+        points_took: G.streetPoints({ took: 1, held: 0, lost: 0, countered: 0 }),
+        points_held: G.streetPoints({ took: 0, held: 1, lost: 0, countered: 0 }),
+        points_countered: G.streetPoints({ took: 0, held: 0, lost: 0, countered: 1 }),
+        points_lost: G.streetPoints({ took: 0, held: 0, lost: 1, countered: 0 }),
+      },
+    };
+  })(),
 };
 /* A representative save, so the Python side can check both implementations
    still agree on the format. Two front ends that disagree about what a save

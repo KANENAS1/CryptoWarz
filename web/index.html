@@ -98,6 +98,17 @@
   /* why a ride was refused, in the sheet, where it cannot fade away */
   .stopwhy{margin-top:8px;padding:9px 10px;border:1px solid var(--red);
     border-radius:7px;color:var(--red);font-size:12px;line-height:1.35}
+  /* somebody else's run, seen from across the platform */
+  .mk{display:flex;justify-content:space-between;align-items:center;gap:10px;
+    padding:10px;border:1px solid var(--line);border-radius:8px;margin-bottom:7px}
+  .mk .who{font-weight:700;font-size:14px}
+  .mk .sub{font-size:10px;color:var(--dim);letter-spacing:.06em;margin-top:3px}
+  .mk .kit{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+  .mk.cold{opacity:.45}
+  .mk button{padding:7px 11px;font-size:10px;flex:0 0 auto}
+  .loadbar{height:4px;border-radius:2px;background:var(--line);margin-top:6px;
+    width:118px;overflow:hidden}
+  .loadbar i{display:block;height:100%;background:var(--red)}
   h2{font-size:10px;letter-spacing:.2em;color:var(--dim);font-weight:700;
      margin:16px 0 7px;text-transform:uppercase}
 
@@ -466,6 +477,21 @@ catch (e) { document.documentElement.dataset.framed = "1"; }
   <div style="padding-top:10px"><button id="cancel">CANCEL</button></div>
 </div>
 
+<div class="sheet" id="platform">
+  <h3 id="plattitle">ON THIS PLATFORM</h3>
+  <div class="d" id="platnote"></div>
+  <div class="sheetscroll" id="platlist"></div>
+  <div class="stopwhy" id="platwhy" hidden></div>
+  <div style="padding-top:10px"><button id="platclose">BACK</button></div>
+</div>
+
+<div class="sheet" id="lift">
+  <h3 id="lifttitle">SOMEBODY WENT THROUGH YOUR COAT</h3>
+  <div class="sowho" id="liftwho"></div>
+  <div class="socarry" id="liftcarry"></div>
+  <div class="sheetscroll" id="liftchoices"></div>
+</div>
+
 <div class="sheet" id="setup">
   <h3 id="setuptitle">NEW RUN</h3>
   <div class="sheetscroll">
@@ -550,6 +576,7 @@ catch (e) { document.documentElement.dataset.framed = "1"; }
   <div class="tabs">
     <button data-tab="today" class="on">TODAY</button>
     <button data-tab="alltime">ALL TIME</button>
+    <button data-tab="street">STREET</button>
     <button data-tab="mine">YOUR RUNS</button>
   </div>
   <div class="sheetscroll" id="scorelist"></div>
@@ -767,6 +794,11 @@ function render(){
     try { renderStandoff(); }
     catch (err) { renderStandoffPlainly(err); }
   }
+  // and somebody who came for your coat is answered the same way: re-opened on
+  // every render, so closing the sheet is not an answer
+  else if (pendingLift) {
+    try { renderLift(); } catch (err) { pendingLift = null; }
+  }
 
   // The wire: the real odds of a raid at this stop, on this day, as news.
   // Drawn from the same weight table the roll uses, so it cannot disagree.
@@ -797,6 +829,10 @@ function render(){
     if (p.debt > 0 && p.cash > 0)
       svc.push(`<button data-act="repay">REPAY ${fmtMoney(Math.min(p.cash, p.debt))}</button>`);
   }
+  // the platform itself, which every stop has - and which only has anything on
+  // it once other people are playing
+  svc.push(`<button data-act="platform">THE PLATFORM${
+    marksAt && marks && marks.length ? " · " + marks.length + " HERE" : ""}</button>`);
   if (st.vault) {
     svc.push(`<button data-act="deposit">VAULT HALF</button>`);
     if (p.vault > 0) svc.push(`<button data-act="withdraw">TAKE ALL OUT</button>`);
@@ -1188,6 +1224,7 @@ $("main").addEventListener("click", e => {
   if (a === "repay") return act(() => game.repay(Math.min(game.player.cash, game.player.debt)));
   if (a === "deposit") return act(() => game.deposit(game.player.cash / 2));
   if (a === "withdraw") return act(() => game.withdraw(game.player.vault));
+  if (a === "platform") return openPlatform();
   if (a === "capacity") return act(() => game.buyCapacity());
   if (a === "vpn") return act(() => game.buyVpn());
   if (a === "carry") return act(() => game.buyWeapon(b.dataset.weapon));
@@ -1253,6 +1290,7 @@ $("stops").addEventListener("click", e => {
   openCoin = null;
   $("alerts").innerHTML = "";          // a new station is a new situation
   wheelResult = null;
+  marks = []; marksAt = 0;          // a new stop is a new crowd
   render();
   // every consequence of the ride, not just the first one - they stay now, so
   // there is no reason to pick one and throw the rest away
@@ -1260,6 +1298,7 @@ $("stops").addEventListener("click", e => {
     flash(line, !/SEC|drainer|Gas|Signal|Shark's|gone|full/.test(line));
   }
   persist();
+  platformBoot();                    // your mark moves with you
   if (game.finished) showFinal();
 });
 
@@ -1357,7 +1396,8 @@ function showFinal(){
 /* One function owns which overlay is visible. Opening a sheet without closing
    the others left two stacked full-screen panels, and the one later in the
    document silently swallowed every tap meant for the one beneath it. */
-const SHEETS = ["setup", "goals", "scores", "travel", "over", "backup", "standoff"];
+const SHEETS = ["setup", "goals", "scores", "travel", "over", "backup", "standoff",
+                "platform", "lift"];
 function openSheet(id){
   SHEETS.forEach(s => $(s).classList.toggle("on", s === id));
 }
@@ -1585,6 +1625,276 @@ async function fetchBoard(mode){
 /* Rows come from other people. Nothing from the store reaches innerHTML raw. */
 const esc = t => String(t == null ? "" : t)
   .replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+/* ---------------------------- the platform ---------------------------
+   Other players, and what can be taken off them.
+
+   The four rules are in cryptowarz/lift.py and enforced in game.js; what lives
+   here is the plumbing, and the plumbing has one thing to get right. A
+   published page CANNOT write into another player's save - every viewer's
+   storage is private even from the artifact's owner - so a lift is never
+   applied to anybody. It is left in a shared collection as an unsettled
+   document, the mark's own client answers it and writes the settlement, and
+   the thief's client reads that settlement later and credits itself. The
+   architecture the platform permits turns out to be the only fair one:
+   nobody loses money without having had their say. */
+
+let marks = [], marksAt = 0, pendingLift = null, liftBusy = false;
+
+/* Your own mark, rewritten whenever the run saves. Not your save: what
+   somebody could tell by looking at you. A run in its first few days, or one
+   that is over, is not on the platform at all. */
+async function pushMark(){
+  const d = await store();
+  if (!d || !game) return;
+  const me = identity();
+  try {
+    if (!leavesAMark(game)) { await d.doc("marks/" + me.id).set({ gone: true, at: now() }); return; }
+    await d.doc("marks/" + me.id).set(markFrom(game, me.id, me.name, now()));
+  } catch (e) { /* not being visible is never a reason to stop playing */ }
+}
+const now = () => Date.now() / 1000;
+
+async function fetchMarks(){
+  const d = await store();
+  if (!d) return null;
+  const me = identity();
+  try {
+    const got = await d.collection("marks")
+                       .where("station", "==", game.station.name).limit(30).get();
+    return got.docs.map(x => Object.assign({ uid: x.id }, x.data()))
+              .filter(m => m && !m.gone && m.uid !== me.id && typeof m.pockets === "number"
+                           && !markIsStale(m, now()));
+  } catch (e) { return null; }
+}
+
+/* One go at one person per day of your run - a thief should not be able to
+   empty somebody by tapping the same button eleven times. */
+function liftsToday(){
+  const log = (game.stats.lifts || {})[String(game.day)] || [];
+  return Array.isArray(log) ? log : [];
+}
+function alreadyTried(uid){ return liftsToday().indexOf(uid) >= 0; }
+function noteLift(uid){
+  const all = Object.assign({}, game.stats.lifts || {});
+  all[String(game.day)] = liftsToday().concat([uid]);
+  game.stats.lifts = all;
+}
+
+function kitChips(m){
+  const w = weaponOf(m.weapon);
+  const bits = [];
+  if (w) bits.push(`<span class="chip shop">${esc(w.name.toUpperCase())}</span>`);
+  if (m.luck >= 0.10) bits.push('<span class="chip vault">WELL KITTED</span>');
+  else if (m.luck > 0) bits.push('<span class="chip">SOME GEAR</span>');
+  if (m.rep >= 2) bits.push('<span class="chip shark">HAS A NAME</span>');
+  else if (m.rep <= -2) bits.push('<span class="chip">LOOKS SOFT</span>');
+  if (!bits.length) bits.push('<span class="chip">NOTHING OBVIOUS</span>');
+  return bits.join("");
+}
+
+function renderPlatform(){
+  const p = game.player;
+  $("plattitle").textContent = "ON THIS PLATFORM — " + game.station.name.toUpperCase();
+  if (marks === null) {
+    $("platnote").textContent = "Can't see anybody from here — no connection to the platform.";
+    $("platlist").innerHTML = "";
+    return;
+  }
+  const usable = marks.filter(m => worthLifting(m, p.cash));
+  $("platnote").textContent = marks.length
+    ? `What you can take is bought by what you put up — and only from their pockets. `
+      + `Anything they vaulted is out of reach, and so is every coin they hold.`
+    : `Nobody worth looking at. Runs are invisible for their first ${LIFT_GRACE_DAYS} days, `
+      + `and a mark goes cold after three.`;
+  $("platlist").innerHTML = usable.map(m => {
+    const stake = stakeFor(p.cash, m), cut = cutFor(m, stake);
+    const load = Math.max(0, Math.min(1, m.pockets / Math.max(1, p.cash_cap)));
+    const tried = alreadyTried(m.uid);
+    const broke = !canAffordLift(p.cash, m);
+    return `<div class="mk${markIsStale(m, now()) ? " cold" : ""}">
+      <div>
+        <div class="who">${esc(m.name)}</div>
+        <div class="sub">DAY ${m.day | 0} · CARRYING ${fmtMoney(m.pockets)}</div>
+        <div class="loadbar"><i style="width:${Math.round(load * 100)}%"></i></div>
+        <div class="kit">${kitChips(m)}</div>
+      </div>
+      <div style="text-align:right">
+        ${tried ? `<div class="sub">TRIED TODAY</div>`
+          : broke ? `<div class="sub">CAN'T COVER IT</div>`
+          : `<button data-lift="${esc(m.uid)}" class="go">PUT UP ${fmtMoney(stake)}</button>
+             <div class="sub" style="margin-top:5px">TO TAKE ${fmtMoney(cut)}</div>`}
+      </div></div>`;
+  }).join("") || `<div class="d">Nothing here worth the risk.</div>`;
+}
+
+async function openPlatform(){
+  $("platwhy").hidden = true; $("platwhy").textContent = "";
+  $("platlist").innerHTML = `<div class="d">Looking…</div>`;
+  $("platnote").textContent = "";
+  openSheet("platform");
+  marks = await fetchMarks();
+  marksAt = now();
+  renderPlatform();
+}
+
+function platSay(text){
+  $("platwhy").textContent = text;
+  $("platwhy").hidden = false;
+}
+
+/* The attempt. The stake leaves your pockets now; you learn nothing else until
+   they answer, which is what makes it un-scummable from this side. */
+async function attemptLift(uid){
+  const mark = (marks || []).find(m => m.uid === uid);
+  if (!mark) return platSay("They have moved on.");
+  if (game.pending) return platSay("There is somebody in front of you. Answer him first.");
+  if (alreadyTried(uid)) return platSay("You have had your go at them today.");
+  const stake = stakeFor(game.player.cash, mark);
+  if (!canAffordLift(game.player.cash, mark)) return platSay("You cannot cover the stake.");
+  const d = await store();
+  if (!d) return platSay("No connection to the platform.");
+  const me = identity();
+  const doc = openLift(me.id, me.name || "Straphanger", mark, game.luck,
+                       game.weapon, repOf(game), stake, game.day, now());
+  try {
+    await d.doc("lifts/" + me.id + "_" + uid + "_" + Math.round(now())).set(doc);
+  } catch (e) { return platSay("It did not come off — try again in a moment."); }
+  game.player.cash -= stake;
+  noteLift(uid);
+  game.say(`You put up ${fmtMoney(stake)} and went after ${mark.name}. Now you wait.`);
+  closeSheets();
+  render();
+  persist();
+  flash(`${fmtMoney(stake)} down. You find out when they turn round.`, true);
+}
+
+/* Somebody came for you. This is modal and survives a reload, because the
+   unsettled document lives on the server rather than in your save - closing
+   the tab is not a way out of it, the same way it is not for a standoff. */
+async function fetchIncoming(){
+  const d = await store();
+  if (!d || !game || game.finished) return null;
+  const me = identity();
+  try {
+    const got = await d.collection("lifts")
+                       .where("mark", "==", me.id).where("state", "==", "open")
+                       .limit(5).get();
+    const rows = got.docs.map(x => Object.assign({ id: x.id }, x.data()));
+    return rows.length ? rows[0] : null;
+  } catch (e) { return null; }
+}
+
+function renderLift(){
+  const l = pendingLift;
+  if (!l) return;
+  const me = game.player;
+  $("liftwho").innerHTML = `<b>${esc(l.thief_name || "Somebody")} · ${esc(l.station || "")}</b>`
+    + `They put up ${fmtMoney(l.stake)} on the chance you were not paying attention.`;
+  const w = weaponOf(game.weapon);
+  const bits = [];
+  if (w) bits.push(`carrying the ${w.name}`);
+  bits.push(`${fmtMoney(l.cut)} of your pockets is on it`);
+  if (game.luck > 0) bits.push(`gear worth ${(game.luck * 100).toFixed(0)}%`);
+  $("liftcarry").textContent = bits.join(" · ").toUpperCase();
+  const notes = {
+    brace: `Let what you are wearing do the work. Hold and you take their ${fmtMoney(l.stake)}.`,
+    counter: `Go after them. Worth more standing, and a miss costs ${fmtMoney(botchedLoss(l))}.`,
+    buyoff: `Hand over ${fmtMoney(l.buyoff)} and it ends here. Costs you standing.`,
+  };
+  $("liftchoices").innerHTML = LIFT_ANSWERS.map(key => {
+    const odds = liftAnswerOdds(key, l, game.luck, game.weapon, repOf(game));
+    const pct = odds >= 1 ? "CERTAIN" : Math.round(odds * 100) + "%";
+    const cls = odds >= 1 ? "sure" : odds >= 0.6 ? "good" : odds >= 0.4 ? "mid" : "bad";
+    const label = { brace: "BRACE", counter: "GO AFTER THEM", buyoff: "PAY THEM OFF" }[key];
+    return `<button class="sochoice" data-lanswer="${key}">
+      <div class="top"><span class="lab">${label}</span><span class="od ${cls}">${pct}</span></div>
+      <div class="nt">${esc(notes[key])}</div></button>`;
+  }).join("");
+  openSheet("lift");
+}
+
+/* The roll is yours, drawn from your own saved RNG, so neither side can reload
+   into a better answer. The settlement is written BEFORE it is applied: if the
+   write fails nothing has moved, and if the page dies after it, the settled
+   document is still there to be applied next time. */
+async function answerLift(choice){
+  const l = pendingLift;
+  if (!l || liftBusy) return;
+  liftBusy = true;
+  try {
+    const done = settleLift(l, choice, game.rng.random(), game.luck, game.weapon, repOf(game));
+    const d = await store();
+    if (d) {
+      try {
+        await d.doc("lifts/" + l.id).set(Object.assign({}, l, done, { mark_applied: true }));
+      } catch (e) { liftBusy = false; return flash("Could not answer that — try again.", false); }
+    }
+    applyToMe(done.mark_delta, done.mark_rep);
+    profile = readProfile();
+    creditStreet(profile, done.outcome, false);
+    writeProfile(profile);
+    game.say(done.mark_line);
+    pendingLift = null;
+    closeSheets();
+    render();
+    persist();
+    flash(done.mark_line, done.mark_delta >= 0);
+  } finally { liftBusy = false; }
+}
+
+function applyToMe(delta, repDelta){
+  game.player.cash = Math.max(0, game.player.cash + delta);
+  if (repDelta) bumpRep(game, repDelta);
+}
+
+/* What came of the ones you tried. Collected once, and only once. */
+async function collectLifts(){
+  const d = await store();
+  if (!d || !game || game.finished) return;
+  const me = identity();
+  let rows = [];
+  try {
+    const got = await d.collection("lifts")
+                       .where("thief", "==", me.id).where("state", "==", "settled")
+                       .limit(10).get();
+    rows = got.docs.map(x => Object.assign({ id: x.id }, x.data())).filter(r => !r.collected);
+  } catch (e) { return; }
+  if (!rows.length) return;
+  profile = readProfile();
+  for (const r of rows) {
+    try { await d.doc("lifts/" + r.id).set(Object.assign({}, r, { collected: true })); }
+    catch (e) { continue; }
+    applyToMe(+r.thief_delta || 0, r.thief_rep | 0);
+    creditStreet(profile, r.outcome, true);
+    game.say(r.thief_line || "It came off.");
+  }
+  writeProfile(profile);
+  render();
+  persist();
+  flash(rows[0].thief_line || "Word came back.", (+rows[0].thief_delta || 0) > 0);
+}
+
+/* Everything the platform does on the way in, once the page is already
+   playable. Never blocks the first paint. */
+async function platformBoot(){
+  try {
+    await pushMark();
+    await collectLifts();
+    pendingLift = await fetchIncoming();
+    if (pendingLift) renderLift();
+  } catch (e) { /* the street is a bonus, never a blocker */ }
+}
+
+$("platclose").addEventListener("click", closeSheets);
+$("platlist").addEventListener("click", e => {
+  const b = e.target.closest("[data-lift]");
+  if (b) attemptLift(b.dataset.lift);
+});
+$("liftchoices").addEventListener("click", e => {
+  const b = e.target.closest("[data-lanswer]");
+  if (b) answerLift(b.dataset.lanswer);
+});
 
 /* ------------------------------- setup -------------------------------- */
 
@@ -2011,6 +2321,7 @@ function renderBoard(){
   document.querySelectorAll("#scores .tabs button")
     .forEach(b => b.classList.toggle("on", b.dataset.tab === lbTab));
   if (lbTab === "mine") return renderOwnRuns();
+  if (lbTab === "street") return renderStreet();
   $("scorelist").innerHTML = `<div class="note" style="padding:14px 2px">Loading the board…</div>`;
   const want = lbTab;
   fetchBoard(want).then(rows => {
@@ -2045,6 +2356,52 @@ function renderBoard(){
     }).join("") + `<div class="note" style="padding:14px 2px">
       You are <b>${esc(me.name || "Straphanger")}</b>. Tap NAME to change it.</div>`;
   });
+}
+/* The street board: what you have done to other people and what they have
+   failed to do to you. It survives the run it happened in, which is the point
+   of it - a night's takings are gone in thirty days, a reputation is not.
+   Turning somebody away scores more than taking from somebody who was not
+   there, because being hard to rob has to be a way to play this. */
+async function postStreet(){
+  const d = await store();
+  if (!d) return;
+  const me = identity(), record = streetRecord(readProfile());
+  if (!streetPoints(record)) return;
+  try {
+    await d.doc("street/" + me.id).set(Object.assign({
+      name: me.name || "Straphanger", points: streetPoints(record), at: now(),
+    }, record));
+  } catch (e) { /* the board is never a blocker */ }
+}
+function renderStreet(){
+  const me = identity(), mine = streetRecord(readProfile());
+  const summary = `<div class="note" style="padding:12px 2px">
+      <b>You:</b> ${mine.took} taken · ${mine.held} turned away · ${mine.countered} countered
+      · ${mine.lost} lost — <b>${streetPoints(mine).toLocaleString()} pts</b>.
+      Robbing somebody your own size is a waste of a day; the money is in
+      picking on people carrying more than they can defend, and the points are
+      in being the one nobody can take from.</div>`;
+  $("scorelist").innerHTML = summary
+    + `<div class="note" style="padding:8px 2px">Loading the street…</div>`;
+  const alone = `<div class="note" style="padding:14px 2px">No shared street board
+    here — your own record above still counts, and travels with your backup.</div>`;
+  const show = body => { if (lbTab === "street") $("scorelist").innerHTML = summary + body; };
+  postStreet().then(() => store()).then(d => {
+    // no store is an ANSWER, not a reason to sit on "loading" forever
+    if (!d) return show(alone);
+    return d.collection("street").orderBy("points", "desc").limit(50).get().then(got => {
+      const rows = got.docs.map(x => Object.assign({ id: x.id }, x.data()));
+      show(rows.length
+        ? rows.map((r, i) => `<div class="lbrow${r.id === me.id ? " me" : ""}">
+            <div class="pos">${i + 1}</div>
+            <div><div class="who">${esc(r.name || "Straphanger")}</div>
+              <div class="sub">${r.took | 0} TAKEN · ${r.held | 0} TURNED · ${r.countered | 0} COUNTERED</div></div>
+            <div class="pts"><div>${Math.round(r.points || 0).toLocaleString()}</div>
+              <div class="sub">PTS</div></div></div>`).join("")
+        : `<div class="note" style="padding:14px 2px">Nobody has taken anything off
+             anybody yet. Runs are invisible for their first ${LIFT_GRACE_DAYS} days.</div>`);
+    });
+  }).catch(() => show(alone));
 }
 function renderOwnRuns(){
   const scores = readScores();
@@ -2147,7 +2504,7 @@ function boot(){
   // flag that tells a late restore to stand down - so the restore always found
   // the page "touched" and did nothing. The flag starts counting from here.
   touchedThisLoad = false;
-  cloudSettled = cloudRestore(mineAtBoot);
+  cloudSettled = cloudRestore(mineAtBoot).then(() => platformBoot());
 }
 
 $("newgame").addEventListener("click", () => {

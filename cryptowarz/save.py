@@ -42,7 +42,7 @@ SAVE_VERSION = 1
 #: matters - a browser serving a cached copy of the page plays by the old rules
 #: and the save it writes carries an older stamp than the build reading it.
 #: Bump it whenever the rules move, and keep it identical to web/game.js.
-BUILD = "2026-09-25b"
+BUILD = "2026-09-26"
 MAX_SCORES = 25
 
 

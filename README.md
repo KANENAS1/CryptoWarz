@@ -667,6 +667,102 @@ left to go is where people stop. Each is unlocked by clearing the one below.
 | 4 | Last Train | $7,800 | $15,000 | 26 | 20% |
 | 5 | Blackout | $9,000 | $13,000 | 26 | 8% |
 
+## Other players are on the platform too, and they are carrying
+
+Everything else here is you against a market and the weather. This is the one
+system where the thing in front of you is somebody who made their own choices,
+in their own run, on their own night.
+
+At any stop, **THE PLATFORM** shows who else was last seen there: their name,
+the day they are on, roughly how loaded they are, and what they look like they
+are carrying. You put up a stake and go through their coat. They find out the
+next time they open the game — and they get to answer.
+
+Four rules hold it up, and each one is a way this kind of feature normally
+ruins a game.
+
+**Only the pockets are liftable.** Not the vault, not one coin of the crypto
+wallet. This is what the wallet inversion was for: cash is the heavy, visible
+thing you carry and coins are weightless numbers nobody can take off you on a
+platform. Walking around with $80,000 in your coat was already slow. Now it is
+also *advertised*, and the vault has a second reason to exist.
+
+**Nobody loses money without answering for it.** A lift is never applied to
+anybody — it waits, the way a standoff waits, and comes up as a decision the
+next time they play. This is not politeness. A published page *cannot* write
+into another player's save: every viewer's storage is private even from the
+artifact's owner. The only architecture the platform permits turns out to be
+the only fair one, which is a nice thing to be able to say.
+
+**The thief can only lose what they put up.** The settlement is written by the
+mark's client and read by the thief's, so the only loss a thief can be made to
+take is one already collected. Designing as if more were enforceable would be
+designing a hole.
+
+**The roll belongs to the mark.** The thief attempts and learns *nothing*. The
+outcome is decided by the mark's own saved RNG when they answer, so it rides
+their save like every other roll here: the thief cannot reload to reroll a
+result they have not seen, and the mark cannot reload into a better one.
+
+### Three answers, and gear decides which one is right
+
+|   | what it is | what it pays | what it costs |
+|---|---|---|---|
+| **Brace** | let what you are wearing do the work | their whole stake | they take their cut |
+| **Go after them** | chase it | their stake, and a name | ~30% more than standing still |
+| **Pay them off** | certain, and over | nothing | half the cut, and some standing |
+
+Bare-handed, the chase is the worse bet. Carrying something, it is the better
+one — and a miss costs more than standing still would have. That is the point
+of the armoury: **gear does not only make you harder to rob, it changes which
+answer is correct.** Paying off is the floor, and it is the right call when you
+are plainly outgunned: it caps the night at half a cut.
+
+### What it is priced at, and why
+
+The first version of this was badly wrong, and simulation caught it before
+anybody played it. With the stake taken as a share of the *thief's* pockets and
+the cut as a share of the *mark's*, a bare thief robbing a bare mark made
+**$7,495 on a coin flip**. Nobody would ever have traded a coin again.
+
+So a lift is **sized by what the thief puts up**: 85 cents staked for every
+dollar that could be taken, capped at half of what the thief is carrying. At
+the base chance a thief wins 46% of the time, so `0.46 × cut − 0.54 × 0.85 ×
+cut` is within a rounding error of nothing. `make balance` prints the table:
+
+```
+                  bare       nervy      geared    full kit   (the mark)
+bare              -146      -5,050     -12,952     -13,226
+nervy            6,351       1,922      -8,832     -12,952
+geared           8,824       7,483      -2,764     -12,952
+full kit         8,824       8,824       8,041      -8,304
+```
+
+Read the diagonal: **robbing somebody your own size is a waste of a day.** The
+money is in picking on people carrying more than they can defend. Going uphill
+loses badly. And the top-right corner — a maxed player farming a bare one —
+caps at $8,824, because a sensible bare mark just pays off; the ceiling is the
+mark's own choice, not the thief's.
+
+New runs are invisible for their first five days, the same grace the SEC gives
+you and for the same reason. A mark goes cold after three days. One attempt per
+person per day. A finished run is a score, not a person standing somewhere.
+
+### The street board
+
+Money is gone in thirty days; a reputation is not. Lifts land on a **STREET**
+tab next to the daily board, and turning somebody away scores more than taking
+from somebody who was not there (3 points against 2; a counter is worth 5).
+Being hard to rob has to be a way to play this, not a way to lose slowly.
+
+Reputation is the *same* number the single-player encounters use, so a night on
+the platform changes your odds against every mugger and collector afterwards.
+
+**On honesty:** like the leaderboard, this is client-written and not
+adversarially secure. A determined player could edit what their client reports.
+It is built for people who want a game with their friends, and the rules above
+mean the worst a cheat can do is refuse to collect their own losses.
+
 ## Ranked runs, grades and the board
 
 **Three ranked runs a day.** The date deals a slate of three markets — the same
@@ -1311,7 +1407,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 470 tests, no install needed
+python3 -m unittest discover -s tests     # 507 tests, no install needed
 make browser                              # what a suite cannot see (needs Playwright)
 ```
 

@@ -1682,3 +1682,108 @@ class TestBalanceParity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@requires_node
+class TestLiftParity(unittest.TestCase):
+    """Robbing other players must be one rule set, not two.
+
+    This is the feature where drift would be worst: the two ports settle
+    opposite sides of the SAME robbery. The thief's client reads a settlement
+    the mark's client wrote, so if they disagree about what a stake buys, money
+    is created or destroyed between two real players.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["lift"]
+
+    def _mark(self, **over):
+        from cryptowarz.lift import Mark
+        base = dict(uid="m", name="M", station="Wall Street", day=9,
+                    pockets=60_000.0, luck=0.0, weapon=None, rep=0, at=0.0)
+        base.update(over)
+        return Mark(**base)
+
+    def test_every_constant_matches(self):
+        from cryptowarz import lift as L
+
+        for name, value in self.js["constants"].items():
+            self.assertAlmostEqual(value, getattr(L, name), msg=name)
+        self.assertEqual(self.js["answers"], list(L.ANSWERS))
+
+    def test_the_same_coat_is_worth_the_same_to_both(self):
+        from cryptowarz import lift as L
+
+        mark = self._mark()
+        stake = L.stake_for(30_000.0, mark)
+        self.assertAlmostEqual(self.js["stake"], stake)
+        self.assertAlmostEqual(self.js["small_stake"], L.stake_for(2_000.0, mark))
+        self.assertAlmostEqual(self.js["cut"], L.cut_for(mark, stake))
+        self.assertAlmostEqual(self.js["buyoff"], L.buyoff_for(mark, stake))
+
+    def test_the_attempt_is_written_down_identically(self):
+        from cryptowarz import lift as L
+
+        mark = self._mark()
+        stake = L.stake_for(30_000.0, mark)
+        mine = L.open_lift("t", "T", mark, 0.0, None, 0, stake, 9, 0.0)
+        theirs = dict(self.js["open"])
+        self.assertEqual(sorted(mine), sorted(theirs),
+                         "the two ports write different attempt documents")
+        for key, value in mine.items():
+            if isinstance(value, float):
+                self.assertAlmostEqual(theirs[key], value, msg=key)
+            else:
+                self.assertEqual(theirs[key], value, key)
+        self.assertAlmostEqual(self.js["botched"], L.botched_loss(mine))
+
+    def test_both_ports_price_the_same_odds(self):
+        from cryptowarz import lift as L
+
+        mark, geared = self._mark(), self._mark(luck=0.1, weapon="cutter", rep=1)
+        stake = L.stake_for(30_000.0, mark)
+        lift = L.open_lift("t", "T", mark, 0.0, None, 0, stake, 9, 0.0)
+        want = {
+            "bare_on_bare": L.lift_odds(0.0, None, 0, mark),
+            "armed_on_bare": L.lift_odds(0.0, "bat", 0, mark),
+            "bare_on_geared": L.lift_odds(0.0, None, 0, geared),
+            "guard_bare": L.guard_of(0.0, None, 0),
+            "guard_geared": L.guard_of(0.1, "cutter", 1),
+            "brace_bare": L.answer_odds("brace", lift, 0.0, None, 0),
+            "brace_geared": L.answer_odds("brace", lift, 0.1, "cutter", 1),
+            "counter_bare": L.answer_odds("counter", lift, 0.0, None, 0),
+            "counter_armed": L.answer_odds("counter", lift, 0.05, "bat", 0),
+            "buyoff": L.answer_odds("buyoff", lift, 0.0, None, 0),
+        }
+        self.assertEqual(sorted(self.js["odds"]), sorted(want))
+        for key, value in want.items():
+            self.assertAlmostEqual(self.js["odds"][key], value, msg=key)
+
+    def test_the_same_roll_settles_the_same_way_on_both_sides(self):
+        """The one that matters most: two real players read this document."""
+        from cryptowarz import lift as L
+
+        mark = self._mark()
+        stake = L.stake_for(30_000.0, mark)
+        lift = L.open_lift("t", "T", mark, 0.0, None, 0, stake, 9, 0.0)
+        for choice in L.ANSWERS:
+            for roll in (0, 0.5, 0.999):
+                mine = L.settle(lift, choice, roll, 0.05, "pipe", 1)
+                theirs = self.js["settle"][f"{choice}@{roll}"]
+                self.assertEqual(theirs["outcome"], mine["outcome"],
+                                 f"{choice}@{roll}")
+                for key in ("mark_delta", "thief_delta"):
+                    self.assertAlmostEqual(theirs[key], mine[key],
+                                           msg=f"{choice}@{roll}/{key}")
+                for key in ("mark_rep", "thief_rep", "mark_line", "thief_line"):
+                    self.assertEqual(theirs[key], mine[key], f"{choice}@{roll}/{key}")
+
+    def test_the_street_ladder_counts_the_same(self):
+        from cryptowarz import lift as L
+
+        for key, record in (("points_took", {"took": 1}), ("points_held", {"held": 1}),
+                            ("points_lost", {"lost": 1}),
+                            ("points_countered", {"countered": 1})):
+            full = {"took": 0, "held": 0, "lost": 0, "countered": 0, **record}
+            self.assertEqual(self.js["street"][key], L.street_points(full), key)
