@@ -1936,15 +1936,37 @@ const PROGRESS_VERSION = 3;
    it was finally worth weighted by the tier it was played on. A leaderboard
    needs a fixed slate or it just ranks patience. */
 const RUNS_PER_DAY = 3;
+/* The ladder, fitted to where runs actually land rather than to round numbers.
+
+   The old one had a dead bottom half: D and C together caught 3% of runs while
+   F swallowed 41%, because the outcome distribution is bimodal - you compound
+   into six figures or the Shark buries you, and almost nothing ends in
+   between. Moving the thresholds down could not fix that; there was nothing
+   there to catch.
+
+   What fixed it was measuring what the 41% were made of. EVERY failed run ends
+   carrying a debt over $40,000, because an untouched $5,500 loan compounds to
+   $87,247 by day thirty - and two thirds of them still had real money in hand,
+   a median $34,454 against a median debt of $83,417. "F" was telling most of
+   those players they had traded badly when what happened was that they never
+   paid the Shark. Different mistakes, so now different letters. */
 const GRADES = [
   [750000, "S+", "They'll name a station after you."],
   [300000, "S",  "Somebody is going to ask questions."],
   [100000, "A",  "Six figures. Quit while you're ahead."],
   [35000,  "B",  "A real score."],
   [10000,  "C",  "Out of the hole and then some."],
-  [2000,   "D",  "You finished. Barely."],
-  [0,      "F",  "The Shark got paid. You didn't."],
+  [1,      "D",  "You finished clear. Barely, but clear."],
+  [0,      "F",  "Wiped out. The money went and it did not come back."],
 ];
+/* What still being on your feet looks like at the end of a losing run. */
+const STILL_STANDING = 10000;
+/* The run that made money and lost it to interest. Kept off GRADES on purpose:
+   the board ranks on points, a losing run scores zero, and no threshold on a
+   zero can tell these two apart. It takes the run itself. */
+const DEBT_GRADE = "E";
+const DEBT_BLURB = "The Shark ate it. You made money - he made more, "
+  + "every single day, on the loan you never went back for.";
 /* Shown instead of a letter for a run that is not eligible to be ranked. */
 const UNRANKED_GRADE = "G";
 /* A run handed money it did not earn may not touch the board, the goals or the
@@ -1952,7 +1974,22 @@ const UNRANKED_GRADE = "G";
    hand somebody the whole progression for nothing. It costs nothing either -
    the ranked slot stays unspent. */
 function countsForProgress(g) { return !(g && g.hotHand); }
-function runGrade(g) { return countsForProgress(g) ? gradeFor(runPoints(g)) : UNRANKED_GRADE; }
+/* Everything you are holding, before the Shark is subtracted. */
+function grossWorth(g) { return g.player.cash + g.player.vault + g.portfolioValue(); }
+/* A losing run scores zero points whatever happened to it, so the bottom of
+   the ladder cannot be read off the score - it has to be read off the run. */
+function runGrade(g) {
+  if (!countsForProgress(g)) return UNRANKED_GRADE;
+  const points = runPoints(g);
+  if (points > 0) return gradeFor(points);
+  return grossWorth(g) >= STILL_STANDING ? DEBT_GRADE : "F";
+}
+function runBlurb(g) {
+  if (!countsForProgress(g)) return "Practice. Nothing here counts towards anything.";
+  const points = runPoints(g);
+  if (points > 0) return gradeBlurb(points);
+  return grossWorth(g) >= STILL_STANDING ? DEBT_BLURB : gradeBlurb(0);
+}
 function tierMult(tier) { return (TIER_BY_LEVEL[tier] || TIERS[0]).mult; }
 /* Floored at zero: a board that can be dragged down is one where the safe play
    is not to play. */
@@ -2074,7 +2111,7 @@ const SAVE_VERSION = 1;
    cached copy of this page plays by the old ones. A save carrying a stamp older
    than this build is a save written by a page that is still in somebody's
    cache. Bump it whenever the rules move. */
-const BUILD = "2026-09-26";
+const BUILD = "2026-09-27";
 /* -------------------------- taking it with you -----------------------
    The save and the profile live in whatever browser you happened to play in.
    That is fine until a new phone, a cleared cache or a page saved to disk -
@@ -2588,7 +2625,8 @@ if (typeof module !== "undefined") {
                      buyoffFor, botchedLoss, worthLifting, canAffordLift, guardOf,
                      liftOdds, liftAnswerOdds, openLift, settleLift,
                      streetRecord, streetPoints, creditStreet,
-                     runPoints, gradeFor, gradeBlurb, dailySeeds, rollDay,
+                     runPoints, gradeFor, gradeBlurb, runBlurb, grossWorth,
+                     STILL_STANDING, DEBT_GRADE, DEBT_BLURB, dailySeeds, rollDay,
                      runsToday, nextSlot, dailyTotal, recordDaily,
                      PROGRESS_VERSION, CLASSES, CLASS_OF, GEAR, GEAR_BY_KEY, MAX_LEVEL,
                      WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,

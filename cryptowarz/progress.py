@@ -216,15 +216,46 @@ RUNS_PER_DAY = 3
 #: it was played on. Thresholds are the verdict ladder's, subdivided: a run has
 #: to roughly triple to move up a letter, which is a step you can feel without
 #: being a step you can only take by luck.
+#: The ladder, fitted to where runs actually land rather than to round numbers.
+#:
+#: The old one had a dead bottom half: D and C together caught 3% of runs while
+#: F swallowed 41%, because the outcome distribution is bimodal - you either
+#: compound into six figures or the Shark buries you, and almost nothing ends
+#: in between. Moving the thresholds down could not fix that; there was nothing
+#: there to catch.
+#:
+#: What fixed it was measuring what the 41% were actually made of. Every single
+#: failed run - 100% of them - ends carrying a debt over $40,000, because an
+#: untouched $5,500 loan compounds to $87,247 by day thirty. And two thirds of
+#: them still had real money in hand: a median $34,454 against a median debt of
+#: $83,417. So "F" was telling most of those players they had traded badly,
+#: when what had actually happened was that they never paid the Shark.
+#:
+#: Those are different mistakes, so they are now different letters. E is the
+#: run that made money and lost it to interest; F is the run that lost the
+#: money itself. Both are failures. Only one of them is a trading failure.
 GRADES: List[tuple] = [
     (750_000.0, "S+", "They'll name a station after you."),
     (300_000.0, "S",  "Somebody is going to ask questions."),
     (100_000.0, "A",  "Six figures. Quit while you're ahead."),
     (35_000.0,  "B",  "A real score."),
     (10_000.0,  "C",  "Out of the hole and then some."),
-    (2_000.0,   "D",  "You finished. Barely."),
-    (0.0,       "F",  "The Shark got paid. You didn't."),
+    (1.0,       "D",  "You finished clear. Barely, but clear."),
+    (0.0,       "F",  "Wiped out. The money went and it did not come back."),
 ]
+
+#: What still being on your feet looks like at the end of a losing run. Above
+#: this you had something and the debt was simply bigger; below it there was
+#: nothing left to be bigger than.
+STILL_STANDING = 10_000.0
+
+#: The letter for a run that traded its way to real money and still finished
+#: underwater, because the loan outgrew it. Kept off :data:`GRADES` on purpose:
+#: the board ranks on points, a losing run scores zero, and no threshold on a
+#: zero can tell these two apart. It takes the run itself.
+DEBT_GRADE = "E"
+DEBT_BLURB = ("The Shark ate it. You made money - he made more, "
+              "every single day, on the loan you never went back for.")
 
 
 #: Shown instead of a letter for a run that is not eligible to be ranked.
@@ -242,11 +273,36 @@ def counts_for_progress(game) -> bool:
     return not getattr(game, "hot_hand", False)
 
 
+def gross_worth(game) -> float:
+    """Everything you are holding, before the Shark is subtracted."""
+    player = game.player
+    return player.cash + player.vault + player.portfolio_value(game.market)
+
+
 def run_grade(game) -> str:
-    """The letter a finished run is shown. Both front ends must agree."""
+    """The letter a finished run is shown. Both front ends must agree.
+
+    A losing run scores zero points whatever happened to it, so the bottom of
+    the ladder cannot be read off the score - it has to be read off the run.
+    """
     if not counts_for_progress(game):
         return UNRANKED_GRADE
-    return grade(run_points(game))
+    points = run_points(game)
+    if points > 0:
+        return grade(points)
+    return DEBT_GRADE if gross_worth(game) >= STILL_STANDING else "F"
+
+
+def run_blurb(game) -> str:
+    """And the line that goes under the letter, for the same reason."""
+    if not counts_for_progress(game):
+        return "Practice. Nothing here counts towards anything."
+    points = run_points(game)
+    if points > 0:
+        return grade_blurb(points)
+    if gross_worth(game) >= STILL_STANDING:
+        return DEBT_BLURB
+    return grade_blurb(0.0)
 
 
 def tier_mult(tier: int) -> float:

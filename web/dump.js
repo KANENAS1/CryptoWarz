@@ -30,6 +30,33 @@ const out = {
     version: G.PROGRESS_VERSION,
     runs_per_day: G.RUNS_PER_DAY,
     grades: G.GRADES.map(([threshold, letter, blurb]) => ({ threshold, letter, blurb })),
+    /* The bottom of the ladder cannot be read off the score - a losing run is
+       worth zero whatever happened to it - so it is read off the run. Both
+       ports must split it in the same place and say the same thing. */
+    bottom: (() => {
+      const losing = (gross, debt) => {
+        const g = new G.Game(7);
+        g.player.wallet = {}; g.player.vault = 0;
+        g.player.cash = gross; g.player.debt = debt;
+        g.finished = true;
+        return g;
+      };
+      const ate = losing(34000, 83000), wiped = losing(400, 93000);
+      const edge_over = losing(G.STILL_STANDING + 1, 200000);
+      const edge_under = losing(G.STILL_STANDING - 1, 200000);
+      return {
+        still_standing: G.STILL_STANDING,
+        debt_grade: G.DEBT_GRADE, debt_blurb: G.DEBT_BLURB,
+        ate: G.runGrade(ate), wiped: G.runGrade(wiped),
+        ate_blurb: G.runBlurb(ate), wiped_blurb: G.runBlurb(wiped),
+        edge_over: G.runGrade(edge_over), edge_under: G.runGrade(edge_under),
+        ate_points: G.runPoints(ate), wiped_points: G.runPoints(wiped),
+        gross_counts_the_vault: (() => {
+          const g = losing(0, 90000); g.player.vault = 30000;
+          return G.runGrade(g);
+        })(),
+      };
+    })(),
     tier_mults: G.TIERS.map(t => t.mult),
     tiers: G.TIERS.map(t => ({ level: t.level, name: t.name, debt: t.debt,
                                capacity: t.capacity, heat: t.heat, days: t.days })),

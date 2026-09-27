@@ -600,6 +600,71 @@ class TestProgressParity(unittest.TestCase):
 
 
 @requires_node
+@requires_node
+class TestGradeBottomParity(unittest.TestCase):
+    """Both ports must split the bottom of the ladder in the same place.
+
+    The top of the ladder is a threshold on points and drifts visibly if it
+    drifts at all. The bottom is not: a losing run scores zero on both sides
+    whatever happened to it, so the letter comes from reading the run. Two
+    implementations of "read the run" is exactly the kind of thing that goes
+    quietly out of step.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["progress"]["bottom"]
+
+    def losing(self, gross, debt):
+        from cryptowarz.game import Game
+
+        g = Game(seed=7)
+        g.player.wallet.clear()
+        g.player.vault = 0.0
+        g.player.cash = gross
+        g.player.debt = debt
+        g.finished = True
+        return g
+
+    def test_the_boundary_and_the_letter_match(self):
+        from cryptowarz import progress as P
+
+        self.assertAlmostEqual(self.js["still_standing"], P.STILL_STANDING)
+        self.assertEqual(self.js["debt_grade"], P.DEBT_GRADE)
+        self.assertEqual(self.js["debt_blurb"], P.DEBT_BLURB)
+
+    def test_the_two_failures_are_told_apart_identically(self):
+        from cryptowarz import progress as P
+
+        ate, wiped = self.losing(34_000.0, 83_000.0), self.losing(400.0, 93_000.0)
+        self.assertEqual(self.js["ate"], P.run_grade(ate))
+        self.assertEqual(self.js["wiped"], P.run_grade(wiped))
+        self.assertEqual(self.js["ate_blurb"], P.run_blurb(ate))
+        self.assertEqual(self.js["wiped_blurb"], P.run_blurb(wiped))
+
+    def test_they_split_on_the_same_dollar(self):
+        from cryptowarz import progress as P
+
+        over = self.losing(P.STILL_STANDING + 1.0, 200_000.0)
+        under = self.losing(P.STILL_STANDING - 1.0, 200_000.0)
+        self.assertEqual(self.js["edge_over"], P.run_grade(over))
+        self.assertEqual(self.js["edge_under"], P.run_grade(under))
+
+    def test_neither_failure_scores_on_either_port(self):
+        from cryptowarz import progress as P
+
+        self.assertEqual(self.js["ate_points"], 0)
+        self.assertEqual(self.js["wiped_points"], 0)
+        self.assertEqual(P.run_points(self.losing(34_000.0, 83_000.0)), 0.0)
+
+    def test_both_count_the_vault_as_still_standing(self):
+        from cryptowarz import progress as P
+
+        g = self.losing(0.0, 90_000.0)
+        g.player.vault = 30_000.0
+        self.assertEqual(self.js["gross_counts_the_vault"], P.run_grade(g))
+
+
 class TestGearParity(unittest.TestCase):
     """Gear changes the odds, so the two ports must agree on every number.
 

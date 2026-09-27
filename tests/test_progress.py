@@ -224,8 +224,20 @@ class TestGrading(unittest.TestCase):
 
     def test_the_grade_climbs_with_what_you_finished_holding(self):
         letters = [P.grade(P.run_points(self.finished(n)))
-                   for n in (1_000, 5_000, 20_000, 60_000, 150_000, 400_000, 900_000)]
-        self.assertEqual(letters, ["F", "D", "C", "B", "A", "S", "S+"])
+                   for n in (1, 1_000, 20_000, 60_000, 150_000, 400_000, 900_000)]
+        self.assertEqual(letters, ["D", "D", "C", "B", "A", "S", "S+"])
+
+    def test_finishing_a_dollar_clear_is_not_the_same_as_being_wiped_out(self):
+        """The old ladder put "cleared the Shark by $1,000" and "lost
+        everything" in the same box. They are not the same run."""
+        self.assertEqual(P.grade(P.run_points(self.finished(1_000.0))), "D")
+        self.assertEqual(P.grade(P.run_points(self.finished(-4_000.0))), "F")
+
+    def test_every_grade_on_the_ladder_can_be_reached(self):
+        """A letter nothing can earn is not a grade, it is decoration."""
+        reachable = {P.grade(P.run_points(self.finished(n)))
+                     for n in (1, 10_000, 35_000, 100_000, 300_000, 750_000, 2_000_000)}
+        self.assertEqual(reachable, {"D", "C", "B", "A", "S", "S+"})
 
     def test_the_same_run_is_worth_more_on_a_harder_tier(self):
         easy = P.run_points(self.finished(100_000.0, tier=1))
@@ -324,3 +336,73 @@ class TestRankedSlate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheBottomOfTheLadder(unittest.TestCase):
+    """Two completely different failures used to wear the same letter.
+
+    Measured across 600 runs: 41% end owing the Shark, and *every one of them*
+    is carrying a debt over $40,000 - because an untouched $5,500 loan
+    compounds to $87,247 by day thirty. Two thirds of those runs still had real
+    money in hand, a median $34,454 against a median debt of $83,417.
+
+    So "F" was telling most of those players they had traded badly, when what
+    had actually happened was that they never went back to the Shark. That is a
+    different mistake and it now gets a different letter.
+    """
+
+    def losing(self, gross, debt, tier=1):
+        g = Game(seed=7, tier=tier)
+        g.player.wallet.clear()
+        g.player.vault = 0.0
+        g.player.cash = gross
+        g.player.debt = debt
+        g.finalise()
+        g.finished = True
+        return g
+
+    def test_losing_to_the_interest_is_not_losing_the_money(self):
+        ate = self.losing(gross=34_000.0, debt=83_000.0)
+        wiped = self.losing(gross=400.0, debt=93_000.0)
+        self.assertEqual(P.run_grade(ate), P.DEBT_GRADE)
+        self.assertEqual(P.run_grade(wiped), "F")
+        self.assertNotEqual(P.run_blurb(ate), P.run_blurb(wiped))
+
+    def test_the_line_under_the_letter_names_the_shark(self):
+        ate = self.losing(gross=34_000.0, debt=83_000.0)
+        self.assertIn("Shark", P.run_blurb(ate))
+
+    def test_both_of_them_still_score_nothing(self):
+        """Telling the two apart must not make either one worth points: a board
+        that can be dragged down is one where the safe play is not to play."""
+        for g in (self.losing(34_000.0, 83_000.0), self.losing(400.0, 93_000.0)):
+            self.assertEqual(P.run_points(g), 0.0)
+
+    def test_the_split_is_on_what_you_were_holding_not_what_you_owed(self):
+        """Owing more does not make it the other failure - having nothing does."""
+        rich_but_buried = self.losing(gross=50_000.0, debt=500_000.0)
+        self.assertEqual(P.run_grade(rich_but_buried), P.DEBT_GRADE)
+
+    def test_the_boundary_is_where_it_says_it_is(self):
+        just_over = self.losing(P.STILL_STANDING + 1.0, 200_000.0)
+        just_under = self.losing(P.STILL_STANDING - 1.0, 200_000.0)
+        self.assertEqual(P.run_grade(just_over), P.DEBT_GRADE)
+        self.assertEqual(P.run_grade(just_under), "F")
+
+    def test_coins_and_the_vault_count_as_still_standing(self):
+        """It is what you are HOLDING, not what is in your hand."""
+        g = self.losing(gross=0.0, debt=90_000.0)
+        g.player.vault = 30_000.0
+        self.assertEqual(P.run_grade(g), P.DEBT_GRADE)
+
+    def test_a_run_that_cannot_be_ranked_is_still_unranked_whatever_it_lost(self):
+        """The new letter must not become a way round the sandbox rule."""
+        g = self.losing(gross=34_000.0, debt=83_000.0)
+        g.hot_hand = True                    # money it did not earn
+        self.assertFalse(P.counts_for_progress(g))
+        self.assertEqual(P.run_grade(g), P.UNRANKED_GRADE)
+        self.assertNotIn("Shark", P.run_blurb(g))
+
+    def test_the_new_letter_is_not_already_taken(self):
+        self.assertNotIn(P.DEBT_GRADE, [letter for _, letter, _ in P.GRADES])
+        self.assertNotEqual(P.DEBT_GRADE, P.UNRANKED_GRADE)

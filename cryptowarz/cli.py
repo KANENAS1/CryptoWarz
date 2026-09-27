@@ -366,7 +366,10 @@ def play(args) -> int:
                   + ui.c(f"   {points:,.0f} pts"
                          f" (tier {game.tier} ×{progress_module.tier_mult(game.tier):.2f})"
                          if counts else "   unranked", ui.GREY))
-            print("  " + ui.c(progress_module.grade_blurb(points) if counts else
+            # run_blurb, not grade_blurb: a losing run scores zero whatever
+            # happened to it, so the line under the letter has to come from the
+            # run rather than from the score
+            print("  " + ui.c(progress_module.run_blurb(game) if counts else
                               "You found the turnstile. None of this counts, "
                               "and it never did - not even the ranked run.", ui.GREY))
             if counts and getattr(game, "is_daily", False):

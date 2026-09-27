@@ -774,15 +774,55 @@ board. Practice runs stay unlimited and don't touch it.
 **Every finished run gets a grade.** What you are finally worth, weighted by
 the tier you played it on:
 
-| Points | Grade | |
-|---|---|---|
-| $750,000+ | **S+** | They'll name a station after you |
-| $300,000+ | **S** | Somebody is going to ask questions |
-| $100,000+ | **A** | Six figures |
-| $35,000+ | **B** | A real score |
-| $10,000+ | **C** | Out of the hole and then some |
-| $2,000+ | **D** | You finished. Barely |
-| below | **F** | The Shark got paid. You didn't |
+| Points | Grade | | share of runs |
+|---|---|---|---|
+| $750,000+ | **S+** | They'll name a station after you | 5% |
+| $300,000+ | **S** | Somebody is going to ask questions | 8% |
+| $100,000+ | **A** | Six figures | 16% |
+| $35,000+ | **B** | A real score | 14% |
+| $10,000+ | **C** | Out of the hole and then some | 11% |
+| $1+ | **D** | You finished clear. Barely, but clear | 4% |
+| lost, still holding | **E** | The Shark ate it | 29% |
+| lost it all | **F** | Wiped out | 14% |
+
+*(measured, sensible play, Off Peak — `make balance` prints the table for every
+tier)*
+
+### Why there are two ways to fail
+
+The ladder used to have a dead bottom half. D and C together caught **3%** of
+runs while F swallowed **41%**, because the outcome distribution is bimodal:
+you compound into six figures or the Shark buries you, and almost nothing ends
+in between. Moving the thresholds down could not fix that — there was nothing
+there to catch.
+
+What fixed it was measuring what the 41% were actually made of:
+
+- **Every single failed run** ends carrying a debt over $40,000.
+- An untouched $5,500 loan compounds to **$87,247** by day thirty.
+- Two thirds of failures still had real money in hand — a median **$34,454**
+  against a median debt of **$83,417**.
+
+So the failures were not trading failures. Most of those players made money and
+then handed all of it, and more, to a loan they never went back for. "F — the
+Shark got paid, you didn't" was telling them they were bad at the game when
+what they were actually bad at was arithmetic they could not see.
+
+Now it says which. **E** is the run that made money and lost it to interest;
+**F** is the run that lost the money itself. Both are failures, both still
+score zero, and only one of them is a trading failure. The end screen puts the
+line right above the breakdown, so `cash $34,000 / debt −$83,000` is sitting
+underneath the sentence explaining it.
+
+The letter for a losing run cannot be read off the score — a loss is worth zero
+points whatever happened to it — so it is read off the run. That is two
+implementations of "read the run", one per port, which is exactly the kind of
+thing that drifts, so five parity tests hold them to the same dollar.
+
+**D stays rare on purpose** (4%, and 1% on the hard tiers). Finishing between
+one dollar and ten thousand clear means landing on a knife edge between buried
+and compounding away. It should be uncommon; it is the "you just barely made
+it" grade and it would be worth less if it were handed out.
 
 Points are net worth × the tier weight (×1.00 at Off Peak up to ×2.40 at
 Blackout), floored at zero — a board you can drag yourself *down* is a board
@@ -1407,7 +1447,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 507 tests, no install needed
+python3 -m unittest discover -s tests     # 522 tests, no install needed
 make browser                              # what a suite cannot see (needs Playwright)
 ```
 

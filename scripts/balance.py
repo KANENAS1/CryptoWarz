@@ -160,6 +160,7 @@ def main() -> int:
         problems.append(f"a sensible strategy only survives {solvent:.0%} of runs - it is punishing, not hard")
 
     problems += lift_table()
+    problems += grade_table()
 
     for problem in problems:
         print(f"  BALANCE: {problem}")
@@ -168,6 +169,66 @@ def main() -> int:
     print()
     return 1 if problems else 0
 
+
+def grade_table():
+    """Does every letter on the ladder catch anything?
+
+    The old ladder had a dead bottom half - D and C together caught 3% of runs
+    while F swallowed 41% - because the outcome distribution is bimodal. A
+    grade nothing can earn is decoration, so this counts them.
+    """
+    import collections
+
+    from cryptowarz.progress import DEBT_GRADE, GRADES, run_grade
+    from cryptowarz.stations import STATIONS
+
+    def one(seed, strategy, tier):
+        game = Game(seed=seed, tier=tier)
+        for _ in range(DAYS):
+            if game.finished:
+                break
+            try:
+                strategy(game)
+            except (ValueError, KeyError):
+                pass
+            options = [s.name for s in STATIONS if s.name != game.station.name]
+            try:
+                game.travel(game.rng.choice(options))
+            except ValueError:
+                break
+            _answer(game)
+        game.finished = True
+        return game
+
+    order = [letter for _, letter, _ in GRADES[:-1]] + [DEBT_GRADE, "F"]
+    strategy = dict(STRATEGIES)["+ clear the debt"]
+    print("  THE GRADE LADDER")
+    print(f"  {GRADE_RUNS} runs of a sensible strategy, per tier.")
+    print()
+    print("  " + " " * 8 + "".join(f"{g:>7}" for g in order))
+    seen = collections.Counter()
+    for tier in (1, 3, 5):
+        counts = collections.Counter(run_grade(one(i, strategy, tier))
+                                     for i in range(GRADE_RUNS))
+        seen += counts
+        row = "".join(f"{100 * counts.get(g, 0) / GRADE_RUNS:>6.0f}%" for g in order)
+        print(f"  tier {tier}  {row}")
+    print()
+
+    total = sum(seen.values())
+    dead = [g for g in order if seen.get(g, 0) / total < 0.005]
+    if dead:
+        return [f"nothing earns {', '.join(dead)} - a grade that cannot be "
+                f"reached is decoration, not a ladder"]
+    biggest = max(order, key=lambda g: seen.get(g, 0))
+    if seen[biggest] / total > 0.5:
+        return [f"{biggest} swallows {seen[biggest] / total:.0%} of all runs - "
+                f"the ladder is one letter wearing a costume"]
+    return []
+
+
+#: How many runs per tier the grade table simulates.
+GRADE_RUNS = 250
 
 #: Four ways a player can turn up to a robbery, from nothing to everything.
 KITS = (("bare", 0.00, None, 0), ("nervy", 0.03, "pipe", 0),

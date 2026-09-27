@@ -1318,15 +1318,18 @@ function showFinal(){
 
   const rank = board.findIndex(s => Math.abs(s.net_worth - score) < 1e-9);
   $("fgrade").textContent = letter;
-  $("fgrade").className = "grade " + (!counts ? "g" : letter === "F" ? "f" : letter[0] === "S" ? "s" : "");
+  $("fgrade").className = "grade " + (!counts ? "g"
+    : (letter === "F" || letter === DEBT_GRADE) ? "f" : letter[0] === "S" ? "s" : "");
   $("fpoints").textContent = counts
     ? `${Math.round(points).toLocaleString()} PTS · TIER ${g.tier} ×${tierMult(g.tier).toFixed(2)}`
       + (ranked ? ` · RANKED RUN ${g.dailySlot + 1}` : " · PRACTICE")
     : "GOD MODE · UNRANKED";
   $("fscore").textContent = fmtMoney(score);
   $("fscore").className = "big num " + (score >= 0 ? "up" : "down");
+  // runBlurb, not gradeBlurb: a losing run scores zero whatever happened to it,
+  // so the line under the letter has to come from the run rather than the score
   $("fverdict").textContent = counts
-    ? gradeBlurb(points)
+    ? runBlurb(g)
     : "You found the turnstile. None of this counts, and it never did.";
   $("fbreak").innerHTML = [
     ["cash", fmtMoney(p.cash)], ["vault", fmtMoney(p.vault)],
