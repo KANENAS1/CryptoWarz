@@ -97,6 +97,18 @@
          padding:9px 12px;border-radius:3px;margin:10px 0}
   .alert.bad{background:var(--red);color:#fff}
   /* why a ride was refused, in the sheet, where it cannot fade away */
+  /* which way the whole board is running today */
+  .weather{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;
+    padding:7px 10px;margin:0 0 7px;border-radius:7px;font-size:10px;
+    letter-spacing:.07em;border:1px solid var(--line);background:var(--card)}
+  .weather .who{color:var(--dim);font-weight:700}
+  .weather .lvl{font-weight:700}
+  .weather .txt{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:11px}
+  .wx-euphoria{border-color:var(--green)} .wx-euphoria .lvl{color:var(--green)}
+  .wx-bull .lvl{color:var(--green)}
+  .wx-chop .lvl{color:var(--dim)}
+  .wx-bear .lvl{color:var(--yellow)}
+  .wx-capitulation{border-color:var(--red)} .wx-capitulation .lvl{color:var(--red)}
   .stopwhy{margin-top:8px;padding:9px 10px;border:1px solid var(--red);
     border-radius:7px;color:var(--red);font-size:12px;line-height:1.35}
   /* somebody else's run, seen from across the platform */
@@ -423,6 +435,7 @@ catch (e) { document.documentElement.dataset.framed = "1"; }
       screen still works: copy your line before you close the tab.
     </div>
     <div class="wire" id="wire" hidden></div>
+    <div class="weather" id="weather" hidden></div>
     <div id="alerts"></div>
     <div class="deadend" id="deadend" hidden>
       <div class="t">STRANDED</div>
@@ -797,11 +810,60 @@ const TREND_FLIP = 0.22, TREND_STRENGTH = 0.55;
    check whether it has been. */
 const HISTORY_KEPT = 20, SPARK_DAYS = 14;
 
+/* ------------------------------- the tide ----------------------------
+   Every coin used to drift entirely alone: SHIB and BTC had a daily
+   correlation of +0.01, and across 1,500 markets the whole board was never
+   red. That made spreading your money a free lunch - a higher median return
+   AND a third of the variance, with nothing given up for it.
+
+   So there is one number a day that every coin rides according to its class.
+   The crucial decision is that it is carved OUT of each coin's volatility
+   rather than piled on: both the coin split and the tide's own regime/noise
+   split square to one, so a single coin swings as hard as it always did and
+   the correlation comes from redistributing variance the market already had.
+
+   What it does NOT do, measured five ways: create a decision. A bot handed
+   tomorrow's regime does WORSE than one ignoring the weather, whether it
+   rotates to USDC, tilts by beta or banks ahead of it. The edge here is mean
+   reversion and the debt compounds at 10% a day, so being out of the market is
+   never affordable. The tide is texture and a price on diversifying. See
+   cryptowarz/market.py for the numbers. */
+const TIDE_SHARE = 0.30;
+const IDIO_SHARE = Math.sqrt(1 - TIDE_SHARE * TIDE_SHARE);
+const TIDE_FLIP = 0.16;
+const TIDE_REGIME = 0.85;
+const TIDE_BETA = { meme: 1.22, alt: 0.94, major: 0.69, stable: 0 };
+const TIDE_LEVELS = [
+  [0.65, "EUPHORIA", "Everything is green. Nobody is asking why."],
+  [0.22, "BULL", "The whole board is drifting up."],
+  [-0.22, "CHOP", "No direction. Coins are on their own."],
+  [-0.65, "BEAR", "The whole board is leaking."],
+  [-9.9, "CAPITULATION", "Everything is red. Everyone is selling everything."],
+];
+const TYPICAL_VOL = COINS.filter(c => c.symbol !== "USDC")
+  .reduce((a, c) => a + c.vol, 0) / Math.max(1, COINS.filter(c => c.symbol !== "USDC").length);
+function betaOf(symbol) { return TIDE_BETA[CLASS_OF[symbol] || "alt"] || 0; }
+/* Named off the REGIME, not today's draw: a label that flickered daily would
+   be a label nobody could act on. */
+function tideLevel(trend) {
+  const scaled = trend / Math.max(1e-9, TYPICAL_VOL * TIDE_SHARE * TIDE_REGIME);
+  const row = TIDE_LEVELS.find(r => scaled >= r[0]) || TIDE_LEVELS[TIDE_LEVELS.length - 1];
+  return row[1];
+}
+function tideBlurb(trend) {
+  const scaled = trend / Math.max(1e-9, TYPICAL_VOL * TIDE_SHARE * TIDE_REGIME);
+  const row = TIDE_LEVELS.find(r => scaled >= r[0]) || TIDE_LEVELS[TIDE_LEVELS.length - 1];
+  return row[2];
+}
+
 function MarketState(rng) {
   this.levels = {};
   /* the current run for each coin: a daily push that persists a few days */
   this.trends = {};
   for (const c of COINS) this.trends[c.symbol] = 0;
+  /* the market's own run, and today's draw from it. Both ride the save. */
+  this.tide_trend = 0;
+  this.tide = 0;
   for (const c of COINS) {
     // clamped to the coin's own range - an unclamped USDC opened as low as
     // $0.78, which made the safe asset the best trade on the board
@@ -819,17 +881,31 @@ MarketState.prototype.remember = function () {
   }
 };
 MarketState.prototype.running = function (sym) { return this.trends[sym] || 0; };
+/* One number for the whole board, before any coin moves. Correlation is not
+   something coins do to each other - it is something they all do to the same
+   number. */
+MarketState.prototype.rollTide = function (rng) {
+  const budget = TYPICAL_VOL * TIDE_SHARE;
+  if (rng.random() < TIDE_FLIP) this.tide_trend = rng.gauss(0, budget * TIDE_REGIME);
+  this.tide = this.tide_trend
+    + rng.gauss(0, budget * Math.sqrt(Math.max(0, 1 - TIDE_REGIME * TIDE_REGIME)));
+};
 MarketState.prototype.drift = function (rng) {
+  this.rollTide(rng);
   for (const c of COINS) {
     let level = this.levels[c.symbol];
     if (c.symbol === "USDC") {
+      // immune by construction, and that is what it is FOR
       this.levels.USDC = Math.max(0.97, Math.min(1.03, level * rng.uniform(0.997, 1.003)));
       continue;
     }
     // the run re-rolls now and then; the rest of the time it carries on, which
     // is what turns a walk into a pump and then a dump
     if (rng.random() < TREND_FLIP) this.trends[c.symbol] = rng.gauss(0, c.vol * TREND_STRENGTH);
-    const step = this.trends[c.symbol] + rng.gauss(0, c.vol);
+    // the coin's own noise is REDUCED to make room for the tide, so the two
+    // shares square to one and a coin swings as hard as it always did
+    const step = this.trends[c.symbol] + rng.gauss(0, c.vol * IDIO_SHARE)
+               + betaOf(c.symbol) * this.tide;
     const pull = level > 0 ? c.pull * Math.log(c.mid / level) : 0;
     level *= Math.exp(step + pull);
     this.levels[c.symbol] = Math.max(c.low * 0.4, Math.min(level, c.high * 1.6));
@@ -902,6 +978,12 @@ const FARE_BUFFER = 0.01;
    that believing one stays a decision. */
 const TIP_CHANCE = 0.6, TIP_ACCURACY = 0.85;
 const TIP_MIN_RUN = 0.5, TIP_FRESH_FOR = 3;
+/* Word you go out and GET, rather than word that happens to you. Ranked on
+   purpose: somebody riding the same trains knows more than a tout working one
+   platform. The platform gave other players exactly one use - a coat to go
+   through - and a system whose only verb is violence is a thin system. */
+const LEAK_ACCURACY = 0.95, TOUT_ACCURACY = 0.70;
+const ASK_SHARE = 0.06, ASK_MIN = 200, ASK_MAX = 6000, TOUT_DISCOUNT = 0.5;
 
 /* ------------------------------ the wheel -----------------------------
    Somebody has a prize wheel on the mezzanine at some stops. ONE SPIN PER STOP
@@ -1112,19 +1194,70 @@ Object.defineProperty(Game.prototype, "tip", {
     return (this.day - (rumour.day || 0)) > TIP_FRESH_FOR ? null : rumour;
   } });
 /* The man on the dice passes on what he heard. Sometimes it is true. */
+/* Two different questions, and the difference is the whole value of a leak.
+   Gossip picks the LOUDEST coin, which sounds like good information and
+   measurably is not: the loudest coin has travelled furthest from its middle
+   and the pull back is about to eat the run. Told right 95% of the time, that
+   tip still only lands 56%.
+
+   A shrewd source asks the better question - not what is moving hardest, but
+   what is moving hardest WITH ROOM LEFT. The run plus the pull rather than the
+   run alone, which is to say where the price is actually expected to go. That
+   one lands 69%. Accuracy was never the lever; knowing the right thing was. */
+Game.prototype.worthGossipingAbout = function (shrewd) {
+  const risky = COINS.filter(c => c.symbol !== "USDC");
+  let best = null;
+  for (const c of risky) {
+    let value;
+    if (shrewd) {
+      const level = this.state.levels[c.symbol];
+      const pull = level > 0 ? c.pull * Math.log(c.mid / level) : 0;
+      value = this.state.running(c.symbol) + pull;
+    } else {
+      value = this.state.running(c.symbol);
+    }
+    if (Math.abs(value) < c.vol * TIP_MIN_RUN) continue;
+    if (!best || Math.abs(value) > Math.abs(best[1])) best = [c.symbol, value];
+  }
+  return best;
+};
+Game.prototype.writeTip = function (symbol, trend, accuracy, source) {
+  const goingUp = this.rng.random() < accuracy ? trend > 0 : trend <= 0;
+  this.stats.tip = { symbol: symbol, up: goingUp, day: this.day, from: source };
+  return goingUp;
+};
 Game.prototype.hearSomething = function () {
   if (this.rng.random() > TIP_CHANCE) return [];
-  const running = COINS
-    .filter(c => c.symbol !== "USDC"
-                 && Math.abs(this.state.running(c.symbol)) >= c.vol * TIP_MIN_RUN)
-    .map(c => [c.symbol, this.state.running(c.symbol)]);
-  if (!running.length) return [];
-  const [symbol, trend] = running.reduce((a, b) => Math.abs(b[1]) > Math.abs(a[1]) ? b : a);
-  const truthful = this.rng.random() < TIP_ACCURACY;
-  const goingUp = truthful ? trend > 0 : trend <= 0;
-  this.stats.tip = { symbol: symbol, up: goingUp, day: this.day };
+  const found = this.worthGossipingAbout(false);
+  if (!found) return [];
+  const goingUp = this.writeTip(found[0], found[1], TIP_ACCURACY, "the dice");
   const word = goingUp ? "about to run" : "about to fall over";
-  return [`"Word is ${COIN[symbol].name} is ${word}." He might be wrong. He usually isn't.`];
+  return [`"Word is ${COIN[found[0]].name} is ${word}." He might be wrong. He usually isn't.`];
+};
+/* What a word costs. Scaled to the run: information is worth more when there
+   is more riding on it, and a flat price stops mattering by day twenty. */
+Game.prototype.askPrice = function (tout) {
+  const price = Math.max(ASK_MIN, Math.min(ASK_MAX, Math.max(0, this.player.cash) * ASK_SHARE));
+  return price * (tout ? TOUT_DISCOUNT : 1);
+};
+Game.prototype.askAround = function (tout) {
+  this.notNow();
+  const price = this.askPrice(tout);
+  if (this.player.cash + 1e-9 < price) {
+    throw new Error(`that costs $${Math.round(price).toLocaleString()} and you have not got it`);
+  }
+  const found = this.worthGossipingAbout(!tout);
+  if (!found) throw new Error("nobody has heard anything worth repeating today");
+  this.player.cash -= price;
+  const goingUp = this.writeTip(found[0], found[1],
+                                tout ? TOUT_ACCURACY : LEAK_ACCURACY,
+                                tout ? "a tout" : "the platform");
+  const word = goingUp ? "about to run" : "about to fall over";
+  const who = tout ? "A man working the platform says"
+                   : "They lean in. Word from somebody actually riding this line:";
+  const message = `${who} ${COIN[found[0]].name} is ${word}.`;
+  this.say(message);
+  return message;
 };
 
 /* -------------------------------- broker ----------------------------- */
@@ -2718,7 +2851,7 @@ const SAVE_VERSION = 1;
    cached copy of this page plays by the old ones. A save carrying a stamp older
    than this build is a save written by a page that is still in somebody's
    cache. Bump it whenever the rules move. */
-const BUILD = "2026-09-27";
+const BUILD = "2026-09-27b";
 /* -------------------------- taking it with you -----------------------
    The save and the profile live in whatever browser you happened to play in.
    That is fine until a new phone, a cleared cache or a page saved to disk -
@@ -2857,6 +2990,9 @@ function saveToDict(g) {
        forgets which way everything was going - a different market wearing the
        same numbers. */
     trends: Object.assign({}, g.state.trends || {}),
+    /* the weather, which reloads with the run for the same reason the dice do */
+    tide: +(g.state.tide || 0),
+    tide_trend: +(g.state.tide_trend || 0),
     /* the chart the player has been reading. Dropping it on reload would blank
        every sparkline mid-run, which looks exactly like a bug. */
     history: Object.fromEntries(Object.entries(g.state.history || {})
@@ -2942,6 +3078,10 @@ function saveFromDict(data) {
   const savedTrends = data.trends || {};
   g.state.trends = {};
   for (const c of COINS) g.state.trends[c.symbol] = Number(savedTrends[c.symbol]) || 0;
+  // read with a default so a save from before the tide still loads - it simply
+  // resumes in flat water and picks the weather up from the next day
+  g.state.tide = Number(data.tide) || 0;
+  g.state.tide_trend = Number(data.tide_trend) || 0;
   g.market = { station: g.station, prices: Object.assign({}, data.market.prices),
                shock: data.market.shock ? Object.assign({ crash: data.market.shock.factor < 1 },
                                                         data.market.shock) : null,
@@ -3239,8 +3379,12 @@ if (false) {
                      WINS_FOR_LEVEL, LUCK_PER_LEVEL, WIN_AT, levelFor, levelsFromWins,
                      luckOf, luckBySymbol, bestLuck, winningClass, creditWin,
                      stationMarkup, BIAS_COMPRESSION, TREND_FLIP, TREND_STRENGTH,
+                     TIDE_SHARE, IDIO_SHARE, TIDE_FLIP, TIDE_REGIME, TIDE_BETA,
+                     TIDE_LEVELS, TYPICAL_VOL, betaOf, tideLevel, tideBlurb,
                      HISTORY_KEPT, SPARK_DAYS,
                      TIP_CHANCE, TIP_ACCURACY, TIP_MIN_RUN, TIP_FRESH_FOR,
+                     LEAK_ACCURACY, TOUT_ACCURACY, ASK_SHARE, ASK_MIN, ASK_MAX,
+                     TOUT_DISCOUNT,
                      RETUNE_COST, MAX_NAME, displayName, cleanName, renameGear, retuneGear,
                      creditWheel, WHEEL, WHEEL_LINES,
                      BROKER_PRICE, brokerOffer,
@@ -3460,6 +3604,17 @@ function render(){
       <div class="odds">${w.chance > 0
         ? `1 in ${Math.round(1 / w.chance)} per stop · ${Math.round(w.two_stops * 100)}% over the next two`
         : `no raids for ${w.grace_left} more day${w.grace_left === 1 ? "" : "s"}`}</div></div>`;
+
+  // The weather. Not a tip and not an edge - measured five ways, knowing which
+  // way the tide runs is worth nothing - but it is the difference between "my
+  // coins all fell" and "the board fell", and a market game that will not tell
+  // you which is being coy about its own dice.
+  const weather = tideLevel(g.state.tide_trend || 0);
+  const wx = $("weather");
+  wx.hidden = false;
+  wx.className = "weather wx-" + weather.toLowerCase();
+  wx.innerHTML = `<span class="who">THE BOARD</span> <span class="lvl">${weather}</span>
+    <span class="txt">${esc(tideBlurb(g.state.tide_trend || 0))}</span>`;
 
   const st = g.station, svc = [];
   // every station sells fares, and that is the point of them: insurance you
@@ -4353,10 +4508,11 @@ function renderPlatform(){
   }
   const usable = marks.filter(m => worthLifting(m, p.cash));
   $("platnote").textContent = marks.length
-    ? `What you can take is bought by what you put up — and only from their pockets. `
-      + `Anything they vaulted is out of reach, and so is every coin they hold.`
-    : `Nobody worth looking at. Runs are invisible for their first ${LIFT_GRACE_DAYS} days, `
-      + `and a mark goes cold after three.`;
+    ? `Somebody standing here is worth two things and you get one of them: what `
+      + `they know, or what is in their coat. Only their pockets can be taken — `
+      + `the vault and every coin they hold are out of reach.`
+    : `Nobody riding this line today. Runs are invisible for their first `
+      + `${LIFT_GRACE_DAYS} days, and a mark goes cold after three.`;
   $("platlist").innerHTML = usable.map(m => {
     const stake = stakeFor(p.cash, m), cut = cutFor(m, stake);
     const load = Math.max(0, Math.min(1, m.pockets / Math.max(1, p.cash_cap)));
@@ -4370,12 +4526,26 @@ function renderPlatform(){
         <div class="kit">${kitChips(m)}</div>
       </div>
       <div style="text-align:right">
-        ${tried ? `<div class="sub">TRIED TODAY</div>`
-          : broke ? `<div class="sub">CAN'T COVER IT</div>`
-          : `<button data-lift="${esc(m.uid)}" class="go">PUT UP ${fmtMoney(stake)}</button>
-             <div class="sub" style="margin-top:5px">TO TAKE ${fmtMoney(cut)}</div>`}
+        ${tried ? `<div class="sub">HAD YOUR GO TODAY</div>` : `
+          <button data-ask="${esc(m.uid)}">ASK · ${fmtMoney(game.askPrice(false))}</button>
+          <div class="sub" style="margin:5px 0 7px">WHAT THEY KNOW</div>
+          ${broke ? `<div class="sub">CAN'T COVER A LIFT</div>`
+            : `<button data-lift="${esc(m.uid)}" class="go">PUT UP ${fmtMoney(stake)}</button>
+               <div class="sub" style="margin-top:5px">TO TAKE ${fmtMoney(cut)}</div>`}`}
       </div></div>`;
-  }).join("") || `<div class="d">Nothing here worth the risk.</div>`;
+  }).join("") || "";
+  // Nobody here is not nothing here. A tout works every platform, charges half
+  // what a player does and is worth rather less than half - he gossips about
+  // whatever is loudest, which is measurably the worst question to ask.
+  $("platlist").innerHTML += `<div class="mk">
+      <div><div class="who">A man working the platform</div>
+        <div class="sub">${usable.length ? "ALSO HERE" : "THE ONLY ONE HERE"}
+          · KNOWS WHAT EVERYONE KNOWS</div>
+        <div class="kit"><span class="chip">SECOND-HAND</span></div></div>
+      <div style="text-align:right">
+        <button data-tout="1">ASK · ${fmtMoney(game.askPrice(true))}</button>
+        <div class="sub" style="margin-top:5px">CHEAP, AND WORTH IT</div>
+      </div></div>`;
 }
 
 async function openPlatform(){
@@ -4537,9 +4707,28 @@ async function platformBoot(){
 }
 
 $("platclose").addEventListener("click", closeSheets);
+/* Info or the coat, and you get one of them. Asking spends the same daily go
+   at somebody that going through their pockets does, which is what makes it a
+   choice rather than a free extra. */
+function askSomebody(uid, tout){
+  if (game.pending) return platSay("There is somebody in front of you. Answer him first.");
+  if (!tout && alreadyTried(uid)) return platSay("You have had your go at them today.");
+  let said;
+  try { said = game.askAround(!!tout); }
+  catch (err) { return platSay(err.message); }
+  if (!tout) noteLift(uid);
+  closeSheets();
+  render();
+  persist();
+  flash(said, true);
+}
 $("platlist").addEventListener("click", e => {
-  const b = e.target.closest("[data-lift]");
-  if (b) attemptLift(b.dataset.lift);
+  const lift = e.target.closest("[data-lift]");
+  if (lift) return attemptLift(lift.dataset.lift);
+  const ask = e.target.closest("[data-ask]");
+  if (ask) return askSomebody(ask.dataset.ask, false);
+  const tout = e.target.closest("[data-tout]");
+  if (tout) return askSomebody(null, true);
 });
 $("liftchoices").addEventListener("click", e => {
   const b = e.target.closest("[data-lanswer]");

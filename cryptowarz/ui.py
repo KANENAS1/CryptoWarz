@@ -523,6 +523,7 @@ HELP = f"""
     borrow <amt> / repay <amt|all>   {c('only where The Shark works ($)', GREY)}
     deposit <amt> / withdraw <amt>   {c('only at a vault (V)', GREY)}
     wallet <n> / vpn / carry         {c('upgrades at a shop (S)', GREY)}
+    ask                              {c('buy what a tout knows', GREY)}
 
   {c('ELSE', MAG, True)}
     look        {c('redraw the market', GREY)}

@@ -105,6 +105,10 @@ def handle(game: Game, raw: str) -> List[str]:
         return [game.buy_vpn()]
     if cmd in ("omny", "card", "rides", "metrocard"):
         return [game.buy_rides()]
+    if cmd in ("ask", "word"):
+        # the terminal has no platform - there is nobody else on this line -
+        # so the only source here is the tout, who works every station
+        return [game.ask_around(tout=True)]
     if cmd in ("carry", "buyweapon", "arm"):
         from .encounter import FOR_SALE, WEAPON_BY_KEY
         if not args:

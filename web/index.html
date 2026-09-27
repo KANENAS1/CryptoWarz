@@ -96,6 +96,18 @@
          padding:9px 12px;border-radius:3px;margin:10px 0}
   .alert.bad{background:var(--red);color:#fff}
   /* why a ride was refused, in the sheet, where it cannot fade away */
+  /* which way the whole board is running today */
+  .weather{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;
+    padding:7px 10px;margin:0 0 7px;border-radius:7px;font-size:10px;
+    letter-spacing:.07em;border:1px solid var(--line);background:var(--card)}
+  .weather .who{color:var(--dim);font-weight:700}
+  .weather .lvl{font-weight:700}
+  .weather .txt{color:var(--dim);letter-spacing:.02em;text-transform:none;font-size:11px}
+  .wx-euphoria{border-color:var(--green)} .wx-euphoria .lvl{color:var(--green)}
+  .wx-bull .lvl{color:var(--green)}
+  .wx-chop .lvl{color:var(--dim)}
+  .wx-bear .lvl{color:var(--yellow)}
+  .wx-capitulation{border-color:var(--red)} .wx-capitulation .lvl{color:var(--red)}
   .stopwhy{margin-top:8px;padding:9px 10px;border:1px solid var(--red);
     border-radius:7px;color:var(--red);font-size:12px;line-height:1.35}
   /* somebody else's run, seen from across the platform */
@@ -422,6 +434,7 @@ catch (e) { document.documentElement.dataset.framed = "1"; }
       screen still works: copy your line before you close the tab.
     </div>
     <div class="wire" id="wire" hidden></div>
+    <div class="weather" id="weather" hidden></div>
     <div id="alerts"></div>
     <div class="deadend" id="deadend" hidden>
       <div class="t">STRANDED</div>
@@ -813,6 +826,17 @@ function render(){
       <div class="odds">${w.chance > 0
         ? `1 in ${Math.round(1 / w.chance)} per stop · ${Math.round(w.two_stops * 100)}% over the next two`
         : `no raids for ${w.grace_left} more day${w.grace_left === 1 ? "" : "s"}`}</div></div>`;
+
+  // The weather. Not a tip and not an edge - measured five ways, knowing which
+  // way the tide runs is worth nothing - but it is the difference between "my
+  // coins all fell" and "the board fell", and a market game that will not tell
+  // you which is being coy about its own dice.
+  const weather = tideLevel(g.state.tide_trend || 0);
+  const wx = $("weather");
+  wx.hidden = false;
+  wx.className = "weather wx-" + weather.toLowerCase();
+  wx.innerHTML = `<span class="who">THE BOARD</span> <span class="lvl">${weather}</span>
+    <span class="txt">${esc(tideBlurb(g.state.tide_trend || 0))}</span>`;
 
   const st = g.station, svc = [];
   // every station sells fares, and that is the point of them: insurance you
@@ -1706,10 +1730,11 @@ function renderPlatform(){
   }
   const usable = marks.filter(m => worthLifting(m, p.cash));
   $("platnote").textContent = marks.length
-    ? `What you can take is bought by what you put up — and only from their pockets. `
-      + `Anything they vaulted is out of reach, and so is every coin they hold.`
-    : `Nobody worth looking at. Runs are invisible for their first ${LIFT_GRACE_DAYS} days, `
-      + `and a mark goes cold after three.`;
+    ? `Somebody standing here is worth two things and you get one of them: what `
+      + `they know, or what is in their coat. Only their pockets can be taken — `
+      + `the vault and every coin they hold are out of reach.`
+    : `Nobody riding this line today. Runs are invisible for their first `
+      + `${LIFT_GRACE_DAYS} days, and a mark goes cold after three.`;
   $("platlist").innerHTML = usable.map(m => {
     const stake = stakeFor(p.cash, m), cut = cutFor(m, stake);
     const load = Math.max(0, Math.min(1, m.pockets / Math.max(1, p.cash_cap)));
@@ -1723,12 +1748,26 @@ function renderPlatform(){
         <div class="kit">${kitChips(m)}</div>
       </div>
       <div style="text-align:right">
-        ${tried ? `<div class="sub">TRIED TODAY</div>`
-          : broke ? `<div class="sub">CAN'T COVER IT</div>`
-          : `<button data-lift="${esc(m.uid)}" class="go">PUT UP ${fmtMoney(stake)}</button>
-             <div class="sub" style="margin-top:5px">TO TAKE ${fmtMoney(cut)}</div>`}
+        ${tried ? `<div class="sub">HAD YOUR GO TODAY</div>` : `
+          <button data-ask="${esc(m.uid)}">ASK · ${fmtMoney(game.askPrice(false))}</button>
+          <div class="sub" style="margin:5px 0 7px">WHAT THEY KNOW</div>
+          ${broke ? `<div class="sub">CAN'T COVER A LIFT</div>`
+            : `<button data-lift="${esc(m.uid)}" class="go">PUT UP ${fmtMoney(stake)}</button>
+               <div class="sub" style="margin-top:5px">TO TAKE ${fmtMoney(cut)}</div>`}`}
       </div></div>`;
-  }).join("") || `<div class="d">Nothing here worth the risk.</div>`;
+  }).join("") || "";
+  // Nobody here is not nothing here. A tout works every platform, charges half
+  // what a player does and is worth rather less than half - he gossips about
+  // whatever is loudest, which is measurably the worst question to ask.
+  $("platlist").innerHTML += `<div class="mk">
+      <div><div class="who">A man working the platform</div>
+        <div class="sub">${usable.length ? "ALSO HERE" : "THE ONLY ONE HERE"}
+          · KNOWS WHAT EVERYONE KNOWS</div>
+        <div class="kit"><span class="chip">SECOND-HAND</span></div></div>
+      <div style="text-align:right">
+        <button data-tout="1">ASK · ${fmtMoney(game.askPrice(true))}</button>
+        <div class="sub" style="margin-top:5px">CHEAP, AND WORTH IT</div>
+      </div></div>`;
 }
 
 async function openPlatform(){
@@ -1890,9 +1929,28 @@ async function platformBoot(){
 }
 
 $("platclose").addEventListener("click", closeSheets);
+/* Info or the coat, and you get one of them. Asking spends the same daily go
+   at somebody that going through their pockets does, which is what makes it a
+   choice rather than a free extra. */
+function askSomebody(uid, tout){
+  if (game.pending) return platSay("There is somebody in front of you. Answer him first.");
+  if (!tout && alreadyTried(uid)) return platSay("You have had your go at them today.");
+  let said;
+  try { said = game.askAround(!!tout); }
+  catch (err) { return platSay(err.message); }
+  if (!tout) noteLift(uid);
+  closeSheets();
+  render();
+  persist();
+  flash(said, true);
+}
 $("platlist").addEventListener("click", e => {
-  const b = e.target.closest("[data-lift]");
-  if (b) attemptLift(b.dataset.lift);
+  const lift = e.target.closest("[data-lift]");
+  if (lift) return attemptLift(lift.dataset.lift);
+  const ask = e.target.closest("[data-ask]");
+  if (ask) return askSomebody(ask.dataset.ask, false);
+  const tout = e.target.closest("[data-tout]");
+  if (tout) return askSomebody(null, true);
 });
 $("liftchoices").addEventListener("click", e => {
   const b = e.target.closest("[data-lanswer]");

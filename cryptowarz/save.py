@@ -42,7 +42,7 @@ SAVE_VERSION = 1
 #: matters - a browser serving a cached copy of the page plays by the old rules
 #: and the save it writes carries an older stamp than the build reading it.
 #: Bump it whenever the rules move, and keep it identical to web/game.js.
-BUILD = "2026-09-27"
+BUILD = "2026-09-27b"
 MAX_SCORES = 25
 
 
@@ -120,6 +120,11 @@ def to_dict(game) -> Dict[str, Any]:
         # prices and forget which way everything was going, which is a different
         # market wearing the same numbers.
         "trends": dict(getattr(game.state, "trends", {}) or {}),
+        # the weather, which reloads with the run for the same reason the
+        # dice do: a reload that reshuffled the regime would be a reload
+        # that rerolled it
+        "tide": float(getattr(game.state, "tide", 0.0)),
+        "tide_trend": float(getattr(game.state, "tide_trend", 0.0)),
         # the chart the player has been reading. Dropping it on reload would
         # blank every sparkline mid-run, which looks exactly like a bug.
         "history": {sym: list(vals) for sym, vals
@@ -209,6 +214,10 @@ def from_dict(data: Dict[str, Any]):
                      or [state.levels.get(sym, 0.0)] for sym in known}
     saved_trends = data.get("trends") or {}
     state.trends = {sym: float(saved_trends.get(sym, 0.0)) for sym in known}
+    # read with a default so a save from before the tide still loads - it simply
+    # resumes in flat water and picks the weather up from the next day
+    state.tide = float(data.get("tide") or 0.0)
+    state.tide_trend = float(data.get("tide_trend") or 0.0)
     game.state = state
 
     shock_data = data["market"].get("shock")

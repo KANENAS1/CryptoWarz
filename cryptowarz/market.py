@@ -76,6 +76,114 @@ HISTORY_KEPT = 20
 #: How many of those a sparkline draws.
 SPARK_DAYS = 14
 
+# ------------------------------------------------------------------ the tide
+#: Every coin used to drift entirely alone. Measured: SHIB and BTC had a daily
+#: correlation of +0.01, and across 1,500 simulated markets the whole board was
+#: never red - not rarely, never. That made spreading your money across twelve
+#: coins a free lunch: a HIGHER median return and a third of the variance, with
+#: nothing given up for it. A crypto game where the market never moves as one
+#: is missing the thing crypto is actually famous for.
+#:
+#: So there is one extra number a day - the tide - and every coin rides it
+#: according to its class. The crucial decision is that the tide is carved OUT
+#: of each coin's existing volatility rather than piled on top: a single coin
+#: swings about as hard as it always did, and the correlation comes for free
+#: from redistributing variance the market already had. Piling it on would just
+#: make everything louder, which is not the same thing as making it move
+#: together.
+#:
+#: How much of a coin's daily movement is the market's rather than its own.
+#:
+#: Chosen by sweeping it, not by feel. At 0.30 the shelter diversifying buys
+#: falls from 72% of the risk to 58% - the free lunch is priced without being
+#: abolished - the board visibly moves as one on 12% of days rather than 7%,
+#: and solvency for a sensible strategy stays at 51%, inside the band. Higher
+#: settings price the lunch harder and cost more than they are worth: at 0.45
+#: the median run goes negative.
+#:
+#: **What this does NOT do, measured five ways.** The pitch for the tide was
+#: that it would create a decision - rotate to USDC in a bear, tilt by beta,
+#: bank ahead of the weather. It does not. A bot handed tomorrow's regime in
+#: advance does WORSE than one that ignores the weather entirely, whichever of
+#: those it does with the knowledge. The reason is structural and worth writing
+#: down: this market's edge is mean reversion, the debt compounds at 10% a day
+#: so being out of the market is never affordable, and a factor that moves
+#: everything at once does not interact with either. The tide is texture and a
+#: price on diversifying. It is not a new decision, and a comment claiming
+#: otherwise would be a comment that reads well and is false.
+TIDE_SHARE = 0.30
+#: What is left for the coin itself. Squared, the two shares sum to one, which
+#: is what keeps the volatility budget honest.
+IDIO_SHARE = math.sqrt(1.0 - TIDE_SHARE ** 2)
+#: How often the tide re-rolls. Lower than TREND_FLIP on purpose: a market
+#: regime should outlast any one coin's run, so that "everything is falling"
+#: is a weather system you can be caught in rather than a bad afternoon.
+TIDE_FLIP = 0.16
+#: How much of the TIDE's OWN variance is the persistent regime rather than
+#: today's noise around it. The two square to one for the same reason the coin
+#: split does: the tide has a fixed variance budget of its own, and this decides
+#: how much of it is weather you can see coming versus weather you cannot.
+#:
+#: The first version got this wrong in a way worth recording. The regime was
+#: drawn at full strength REGARDLESS of TIDE_SHARE, so it was piled on top of
+#: every coin's volatility instead of carved out of it - which inflated a single
+#: coin's daily swing by 12% and, worse, meant the tide could not be turned down
+#: at all. Turning the dial to zero left the weather exactly where it was. A
+#: constant that does not control the thing it is named after is not a dial, it
+#: is a decoration.
+TIDE_REGIME = 0.85
+#: How hard each class of coin rides it.
+#:
+#: Normalised so the average risky coin has a beta of 1.0 - the first table
+#: averaged 1.23 and quietly inflated every coin's volatility by 12%, which is
+#: precisely the "made it louder instead of making it move together" failure
+#: this design is supposed to avoid. USDC is zero, and that is the whole point
+#: of it: the one asset on the board that does not care what the market does
+#: finally has a reason to exist.
+TIDE_BETA: Dict[str, float] = {"meme": 1.22, "alt": 0.94, "major": 0.69, "stable": 0.0}
+#: What a turning tide is called, and what it is worth knowing about.
+TIDE_LEVELS = (
+    (0.65, "EUPHORIA", "Everything is green. Nobody is asking why."),
+    (0.22, "BULL", "The whole board is drifting up."),
+    (-0.22, "CHOP", "No direction. Coins are on their own."),
+    (-0.65, "BEAR", "The whole board is leaking."),
+    (-9.9, "CAPITULATION", "Everything is red. Everyone is selling everything."),
+)
+
+
+#: A typical risky coin's daily volatility, so the tide has a sensible scale of
+#: its own rather than borrowing one coin's.
+TYPICAL_VOL = math.fsum(c.vol for c in COINS if c.symbol != "USDC") / max(
+    1, sum(1 for c in COINS if c.symbol != "USDC"))
+
+
+def beta_of(symbol: str) -> float:
+    """How hard this coin rides the tide."""
+    from .gear import CLASS_OF
+
+    return TIDE_BETA.get(CLASS_OF.get(symbol, "alt"), 1.0)
+
+
+def tide_level(tide_trend: float) -> str:
+    """What the weather is called, from the regime rather than today's draw.
+
+    The regime is the part worth naming: today's number is noise around it, and
+    a label that flickered daily would be a label nobody could act on.
+    """
+    scaled = tide_trend / max(1e-9, TYPICAL_VOL * TIDE_SHARE * TIDE_REGIME)
+    for threshold, name, _ in TIDE_LEVELS:
+        if scaled >= threshold:
+            return name
+    return TIDE_LEVELS[-1][1]
+
+
+def tide_blurb(tide_trend: float) -> str:
+    scaled = tide_trend / max(1e-9, TYPICAL_VOL * TIDE_SHARE * TIDE_REGIME)
+    for threshold, _, blurb in TIDE_LEVELS:
+        if scaled >= threshold:
+            return blurb
+    return TIDE_LEVELS[-1][2]
+
 
 class MarketState:
     """The drifting level of every coin, and which way each is running."""
@@ -85,6 +193,11 @@ class MarketState:
         #: the current run for each coin: a daily push that persists for a few
         #: days and then re-rolls, so movement arrives in arcs rather than fuzz
         self.trends: Dict[str, float] = {c.symbol: 0.0 for c in COINS}
+        #: the market's own run, and today's draw from it. Both ride the save:
+        #: a reload that reshuffled the weather would be a reload that rerolled
+        #: the run, which is the one thing this game does not allow.
+        self.tide_trend: float = 0.0
+        self.tide: float = 0.0
         for c in COINS:
             # Start in the middle of the range - but clamped to the coin's own
             # bounds. Unclamped, USDC opened anywhere from $0.78 to $1.21, which
@@ -102,18 +215,37 @@ class MarketState:
         self.history: Dict[str, List[float]] = {c.symbol: [self.levels[c.symbol]]
                                                 for c in COINS}
 
+    def roll_tide(self, rng: random.Random) -> None:
+        """One number for the whole board, before any coin moves.
+
+        Drawn once per day and shared by everything, which is the entire
+        mechanism: correlation is not something coins do to each other, it is
+        something they all do to the same number.
+        """
+        budget = TYPICAL_VOL * TIDE_SHARE
+        if rng.random() < TIDE_FLIP:
+            self.tide_trend = rng.gauss(0.0, budget * TIDE_REGIME)
+        self.tide = self.tide_trend + rng.gauss(
+            0.0, budget * math.sqrt(max(0.0, 1.0 - TIDE_REGIME ** 2)))
+
     def drift(self, rng: random.Random) -> None:
-        """One day of movement: a run, some noise, and a pull off the extremes."""
+        """One day of movement: the tide, a run, some noise, and a pull back."""
+        self.roll_tide(rng)
         for c in COINS:
             level = self.levels[c.symbol]
             if c.symbol == "USDC":
+                # immune by construction, and that is what it is FOR: the one
+                # thing on the board that does not care which way the tide runs
                 self.levels[c.symbol] = max(0.97, min(1.03, level * rng.uniform(0.997, 1.003)))
                 continue
             # the run re-rolls now and then; the rest of the time it carries on,
             # which is what turns a walk into a pump and then a dump
             if rng.random() < TREND_FLIP:
                 self.trends[c.symbol] = rng.gauss(0.0, c.vol * TREND_STRENGTH)
-            step = self.trends[c.symbol] + rng.gauss(0.0, c.vol)
+            # the coin's own noise is REDUCED to make room for the tide, so the
+            # two shares square to one and a coin swings as hard as it always did
+            own = rng.gauss(0.0, c.vol * IDIO_SHARE)
+            step = self.trends[c.symbol] + own + beta_of(c.symbol) * self.tide
             # pull back toward the middle so nothing drifts off forever
             pull = c.pull * math.log(c.mid / level) if level > 0 else 0.0
             level *= math.exp(step + pull)

@@ -5,6 +5,19 @@
 const COINS_EQUAL = (a, b) =>
   JSON.stringify(a) === JSON.stringify(b);
 const G = require("./game.js");
+/* Hand-set markets for the leak comparison. A loud source picks the biggest
+   run; a shrewd one picks the biggest run WITH ROOM LEFT. "stretched" is built
+   so those are different coins: SHIB is running hardest but is already near
+   the top of its range, so the pull is about to eat it, while DOGE is running
+   less hard from well below its middle. */
+const FIXED_MARKETS = {
+  stretched: {
+    levels: { SHIB: 0.000075, DOGE: 0.18 },
+    trends: { SHIB: 0.40, DOGE: 0.22 },
+  },
+  quiet: { levels: {}, trends: {} },
+  one_runner: { levels: { PEPE: 0.00001 }, trends: { PEPE: 0.35 } },
+};
 /* Bots face the same standoffs a player does rather than being exempt: a
    pending encounter blocks every other action, so a harness that ignored one
    would simply stop. */
@@ -798,6 +811,62 @@ const out = {
     markup: Object.fromEntries(G.COINS.map(c => [c.symbol, G.stationMarkup(s, c.symbol)])),
     shark: !!s.shark, vault: !!s.vault, shop: !!s.shop, wheel: !!s.wheel,
   })),
+  /* Leaks. The RNG streams differ, so what is compared is the arithmetic and
+     the QUESTION each source asks - which is the whole value of a leak. */
+  leak: (() => {
+    const g = new G.Game(9);
+    for (let i = 0; i < 6; i++) g.state.drift(g.rng);
+    const prices = {};
+    for (const cash of [0, 5000, 50000, 10000000]) {
+      g.player.cash = cash;
+      prices[String(cash)] = { ask: g.askPrice(false), tout: g.askPrice(true) };
+    }
+    /* Asked both ways against a HAND-SET market, never a drifted one: the two
+       ports run different RNGs, so any state either of them rolled would give
+       different numbers on each side and prove nothing. These are fixed inputs
+       and a pure function, which is the only thing worth comparing. */
+    const cases = {};
+    for (const [name, setup] of Object.entries(FIXED_MARKETS)) {
+      const h = new G.Game(1);
+      for (const c of G.COINS) {
+        h.state.levels[c.symbol] = setup.levels[c.symbol] !== undefined
+          ? setup.levels[c.symbol] : c.mid;
+        h.state.trends[c.symbol] = setup.trends[c.symbol] || 0;
+      }
+      cases[name] = { loud: h.worthGossipingAbout(false),
+                      shrewd: h.worthGossipingAbout(true) };
+    }
+    return {
+      constants: { LEAK_ACCURACY: G.LEAK_ACCURACY, TOUT_ACCURACY: G.TOUT_ACCURACY,
+                   ASK_SHARE: G.ASK_SHARE, ASK_MIN: G.ASK_MIN, ASK_MAX: G.ASK_MAX,
+                   TOUT_DISCOUNT: G.TOUT_DISCOUNT },
+      prices: prices,
+      picks: cases,
+    };
+  })(),
+  /* The tide. The RNG streams differ, so what is compared is the arithmetic:
+     the same constants, the same betas, the same label off the same number,
+     and the same variance budget. */
+  tide: {
+    constants: {
+      TIDE_SHARE: G.TIDE_SHARE, IDIO_SHARE: G.IDIO_SHARE, TIDE_FLIP: G.TIDE_FLIP,
+      TIDE_REGIME: G.TIDE_REGIME, TYPICAL_VOL: G.TYPICAL_VOL,
+    },
+    betas: Object.fromEntries(G.COINS.map(c => [c.symbol, G.betaOf(c.symbol)])),
+    levels: G.TIDE_LEVELS.map(([threshold, name, blurb]) => ({ threshold, name, blurb })),
+    labels: (() => {
+      const one = G.TYPICAL_VOL * G.TIDE_SHARE * G.TIDE_REGIME;
+      const out = {};
+      for (const t of [1.2, 0.4, 0, -0.4, -1.2]) out[String(t)] = G.tideLevel(t * one);
+      return out;
+    })(),
+    blurbs: (() => {
+      const one = G.TYPICAL_VOL * G.TIDE_SHARE * G.TIDE_REGIME;
+      const out = {};
+      for (const t of [1.2, 0, -1.2]) out[String(t)] = G.tideBlurb(t * one);
+      return out;
+    })(),
+  },
   /* Robbing other players. The RNG streams differ between the ports, so what
      is compared is the arithmetic and the shape: the same constants, the same
      stake off the same coat, and the same settlement from the same roll. */

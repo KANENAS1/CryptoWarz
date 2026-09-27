@@ -748,6 +748,43 @@ New runs are invisible for their first five days, the same grace the SEC gives
 you and for the same reason. A mark goes cold after three days. One attempt per
 person per day. A finished run is a score, not a person standing somewhere.
 
+### Info, or the coat
+
+The platform gave other players exactly one use — something to go through — and
+a system whose only verb is violence is a thin system. So somebody standing at
+your stop is now worth two entirely different things, and **you get one of
+them**. Asking spends the same daily go at them that robbing does.
+
+| source | costs | told right | **lands** |
+|---|---|---|---|
+| a tout, working one platform | half price | 70% | 52% |
+| the man on the dice | free, when he feels like it | 85% | 55% |
+| **somebody riding the same line** | 6% of your pockets | 95% | **69%** |
+
+The gap between the last two columns is the whole feature, and finding it
+changed the design.
+
+**Accuracy turned out to be the wrong lever.** The first version made a leak
+simply more truthful — 95% against the tout's 70% — and measured the result:
+it landed **56%** of the time against the tout's 52%. Four points, for real
+money. The reason is selection bias, and it had been sitting in the tip system
+since the day it was written: gossip is about the *loudest* coin, and the
+loudest coin is the one that has travelled furthest from its middle, so the
+pull back is about to eat the run. You were being told, very reliably, about
+the trade that was about to stop working.
+
+So a leak does not know *more*. It asks a **better question**: not what is
+moving hardest, but what is moving hardest **with room left** — the run and the
+pull added together, which is to say where the price is actually expected to
+go. Same accuracy, same price, 56% → **69%**.
+
+Still wrong three times in ten, which is the point. A tip you can bank is not
+information, it is an instruction, and there is a test that fails if a leak
+ever climbs past 85%.
+
+The terminal has no platform — there is nobody else on that line — so `ask`
+there buys the tout, who works every station.
+
 ### The street board
 
 Money is gone in thirty days; a reputation is not. Lifts land on a **STREET**
@@ -1174,6 +1211,71 @@ and would have left a red-green trading game unreadable to exactly the people
 most likely to be squinting at it. Direction is never colour alone anyway: the
 end-marker is a triangle and the number beside it carries a sign.
 
+## The tide: the board moves as one, and what that was worth
+
+Every coin used to drift entirely alone. Measured: SHIB and BTC had a daily
+correlation of **+0.01**, and across 1,500 simulated markets the whole board
+was never red — not rarely, never.
+
+That made spreading your money a **free lunch**. Holding all twelve gave a
+*higher* median return **and** a third of the variance, with nothing given up
+for it. In a game about trading, the one strategy that dominated had no cost.
+
+So there is one extra number a day — the tide — and every coin rides it
+according to its class:
+
+| class | beta | |
+|---|---|---|
+| meme | 1.22 | SHIB, PEPE, BONK, DOGE, WIF — swings hardest |
+| alt | 0.94 | XRP, SUI, SOL |
+| major | 0.69 | AVAX, ETH, BTC — steadier |
+| stable | 0.00 | USDC — immune, and that is what it is *for* |
+
+The decision the whole thing rests on: the tide is **carved out** of each
+coin's volatility rather than piled on top. Both splits square to one, so a
+single coin swings as hard as it always did and the correlation comes from
+redistributing variance the market already had. A first version got this wrong
+— it drew the regime at full strength regardless of the dial, inflating every
+coin's swing by 12% and making the dial control nothing. Turning it to zero
+left the weather exactly where it was. A constant that does not control the
+thing it is named after is a decoration, not a dial.
+
+Strength was picked by sweeping it, not by feel:
+
+| tide share | diversifying shelters | board moves as one | solvent | median |
+|---|---|---|---|---|
+| 0.00 | 72% of the risk | 7% of days | 52% | +12,851 |
+| **0.30** | **58%** | **12%** | **51%** | **+6,714** |
+| 0.45 | 48% | 16% | 47% | −18,306 |
+
+Spreading still helps. It is no longer free.
+
+### What it is not: a decision
+
+The pitch for this feature was that it would create one — rotate to USDC in a
+bear, tilt by beta, bank ahead of the weather. **It does not, and that was
+measured five ways.** A bot handed *tomorrow's regime in advance* does worse
+than one that ignores the weather entirely:
+
+| | median | solvent |
+|---|---|---|
+| ignores the weather | +6,934 | **53%** |
+| reacts to the regime | −38,806 | 44% |
+| knows it a day early, sits out | −43,656 | 43% |
+| knows it, rotates by beta | −54,514 | 40% |
+| knows it, banks ahead of it | −11,504 | 34% |
+
+The reason is structural and worth writing down. This market's edge is **mean
+reversion** — buy whatever is lowest in its own range — and the debt compounds
+at 10% a day, so being out of the market is never affordable. A factor that
+moves everything at once does not interact with either.
+
+So the tide is texture and a price on diversifying. It makes "my coins all
+fell" and "the board fell" different sentences, and the THE BOARD strip on the
+main screen says which. It is not an edge, and `make balance` keeps the losing
+tide-reading bot in the table as the evidence, because a row that fails is
+worth more than a paragraph claiming it would not.
+
 ## Pumps, dumps, and the reverse
 
 A random walk wanders. It does not pump, and it does not dump. So every coin
@@ -1447,7 +1549,7 @@ it ran, where Python recorded the run's seed and the port didn't.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests     # 522 tests, no install needed
+python3 -m unittest discover -s tests     # 561 tests, no install needed
 make browser                              # what a suite cannot see (needs Playwright)
 ```
 

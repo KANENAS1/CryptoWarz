@@ -99,12 +99,50 @@ def dip_clear_and_vault(game: Game) -> None:
     dip_and_clear_debt(game)
 
 
+def dip_clear_vault_and_read_the_tide(game: Game) -> None:
+    """The same again, plus sitting out the weather.
+
+    The tide is the one thing in the market that moves everything at once, and
+    USDC is the only thing on the board immune to it. That makes "get out of
+    the water" a real decision for the first time - and a strategy table that
+    could not express it would measure the tide as pure added difficulty, which
+    would be measuring the wrong thing.
+
+    It stays in the table because it LOSES, and that is the finding. Rotating
+    out of the water on the weather costs about ten points of solvency, and so
+    does every other way of acting on the tide that has been tried here -
+    including a bot handed tomorrow's regime in advance. The edge in this
+    market is mean reversion, and the debt compounds at 10% a day, so being
+    out of the market is never affordable. A row that fails is worth more than
+    a paragraph claiming it would not.
+    """
+    from cryptowarz.market import tide_level
+
+    weather = tide_level(getattr(game.state, "tide_trend", 0.0))
+    if weather in ("BEAR", "CAPITULATION"):
+        _liquidate(game)
+        if game.station.has_shark and 0 < game.player.debt < game.player.cash * 0.55:
+            try:
+                game.repay(game.player.debt)
+            except ValueError:
+                pass
+        qty = game.max_buyable("USDC")
+        if qty > 0:
+            try:
+                game.buy("USDC", qty * 0.95)
+            except (ValueError, KeyError):
+                pass
+        return
+    dip_clear_and_vault(game)
+
+
 STRATEGIES = [
     ("do nothing", do_nothing),
     ("buy at random", at_random),
     ("buy the cheapest", buy_the_dip),
     ("+ clear the debt", dip_and_clear_debt),
     ("+ use the vault", dip_clear_and_vault),
+    ("+ read the tide", dip_clear_vault_and_read_the_tide),
 ]
 
 

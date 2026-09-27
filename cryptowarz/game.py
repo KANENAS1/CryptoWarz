@@ -124,6 +124,28 @@ TIP_MIN_RUN = 0.5
 #: How many days a whisper is worth anything.
 TIP_FRESH_FOR = 3
 
+# ----------------------------------------------------------------- a leak
+#: Word you go out and GET, rather than word that happens to you.
+#:
+#: The man on the dice tells you things when he feels like it. These are the
+#: two ways to go looking, and they are deliberately ranked: somebody actually
+#: riding the same trains knows more than a tout working one platform, and the
+#: price and the accuracy both say so.
+#:
+#: This is also the point of it. The platform gave other players exactly one
+#: use - a coat to go through - and a system whose only verb is violence is a
+#: thin system. Somebody standing at your stop is now worth two entirely
+#: different things, and you get one of them.
+LEAK_ACCURACY = 0.95      # somebody in the game, on the same trains
+TOUT_ACCURACY = 0.70      # a guy who knows a guy, working one platform
+#: What asking costs, as a share of your pockets, bounded at both ends. Scaled
+#: to the run rather than flat: information is worth more when there is more
+#: riding on it, and a flat price stops mattering by day twenty.
+ASK_SHARE = 0.06
+ASK_MIN = 200.0
+ASK_MAX = 6_000.0
+TOUT_DISCOUNT = 0.5       # the tout charges less, and is worth less
+
 # ------------------------------------------------------------------ the wheel
 #: Somebody has a prize wheel set up on the mezzanine at some stops. ONE SPIN
 #: PER STOP PER RUN, which is the whole design: it pays for going somewhere you
@@ -624,22 +646,93 @@ class Game:
             return None
         return rumour
 
+    def _worth_gossiping_about(self, shrewd: bool = False):
+        """What somebody tells you about, or None if nothing is worth saying.
+
+        Two different questions, and the difference is the whole value of a
+        leak. Gossip picks the LOUDEST coin - relative to its own noise, so a
+        4% run is a rumour on Bitcoin and a rounding error on WIF. That sounds
+        like good information and measurably is not, because the loudest coin
+        is also the one that has travelled furthest from its middle, and the
+        pull back is about to eat the run. Told right 95% of the time, that tip
+        still only lands 56%.
+
+        A shrewd source asks the better question: not what is moving hardest,
+        but what is moving hardest WITH room left to move. That is the run and
+        the pull added together rather than the run alone - which is to say,
+        where the price is actually expected to go next.
+        """
+        risky = [c for c in COINS if c.symbol != "USDC"]
+        if shrewd:
+            scored = []
+            for c in risky:
+                level = self.state.levels[c.symbol]
+                pull = c.pull * math.log(c.mid / level) if level > 0 else 0.0
+                drift = self.state.running(c.symbol) + pull
+                if abs(drift) >= c.vol * TIP_MIN_RUN:
+                    scored.append((c.symbol, drift))
+            return max(scored, key=lambda st: abs(st[1])) if scored else None
+        running = [(c.symbol, self.state.running(c.symbol)) for c in risky
+                   if abs(self.state.running(c.symbol)) >= c.vol * TIP_MIN_RUN]
+        if not running:
+            return None
+        return max(running, key=lambda st: abs(st[1]))
+
+    def _write_tip(self, symbol: str, trend: float, accuracy: float,
+                   source: str) -> bool:
+        """Record what you were told, right or wrong. Returns whether it is up."""
+        truthful = self.rng.random() < accuracy
+        going_up = (trend > 0) if truthful else (trend <= 0)
+        self.stats["tip"] = {"symbol": symbol, "up": going_up, "day": self.day,
+                             "from": source}
+        return going_up
+
     def _hear_something(self) -> List[str]:
         """The man on the dice passes on what he heard. Sometimes it is true."""
         if self.rng.random() > TIP_CHANCE:
             return []
-        running = [(c.symbol, self.state.running(c.symbol)) for c in COINS
-                   if c.symbol != "USDC"
-                   and abs(self.state.running(c.symbol)) >= c.vol * TIP_MIN_RUN]
-        if not running:
+        found = self._worth_gossiping_about()
+        if not found:
             return []
-        symbol, trend = max(running, key=lambda st: abs(st[1]))
-        truthful = self.rng.random() < TIP_ACCURACY
-        going_up = (trend > 0) if truthful else (trend <= 0)
-        self.stats["tip"] = {"symbol": symbol, "up": going_up, "day": self.day}
+        symbol, trend = found
+        going_up = self._write_tip(symbol, trend, TIP_ACCURACY, "the dice")
         word = "about to run" if going_up else "about to fall over"
         return [f'"Word is {coin(symbol).name} is {word}." He might be wrong. '
                 f"He usually isn't."]
+
+    # --------------------------------------------------------------- leaks
+
+    def ask_price(self, tout: bool = False) -> float:
+        """What a word costs. Scaled to the run: information is worth more when
+        there is more riding on it, and a flat price stops mattering by day 20."""
+        price = max(ASK_MIN, min(ASK_MAX, max(0.0, self.player.cash) * ASK_SHARE))
+        return price * (TOUT_DISCOUNT if tout else 1.0)
+
+    def ask_around(self, tout: bool = False) -> str:
+        """Buy what somebody knows.
+
+        The tout is cheaper and worse. A player riding the same trains is
+        dearer and nearly right - which is the reason to want other people on
+        the platform for something other than their coat.
+        """
+        self._not_now()
+        price = self.ask_price(tout)
+        if self.player.cash + 1e-9 < price:
+            raise ValueError(f"that costs ${price:,.0f} and you have not got it")
+        found = self._worth_gossiping_about(shrewd=not tout)
+        if not found:
+            raise ValueError("nobody has heard anything worth repeating today")
+        self.player.cash -= price
+        symbol, trend = found
+        accuracy = TOUT_ACCURACY if tout else LEAK_ACCURACY
+        going_up = self._write_tip(symbol, trend, accuracy,
+                                   "a tout" if tout else "the platform")
+        word = "about to run" if going_up else "about to fall over"
+        who = ("A man working the platform says" if tout
+               else "They lean in. Word from somebody actually riding this line:")
+        message = f'{who} {coin(symbol).name} is {word}.'
+        self.say(message)
+        return message
 
     # ----------------------------------------------------------------- dice
 

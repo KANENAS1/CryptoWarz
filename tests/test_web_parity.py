@@ -1852,3 +1852,129 @@ class TestLiftParity(unittest.TestCase):
                             ("points_countered", {"countered": 1})):
             full = {"took": 0, "held": 0, "lost": 0, "countered": 0, **record}
             self.assertEqual(self.js["street"][key], L.street_points(full), key)
+
+
+@requires_node
+class TestTideParity(unittest.TestCase):
+    """One weather system, not two.
+
+    The tide is shared by every coin on the board, so a port that computed it
+    differently would not be a slightly different market - it would be a
+    different market for every coin at once.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["tide"]
+
+    def test_every_constant_matches(self):
+        from cryptowarz import market as M
+
+        for name, value in self.js["constants"].items():
+            self.assertAlmostEqual(value, getattr(M, name), msg=name)
+
+    def test_the_variance_budget_is_honest_on_both_sides(self):
+        """Both splits must square to one, or one port is louder than the other."""
+        c = self.js["constants"]
+        self.assertAlmostEqual(c["TIDE_SHARE"] ** 2 + c["IDIO_SHARE"] ** 2, 1.0)
+
+    def test_every_coin_rides_it_equally_hard_on_both_sides(self):
+        from cryptowarz import market as M
+
+        for symbol, beta in self.js["betas"].items():
+            self.assertAlmostEqual(beta, M.beta_of(symbol), msg=symbol)
+        self.assertEqual(self.js["betas"]["USDC"], 0.0)
+
+    def test_the_weather_has_the_same_names_and_thresholds(self):
+        from cryptowarz import market as M
+
+        mine = [{"threshold": t, "name": n, "blurb": b} for t, n, b in M.TIDE_LEVELS]
+        self.assertEqual(self.js["levels"], mine)
+
+    def test_the_same_number_reads_as_the_same_weather(self):
+        from cryptowarz import market as M
+
+        one = M.TYPICAL_VOL * M.TIDE_SHARE * M.TIDE_REGIME
+        for key, name in self.js["labels"].items():
+            self.assertEqual(name, M.tide_level(float(key) * one), key)
+        for key, blurb in self.js["blurbs"].items():
+            self.assertEqual(blurb, M.tide_blurb(float(key) * one), key)
+
+
+@requires_node
+class TestLeakParity(unittest.TestCase):
+    """Both ports must ask the same question and charge the same for it.
+
+    The question is the part that matters. A port that let its leak pick the
+    loudest coin rather than the one with room left would be selling the same
+    thing at the same price for two thirds of the value, and nothing on screen
+    would say so.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = run_node("dump.js")["leak"]
+
+    def test_every_constant_matches(self):
+        from cryptowarz import game as G
+
+        for name, value in self.js["constants"].items():
+            self.assertAlmostEqual(value, getattr(G, name), msg=name)
+
+    def test_asking_costs_the_same_on_both(self):
+        from cryptowarz.game import Game
+
+        game = Game(seed=9)
+        for _ in range(6):
+            game.state.drift(game.rng)
+        for cash, prices in self.js["prices"].items():
+            game.player.cash = float(cash)
+            self.assertAlmostEqual(prices["ask"], game.ask_price(), msg=cash)
+            self.assertAlmostEqual(prices["tout"], game.ask_price(tout=True), msg=cash)
+
+    #: The same hand-set markets web/dump.js uses. Never a drifted one: the two
+    #: ports run different RNGs, so any state either of them rolled would give
+    #: different numbers on each side and prove nothing. Fixed inputs and a
+    #: pure function is the only thing worth comparing here.
+    FIXED = {
+        "stretched": ({"SHIB": 0.000075, "DOGE": 0.18}, {"SHIB": 0.40, "DOGE": 0.22}),
+        "quiet": ({}, {}),
+        "one_runner": ({"PEPE": 0.00001}, {"PEPE": 0.35}),
+    }
+
+    def _set_up(self, levels, trends):
+        from cryptowarz.coins import COINS
+        from cryptowarz.game import Game
+
+        game = Game(seed=1)
+        for coin in COINS:
+            game.state.levels[coin.symbol] = levels.get(coin.symbol, coin.mid)
+            game.state.trends[coin.symbol] = trends.get(coin.symbol, 0.0)
+        return game
+
+    def test_both_ports_pick_the_same_coin_to_talk_about(self):
+        """The one that matters: the loud question and the shrewd question must
+        be the same two questions on both sides."""
+        for name, (levels, trends) in self.FIXED.items():
+            game = self._set_up(levels, trends)
+            for key, shrewd in (("loud", False), ("shrewd", True)):
+                mine = game._worth_gossiping_about(shrewd=shrewd)
+                theirs = self.js["picks"][name][key]
+                if mine is None:
+                    self.assertIsNone(theirs, f"{name}/{key}")
+                    continue
+                self.assertIsNotNone(theirs, f"{name}/{key}")
+                self.assertEqual(theirs[0], mine[0], f"{name}/{key} coin")
+                self.assertAlmostEqual(theirs[1], mine[1], msg=f"{name}/{key} value")
+
+    def test_the_two_questions_really_are_different(self):
+        """If they always agreed, the shrewd one would be decoration. In the
+        stretched market SHIB is running hardest and is nearly at its ceiling,
+        so a shrewd source points somewhere else entirely."""
+        picks = self.js["picks"]["stretched"]
+        self.assertEqual(picks["loud"][0], "SHIB")
+        self.assertNotEqual(picks["shrewd"][0], picks["loud"][0],
+                            "the shrewd question picked the loud coin anyway")
+        game = self._set_up(*self.FIXED["stretched"])
+        self.assertEqual(game._worth_gossiping_about(shrewd=False)[0], "SHIB")
+        self.assertNotEqual(game._worth_gossiping_about(shrewd=True)[0], "SHIB")
